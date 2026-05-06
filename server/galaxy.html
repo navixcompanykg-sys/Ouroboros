@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>OUROBOROS — Galaxy Simulation</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap');
+
+  :root {
+    --bg: #04060f;
+    --panel-bg: rgba(6, 12, 28, 0.92);
+    --border: rgba(60, 130, 200, 0.18);
+    --accent: #2a7fff;
+    --accent2: #00e5ff;
+    --text: #8baac8;
+    --text-bright: #cce4ff;
+    --mono: 'Share Tech Mono', monospace;
+    --sans: 'Rajdhani', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  header { display: flex; align-items: center; gap: 20px; padding: 8px 20px; border-bottom: 1px solid var(--border); background: var(--panel-bg); flex-shrink: 0; flex-wrap: wrap; }
+  .logo { font-family: var(--mono); font-size: 12px; letter-spacing: 4px; color: var(--accent2); }
+  .tick-info { font-family: var(--mono); font-size: 11px; color: var(--text); opacity: 0.7; }
+  .tick-info span { color: var(--text-bright); }
+  .sim-controls { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+
+  .sim-btn { background: transparent; border: 1px solid var(--border); color: var(--text); font-family: var(--mono); font-size: 10px; padding: 4px 10px; cursor: pointer; letter-spacing: 1px; transition: all 0.15s; }
+  .sim-btn:hover { border-color: var(--accent); color: var(--accent2); }
+  .sim-btn.active { border-color: var(--accent2); color: var(--accent2); background: rgba(0,229,255,0.06); }
+  .sim-btn.stop { border-color: rgba(255,80,60,0.4); color: rgba(255,120,100,0.8); }
+  .sim-btn.stop:hover { border-color: #ff5040; color: #ff8070; }
+  .grid-toggle { font-family: var(--mono); font-size: 10px; background: transparent; border: 1px solid var(--border); color: var(--text); padding: 4px 8px; cursor: pointer; transition: all 0.15s; }
+  .grid-toggle.on { border-color: var(--accent); color: var(--accent2); }
+
+  .main { display: flex; flex: 1; overflow: hidden; }
+  #canvas-wrap { flex: 1; position: relative; overflow: hidden; cursor: crosshair; }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  .sidebar { width: 210px; flex-shrink: 0; background: var(--panel-bg); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
+  .panel { padding: 14px; border-bottom: 1px solid var(--border); }
+  .panel-title { font-family: var(--mono); font-size: 9px; letter-spacing: 3px; color: var(--accent); text-transform: uppercase; margin-bottom: 10px; opacity: 0.8; }
+  .stat-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .stat-label { font-size: 11px; color: var(--text); opacity: 0.7; }
+  .stat-value { font-family: var(--mono); font-size: 11px; color: var(--text-bright); }
+  .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .legend-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .legend-label { font-size: 11px; color: var(--text); opacity: 0.8; }
+  .legend-count { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--text-bright); }
+
+  .zoom-controls { position: absolute; bottom: 20px; left: 20px; display: flex; flex-direction: column; gap: 4px; }
+  .zoom-btn { width: 30px; height: 30px; background: var(--panel-bg); border: 1px solid var(--border); color: var(--text-bright); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: var(--mono); transition: border-color 0.15s; }
+  .zoom-btn:hover { border-color: var(--accent); color: var(--accent2); }
+  .zoom-level { font-family: var(--mono); font-size: 9px; color: var(--text); text-align: center; opacity: 0.6; }
+
+  #tooltip { position: fixed; background: var(--panel-bg); border: 1px solid var(--border); padding: 8px 12px; font-size: 11px; font-family: var(--mono); color: var(--text-bright); pointer-events: none; display: none; z-index: 100; line-height: 1.8; backdrop-filter: blur(8px); }
+  #tooltip .tt-type { font-size: 9px; letter-spacing: 2px; margin-bottom: 3px; }
+
+  #loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; background: var(--bg); font-family: var(--mono); color: var(--accent2); font-size: 12px; letter-spacing: 3px; }
+  .loading-bar { width: 180px; height: 1px; background: var(--border); position: relative; overflow: hidden; }
+  .loading-bar::after { content: ''; position: absolute; top: 0; left: -50%; width: 50%; height: 100%; background: var(--accent2); animation: scan 1.2s ease-in-out infinite; }
+  @keyframes scan { to { left: 100%; } }
+
+  .instructions { position: absolute; bottom: 20px; right: 20px; font-family: var(--mono); font-size: 9px; color: var(--text); opacity: 0.3; line-height: 2; text-align: right; }
+  .flash { color: #ffaa44 !important; transition: color 0.6s; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">OUROBOROS</div>
+  <div class="tick-info">TICK <span id="tick-count">0</span> &nbsp;|&nbsp; SEED <span id="seed-val">—</span></div>
+  <div class="sim-controls">
+    <button class="grid-toggle" id="grid-btn">GRID</button>
+    <button class="sim-btn" id="btn-1s">▶ 1s</button>
+    <button class="sim-btn" id="btn-3s">▶ 3s</button>
+    <button class="sim-btn" id="btn-10s">▶ 10s</button>
+    <button class="sim-btn stop" id="btn-stop">■ STOP</button>
+  </div>
+</header>
+
+<div class="main">
+  <div id="canvas-wrap">
+    <div id="loading"><div>LOADING GALAXY</div><div class="loading-bar"></div></div>
+    <canvas id="gc"></canvas>
+    <div class="zoom-controls">
+      <button class="zoom-btn" id="zi">+</button>
+      <div class="zoom-level" id="zl">100%</div>
+      <button class="zoom-btn" id="zo">−</button>
+      <button class="zoom-btn" id="zr" style="font-size:10px">RST</button>
+    </div>
+    <div class="instructions">scroll — zoom &nbsp;·&nbsp; drag — pan<br>hover — object info</div>
+  </div>
+
+  <div class="sidebar">
+    <div class="panel">
+      <div class="panel-title">Galaxy</div>
+      <div class="stat-row"><span class="stat-label">Objects</span><span class="stat-value" id="st-total">—</span></div>
+      <div class="stat-row"><span class="stat-label">Total mass</span><span class="stat-value" id="st-mass">—</span></div>
+      <div class="stat-row"><span class="stat-label">Rotation</span><span class="stat-value" id="st-rot">—</span></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Simulation</div>
+      <div class="stat-row"><span class="stat-label">Status</span><span class="stat-value" id="st-status">PAUSED</span></div>
+      <div class="stat-row"><span class="stat-label">Tick speed</span><span class="stat-value" id="st-speed">—</span></div>
+      <div class="stat-row"><span class="stat-label">Mergers total</span><span class="stat-value" id="st-mergers">0</span></div>
+      <div class="stat-row"><span class="stat-label">This tick</span><span class="stat-value" id="st-mtick">0</span></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Object Types</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ff6644"></div><span class="legend-label">Red dwarf</span><span class="legend-count" id="c-red_dwarf">—</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ffe066"></div><span class="legend-label">Yellow dwarf</span><span class="legend-count" id="c-yellow_dwarf">—</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#a0c8ff"></div><span class="legend-label">Blue giant</span><span class="legend-count" id="c-blue_giant">—</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ddeeff"></div><span class="legend-label">White dwarf</span><span class="legend-count" id="c-white_dwarf">—</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#bb44ff"></div><span class="legend-label">Black hole</span><span class="legend-count" id="c-black_hole">—</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#44ffcc;border-radius:2px"></div><span class="legend-label">Nebula</span><span class="legend-count" id="c-nebula">—</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#8899aa;border-radius:1px"></div><span class="legend-label">Asteroid field</span><span class="legend-count" id="c-asteroid_field">—</span></div>
+    </div>
+  </div>
+</div>
+<div id="tooltip"></div>
+
+<script>
+// ============================================================
+// PHYSICS CONSTANTS
+// ============================================================
+const CENTER     = 50;
+const GALAXY_R   = 50;
+const CHAOS_R    = 2;
+const MIN_DIST   = 1.2;    // merger detection (game units)
+const G_SCALE    = 0.008;   // gravitational constant
+const SOFTENING2 = 1.0;    // softening ε² — prevents singularity at close range
+const MAX_INF_R  = 20;     // max gravitational influence radius
+const BH_THETA   = 0.7;    // Barnes-Hut opening angle
+const TANG_SCALE = 0.25;   // tangential force fraction
+const MAX_DVR    = 0.005;   // max radial velocity change per tick
+const MAX_DOM    = 0.0003; // max angular velocity change per tick
+
+// Base angular velocity for stable circular orbit at radius R
+function baseOmega(r) {
+  if (r < CHAOS_R) r = CHAOS_R;
+  const period = 14 + 351 * (r - 2) / 48;
+  return (2 * Math.PI) / period;
+}
+
+// ============================================================
+// STATE
+// ============================================================
+let objects      = [];
+let tick         = 0;
+let mergersTotal = 0;
+let simTimer     = null;
+let showGrid     = false;
+let rotDir       = 1;
+let zoom = 1, panX = 0, panY = 0;
+let isDragging   = false;
+let dragStart    = {x:0,y:0}, panStart = {x:0,y:0};
+
+const canvas  = document.getElementById('gc');
+const ctx     = canvas.getContext('2d');
+const wrap    = document.getElementById('canvas-wrap');
+const tooltip = document.getElementById('tooltip');
+
+// ============================================================
+// COLORS
+// ============================================================
+const COLORS = {
+  blue_giant:[160,200,255], yellow_dwarf:[255,224,102],
+  red_dwarf:[255,100,68],   white_dwarf:[210,235,255],
+  black_hole:[187,68,255],  nebula:[68,255,204], asteroid_field:[136,153,170],
+};
+function objColor(o)  { return o.type==='star'?(COLORS[o.star_type]||[255,255,255]):(COLORS[o.type]||[255,255,255]); }
+function massAlpha(o) { const ranges={star:[10,100],black_hole:[101,150],nebula:[1,2],asteroid_field:[3,9]}; const [lo,hi]=ranges[o.type]||[1,100]; return 0.3+0.7*Math.min(1,Math.max(0,(o.mass-lo)/(hi-lo))); }
+function objRadius(o) { const base={blue_giant:2.8,yellow_dwarf:2.0,red_dwarf:1.5,white_dwarf:1.3,black_hole:2.5,nebula:1.8,asteroid_field:1.3}; return (base[o.type==='star'?o.star_type:o.type]||1.5)*Math.max(0.4,zoom*0.55); }
+
+// ============================================================
+// COORDINATE TRANSFORMS
+// ============================================================
+function toScreen(gx,gy) { const W=canvas.width,H=canvas.height,s=(Math.min(W,H)/110)*zoom; return [W/2+(gx-CENTER)*s+panX,H/2+(gy-CENTER)*s+panY]; }
+function getScale()      { return (Math.min(canvas.width,canvas.height)/110)*zoom; }
+
+// ============================================================
+// DIRECT N-BODY — только синие гиганты и чёрные дыры
+// ============================================================
+
+function isMassive(o){
+  return o.type==='black_hole' || (o.type==='star' && o.star_type==='blue_giant');
+}
+
+let massiveObjects = [];
+
+function computeAccel(o){
+  const acc=[0,0];
+  const ox=o.x-CENTER, oy=o.y-CENTER;
+  const or_=Math.sqrt(ox*ox+oy*oy);
+  if(or_<0.01) return acc;
+  const rx=ox/or_, ry=oy/or_;
+  const tx=-ry*rotDir, ty=rx*rotDir;
+
+  for(const m of massiveObjects){
+    if(m===o) continue;
+    const dx=m.x-o.x, dy=m.y-o.y;
+    const d2=dx*dx+dy*dy;
+    if(d2>MAX_INF_R*MAX_INF_R) continue;
+    const force=m.mass*G_SCALE/(d2+SOFTENING2);
+    const d=Math.sqrt(d2)+0.001;
+    const fx=dx/d, fy=dy/d;
+    acc[0]+=force*(fx*(-rx)+fy*(-ry));
+    acc[1]+=force*(fx*tx+fy*ty)*TANG_SCALE;
+  }
+  return acc;
+}
+
+function leapfrogStep(){
+  massiveObjects=objects.filter(isMassive);
+
+  for(const o of objects){
+    const acc=computeAccel(o);
+
+    // Clamp accelerations to prevent runaway
+    const ar = Math.max(-MAX_DVR, Math.min(MAX_DVR, acc[0]));
+    const at = Math.max(-MAX_DOM, Math.min(MAX_DOM, acc[1]/Math.max(o.r,0.1)));
+
+    // --- LEAPFROG ---
+    // Half-kick: update velocities by half step
+    o.vr    += ar * 0.5;
+    o.omega += at * 0.5;
+
+    // Full drift: update positions
+    o.r     -= o.vr;
+    o.theta += o.omega;
+    // Сохранение момента импульса: при изменении omega пересчитываем r
+    if(Math.abs(o.omega) > 0.00001){
+      o.r = Math.min(GALAXY_R - 0.1, Math.max(CHAOS_R, o.L / Math.abs(o.omega)));
+    }
+
+    // Clamp r
+    if(o.r < CHAOS_R)  { o.r = CHAOS_R;        o.vr = Math.abs(o.vr)*0.1; }
+    if(o.r > GALAXY_R) { o.r = GALAXY_R - 0.1;  o.vr = -Math.abs(o.vr)*0.1; }
+
+    // Recompute cartesian (needed for next tree build)
+    o.x = CENTER + o.r*Math.cos(o.theta);
+    o.y = CENTER + o.r*Math.sin(o.theta);
+
+    // Second half-kick (uses same acc — standard leapfrog approximation)
+    o.vr    += ar * 0.5;
+    o.omega += at * 0.5;
+
+    // Clamp omega deviation from base (prevents runaway spin)
+    const base = baseOmega(o.r)*rotDir;
+    const maxDev = base * 0.5;
+    if(o.omega > base + maxDev) o.omega = base + maxDev;
+    if(o.omega < base - maxDev) o.omega = base - maxDev;
+  }
+}
+
+// ============================================================
+// MERGER DETECTION (spatial grid, O(n))
+// ============================================================
+function detectMergers(){
+  const cs = MIN_DIST;
+  const grid = new Map();
+  for(const o of objects){
+    const k=`${Math.floor(o.x/cs)},${Math.floor(o.y/cs)}`;
+    if(!grid.has(k)) grid.set(k,[]);
+    grid.get(k).push(o);
+  }
+  const seen = new Set();
+  let count = 0;
+  const md2 = MIN_DIST*MIN_DIST;
+  for(const o of objects){
+    const cx=Math.floor(o.x/cs), cy=Math.floor(o.y/cs);
+    for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++){
+      const nb=grid.get(`${cx+dx},${cy+dy}`);
+      if(!nb) continue;
+      for(const b of nb){
+        if(b===o) continue;
+        const pk=o.id<b.id?`${o.id}:${b.id}`:`${b.id}:${o.id}`;
+        if(seen.has(pk)) continue;
+        seen.add(pk);
+        const ddx=o.x-b.x,ddy=o.y-b.y;
+        if(ddx*ddx+ddy*ddy<md2) count++;
+      }
+    }
+  }
+  return count;
+}
+
+// ============================================================
+// TICK
+// ============================================================
+function runTick(){
+  leapfrogStep();
+
+  const m = detectMergers();
+  mergersTotal += m;
+  tick++;
+
+  document.getElementById('tick-count').textContent = tick;
+  document.getElementById('st-mergers').textContent = mergersTotal;
+  const mEl = document.getElementById('st-mtick');
+  mEl.textContent = m;
+  if(m>0){ mEl.classList.add('flash'); setTimeout(()=>mEl.classList.remove('flash'),800); }
+
+  draw();
+}
+
+// ============================================================
+// SIMULATION CONTROLS
+// ============================================================
+function startSim(ms){
+  stopSim();
+  simTimer=setInterval(runTick,ms);
+  document.getElementById('st-status').textContent='RUNNING';
+  document.getElementById('st-speed').textContent=(ms/1000)+'s/tick';
+  document.querySelectorAll('.sim-btn').forEach(b=>b.classList.remove('active'));
+  const ids={1000:'btn-1s',3000:'btn-3s',10000:'btn-10s'};
+  if(ids[ms]) document.getElementById(ids[ms]).classList.add('active');
+}
+function stopSim(){
+  if(simTimer){clearInterval(simTimer);simTimer=null;}
+  document.getElementById('st-status').textContent='PAUSED';
+  document.getElementById('st-speed').textContent='—';
+  document.querySelectorAll('.sim-btn').forEach(b=>b.classList.remove('active'));
+}
+
+document.getElementById('btn-1s').addEventListener('click',  ()=>startSim(1000));
+document.getElementById('btn-3s').addEventListener('click',  ()=>startSim(3000));
+document.getElementById('btn-10s').addEventListener('click', ()=>startSim(10000));
+document.getElementById('btn-stop').addEventListener('click', stopSim);
+document.getElementById('grid-btn').addEventListener('click', ()=>{
+  showGrid=!showGrid;
+  document.getElementById('grid-btn').classList.toggle('on',showGrid);
+  draw();
+});
+
+// ============================================================
+// DRAW
+// ============================================================
+function draw(){
+  if(!objects.length) return;
+  const W=canvas.width,H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#04060f'; ctx.fillRect(0,0,W,H);
+
+  const scale=getScale();
+  const [cx,cy]=toScreen(CENTER,CENTER);
+
+  ctx.beginPath(); ctx.arc(cx,cy,GALAXY_R*scale,0,Math.PI*2);
+  ctx.strokeStyle='rgba(40,80,140,0.10)'; ctx.lineWidth=1; ctx.stroke();
+
+  if(showGrid){
+    ctx.strokeStyle='rgba(60,100,160,0.12)'; ctx.lineWidth=0.5;
+    for(let g=0;g<=100;g+=5){
+      const [x0]=toScreen(g,0); ctx.beginPath(); ctx.moveTo(x0,0); ctx.lineTo(x0,H); ctx.stroke();
+      const [,y0]=toScreen(0,g); ctx.beginPath(); ctx.moveTo(0,y0); ctx.lineTo(W,y0); ctx.stroke();
+    }
+    ctx.fillStyle='rgba(100,150,200,0.22)';
+    ctx.font=`${Math.max(8,scale*0.55)}px Share Tech Mono,monospace`;
+    ctx.textAlign='center';
+    for(let g=0;g<=100;g+=10){
+      const [sx]=toScreen(g,0); const [,sy]=toScreen(0,g);
+      ctx.fillText(g,sx,cy+12);
+      if(g>0) ctx.fillText(g,cx+14,sy+4);
+    }
+  }
+
+  ctx.beginPath(); ctx.arc(cx,cy,CHAOS_R*scale,0,Math.PI*2);
+  ctx.strokeStyle='rgba(180,60,255,0.2)'; ctx.lineWidth=1; ctx.stroke();
+
+  for(const o of objects){
+    const [sx,sy]=toScreen(o.x,o.y);
+    if(sx<-20||sx>W+20||sy<-20||sy>H+20) continue;
+    const col=objColor(o), alpha=massAlpha(o), r=objRadius(o);
+
+    // Trail
+    if(o.type==='star'||o.type==='black_hole'){
+      const prevTheta=o.theta-o.omega;
+      const [px,py]=toScreen(CENTER+o.r*Math.cos(prevTheta),CENTER+o.r*Math.sin(prevTheta));
+      ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(sx,sy);
+      ctx.strokeStyle=`rgba(${col[0]},${col[1]},${col[2]},0.09)`;
+      ctx.lineWidth=0.7; ctx.stroke();
+    }
+
+    // Glow
+    if(alpha>0.6&&r>1.1){
+      const gr=ctx.createRadialGradient(sx,sy,0,sx,sy,r*3);
+      gr.addColorStop(0,`rgba(${col[0]},${col[1]},${col[2]},${alpha*0.22})`);
+      gr.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.beginPath(); ctx.arc(sx,sy,r*3,0,Math.PI*2); ctx.fillStyle=gr; ctx.fill();
+    }
+
+    ctx.beginPath();
+    if(o.type==='asteroid_field') ctx.rect(sx-r*0.7,sy-r*0.7,r*1.4,r*1.4);
+    else ctx.arc(sx,sy,r,0,Math.PI*2);
+    ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${alpha})`; ctx.fill();
+
+    if(o.type==='black_hole'){
+      ctx.beginPath(); ctx.arc(sx,sy,r*2.2,0,Math.PI*2);
+      ctx.strokeStyle='rgba(187,68,255,0.15)'; ctx.lineWidth=0.8; ctx.stroke();
+    }
+  }
+
+  ctx.beginPath(); ctx.arc(cx,cy,3,0,Math.PI*2);
+  ctx.fillStyle='rgba(180,60,255,0.5)'; ctx.fill();
+}
+
+// ============================================================
+// TOOLTIP
+// ============================================================
+function findNearest(mx,my){
+  let best=null,bestD=14;
+  for(const o of objects){ const [sx,sy]=toScreen(o.x,o.y); const d=Math.hypot(sx-mx,sy-my); if(d<bestD){bestD=d;best=o;} }
+  return best;
+}
+function showTip(o,mx,my){
+  const col=objColor(o);
+  const label=o.type==='star'?o.star_type.replace('_',' ').toUpperCase():o.type.replace('_',' ').toUpperCase();
+  tooltip.innerHTML=`<div class="tt-type" style="color:rgb(${col[0]},${col[1]},${col[2]})">${label}</div>
+    MASS &nbsp;${o.mass}<br>R &nbsp;&nbsp;&nbsp;&nbsp;${o.r.toFixed(2)}<br>
+    θ &nbsp;&nbsp;&nbsp;&nbsp;${(o.theta*180/Math.PI).toFixed(1)}°<br>
+    vr &nbsp;&nbsp;&nbsp;${o.vr.toFixed(4)}<br>ω &nbsp;&nbsp;&nbsp;&nbsp;${(o.omega*1000).toFixed(3)}e-3`;
+  let tx=mx+14,ty=my+14;
+  if(tx+170>window.innerWidth)tx=mx-180;
+  if(ty+140>window.innerHeight)ty=my-150;
+  tooltip.style.left=tx+'px'; tooltip.style.top=ty+'px'; tooltip.style.display='block';
+}
+
+// ============================================================
+// STATS
+// ============================================================
+function updateStats(g){
+  document.getElementById('st-total').textContent=g.stats.total_objects.toLocaleString();
+  document.getElementById('st-mass').textContent=g.stats.total_mass.toLocaleString();
+  document.getElementById('st-rot').textContent=g.rotation_dir>0?'CCW ↺':'CW ↻';
+  document.getElementById('seed-val').textContent=g.seed;
+  const bt=g.stats.count_by_type||{},bs=g.stats.count_by_star_type||{};
+  document.getElementById('c-red_dwarf').textContent    =(bs.red_dwarf||0).toLocaleString();
+  document.getElementById('c-yellow_dwarf').textContent =(bs.yellow_dwarf||0).toLocaleString();
+  document.getElementById('c-blue_giant').textContent   =(bs.blue_giant||0).toLocaleString();
+  document.getElementById('c-white_dwarf').textContent  =(bs.white_dwarf||0).toLocaleString();
+  document.getElementById('c-black_hole').textContent   =(bt.black_hole||0).toLocaleString();
+  document.getElementById('c-nebula').textContent       =(bt.nebula||0).toLocaleString();
+  document.getElementById('c-asteroid_field').textContent=(bt.asteroid_field||0).toLocaleString();
+}
+
+// ============================================================
+// ZOOM & PAN
+// ============================================================
+function updateZoomLabel(){ document.getElementById('zl').textContent=Math.round(zoom*100)+'%'; }
+document.getElementById('zi').addEventListener('click',()=>{zoom=Math.min(20,zoom*1.3);updateZoomLabel();draw();});
+document.getElementById('zo').addEventListener('click',()=>{zoom=Math.max(0.3,zoom/1.3);updateZoomLabel();draw();});
+document.getElementById('zr').addEventListener('click',()=>{zoom=1;panX=0;panY=0;updateZoomLabel();draw();});
+
+wrap.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const rect=canvas.getBoundingClientRect();
+  const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+  const f=e.deltaY<0?1.12:1/1.12,prev=zoom;
+  zoom=Math.min(20,Math.max(0.3,zoom*f));
+  panX=mx-(mx-panX)*(zoom/prev); panY=my-(my-panY)*(zoom/prev);
+  updateZoomLabel(); draw();
+},{passive:false});
+
+wrap.addEventListener('mousedown',e=>{ isDragging=true; dragStart={x:e.clientX,y:e.clientY}; panStart={x:panX,y:panY}; canvas.style.cursor='grabbing'; });
+window.addEventListener('mousemove',e=>{
+  if(isDragging){ panX=panStart.x+(e.clientX-dragStart.x); panY=panStart.y+(e.clientY-dragStart.y); draw(); tooltip.style.display='none'; }
+  else { const rect=canvas.getBoundingClientRect(); const o=findNearest(e.clientX-rect.left,e.clientY-rect.top); if(o){showTip(o,e.clientX,e.clientY);canvas.style.cursor='pointer';}else{tooltip.style.display='none';canvas.style.cursor='crosshair';} }
+});
+window.addEventListener('mouseup',()=>{isDragging=false;canvas.style.cursor='crosshair';});
+
+// ============================================================
+// RESIZE & LOAD
+// ============================================================
+function resize(){ canvas.width=wrap.clientWidth; canvas.height=wrap.clientHeight; draw(); }
+window.addEventListener('resize',resize);
+resize();
+
+async function load(){
+  try{
+    const resp=await fetch('galaxy.json');
+    if(!resp.ok) throw new Error('galaxy.json not found — run: go run galaxy_gen.go');
+    const galaxy=await resp.json();
+    rotDir=galaxy.rotation_dir;
+    objects=galaxy.objects.map(o=>({
+  ...o,
+  vr:    0,
+  omega: baseOmega(o.r) * rotDir,
+  L:     o.r * baseOmega(o.r),  // момент импульса = r * omega (без знака)
+    }));
+    document.getElementById('loading').style.display='none';
+    updateStats(galaxy);
+    resize();
+  }catch(e){
+    document.getElementById('loading').innerHTML=`<div style="color:#ff5544;font-size:11px">${e.message}</div>`;
+  }
+}
+load();
+</script>
+</body>
+</html>
