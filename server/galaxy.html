@@ -197,7 +197,7 @@
       <div class="stat-row"><span class="stat-label">Born total</span><span class="stat-value" id="ns-born">0</span></div>
       <div class="stat-row"><span class="stat-label">Died cooled</span><span class="stat-value" id="ns-cool">0</span></div>
       <div class="stat-row"><span class="stat-label">Died overheated</span><span class="stat-value" id="ns-heat">0</span></div>
-      <div class="stat-row"><span class="stat-label">Died mass≥101</span><span class="stat-value" id="ns-mass">0</span></div>
+      <div class="stat-row"><span class="stat-label">Died mass≥1001</span><span class="stat-value" id="ns-mass">0</span></div>
       <div class="stat-row"><span class="stat-label">Avg lifespan</span><span class="stat-value" id="ns-age">—</span></div>
     </div>
     <!-- П11: Black Holes -->
@@ -217,22 +217,24 @@
 // ============================================================
 let CFG = {
   GALAXY_R:80, CHAOS_R:2,
-  MIN_DIST:1.2,
-  G_SCALE:0.001, SOFTENING2:1.0, MAX_INF_R:20,
-  CENTER_MASS:10000,
+  MIN_DIST:0.9,
+  G_SCALE:0.005, SOFTENING2:1.0, MAX_INF_R:20,
+  CENTER_MASS:100000,
+  V_FLAT:1.3963,       // единая орбитальная скорость (T=360 при r=80)
+  INWARD_PULL:0.003,   // слабое радиальное притяжение к центру
   MAX_JUMP_TICK:2000,
   COLLAPSE_LIMIT:1000, DEATH_LIMIT:10,
   MAX_KV:2.5, V_MAX_KV:0.9,
   T_RED:100, T_YELLOW:250, T_BLUE:150, T_NEUTRON:500, T_WHITE:50,
   DT_RED:-0.14, DT_YELLOW:-0.67, DT_BLUE:4.7, DT_NEUTRON:-0.34, DT_WHITE:-0.05,
-  NEB_TEMP_PER_MASS:5, AST_TEMP_PER_MASS:1,
-  DM_RED:0.03, DM_YELLOW:0.15, DM_BLUE:0.5, DM_WHITE:0.01, DM_NEUTRON:0.0,
-  BH_MASS_LOSS:5, BH_RAD_RADIUS:5, BH_DRIFT_PER_10:0.1,
+  NEB_TEMP_PER_MASS:15, AST_TEMP_PER_MASS:3,
+  DM_RED:0.0, DM_YELLOW:0.0, DM_BLUE:0.0, DM_WHITE:0.0, DM_NEUTRON:0.0,
+  BH_MASS_LOSS:5, BH_LOSS_PCT:0.05, BH_RAD_RADIUS:5, BH_DRIFT_PER_10:0.1,
   BH_THRESH_MAX:40,
   ORBITAL_DRAG:0.02,
   EJECTA_FRACTION:0.6, REMAINDER_FRACTION:0.4,
   IMPULSE_MIN:1.0, IMPULSE_MAX:1.0, EJECTA_DIRS:8,
-  FORMATION_TICKS:3, BIG_EVENT_MASS:61, WARNING_TICKS:1,
+  FORMATION_TICKS:3, BIG_EVENT_MASS:601, WARNING_TICKS:1,
   NS_MIN_MASS:10,
   NEB_RETURN_MAX:2, AST_RETURN_MAX:5,
   GALAXY_DIR:'west',
@@ -271,6 +273,8 @@ async function loadConfig() {
     CFG.SOFTENING2 = p.softening2         ?? CFG.SOFTENING2;
     CFG.MAX_INF_R  = p.max_influence_radius ?? CFG.MAX_INF_R;
     CFG.CENTER_MASS   = p.center_mass         ?? CFG.CENTER_MASS;
+    CFG.V_FLAT        = p.v_flat              ?? CFG.V_FLAT;
+    CFG.INWARD_PULL   = p.inward_pull         ?? CFG.INWARD_PULL;
     CFG.ORBITAL_DRAG  = p.orbital_drag        ?? CFG.ORBITAL_DRAG;
 
     // Simulation
@@ -303,6 +307,7 @@ async function loadConfig() {
 
     // Black holes
     CFG.BH_MASS_LOSS     = bh.mass_loss_per_tick        ?? CFG.BH_MASS_LOSS;
+    CFG.BH_LOSS_PCT      = bh.mass_loss_pct             ?? CFG.BH_LOSS_PCT;
     CFG.BH_RAD_RADIUS    = bh.radiation_radius          ?? CFG.BH_RAD_RADIUS;
     CFG.BH_DRIFT_PER_10  = bh.drift_per_10_mass         ?? CFG.BH_DRIFT_PER_10;
     CFG.BH_THRESH_MAX    = bh.bh_count_threshold_max    ?? CFG.BH_THRESH_MAX;
@@ -380,7 +385,7 @@ const STAR = {
 function isStar(o)    { return o.type===TYPE.STAR; }
 function isBH(o)      { return o.type===TYPE.BH; }
 function isCloud(o)   { return o.type===TYPE.NEBULA || o.type===TYPE.ASTEROID; }
-function isMassive(o) { return isBH(o) || (isStar(o) && o.star_type===STAR.BLUE); }
+function isMassive(o) { return isBH(o) || (isStar(o) && (o.star_type===STAR.BLUE || (o.star_type===STAR.YELLOW && o.mass>=500))); }
 function isBigEvent(o){ return o.mass >= CFG.BIG_EVENT_MASS; }
 
 function baseOmega(r) {
@@ -419,18 +424,18 @@ function dtForStarType(st) {
 
 // Determine star type from mass (for new/merged objects)
 function starTypeFromMass(mass) {
-  if(mass >= 61) return STAR.BLUE;
-  if(mass >= 31) return STAR.YELLOW;
-  if(mass >= 20) return STAR.RED;
-  return STAR.WHITE;
+  if(mass >= 601) return STAR.BLUE;
+  if(mass >= 301) return STAR.YELLOW;
+  if(mass >= 101) return STAR.RED;
+  return STAR.WHITE;  // 51–100
 }
 
 // Determine object type from mass (general)
 function typeFromMass(mass) {
-  if(mass >= 101) return {type:TYPE.BH};
-  if(mass >= 20)  return {type:TYPE.STAR, star_type: starTypeFromMass(mass)};
-  if(mass >= 10)  return {type:TYPE.FORMATION};
-  if(mass >= 3)   return {type:TYPE.ASTEROID};
+  if(mass >= 1001) return {type:TYPE.BH};
+  if(mass >= 51)   return {type:TYPE.STAR, star_type: starTypeFromMass(mass)};
+  if(mass >= 31)   return {type:TYPE.FORMATION};
+  if(mass >= 3)    return {type:TYPE.ASTEROID};
   return {type:TYPE.NEBULA};
 }
 
@@ -515,32 +520,42 @@ function cartToVelocity(x,y) {
 // ============================================================
 let massiveObjects=[];
 
+// Таблица гравитационных коэффициентов для объектов (r=1..20)
+// GRAVITY_TABLE[i] = K_BASE / (i+1)^1.5   пересчитывается при loadConfig
+const GRAVITY_K_BASE = 0.00002;
+const GRAVITY_POWER  = 1.5;
+let GRAVITY_TABLE = buildGravityTable(GRAVITY_K_BASE, GRAVITY_POWER);
+
+function buildGravityTable(kBase, power) {
+  const t = [];
+  for(let r=1; r<=20; r++) t.push(kBase / Math.pow(r, power));
+  return t;
+}
+
+
 function computeAccelXY(o) {
-  // П3: debris объекты не получают гравитацию
+  // debris объекты не получают гравитацию
   if(o.debris) return [0,0];
 
   let ax=0, ay=0;
 
-  // П1: гравитация центрального аттрактора (действует на всех объектов)
+  // Слабое радиальное притяжение к центру (держит галактику вместе)
   {
     const cdx=CFG.CENTER-o.x, cdy=CFG.CENTER-o.y;
-    const cd2=cdx*cdx+cdy*cdy;
-    if(cd2>0.01) {
-      const cd=Math.sqrt(cd2)+0.001;
-      const cf=CFG.CENTER_MASS*CFG.G_SCALE/(cd2+CFG.SOFTENING2);
-      ax+=cf*(cdx/cd);
-      ay+=cf*(cdy/cd);
-    }
+    const cd=Math.sqrt(cdx*cdx+cdy*cdy)+0.001;
+    ax+=CFG.INWARD_PULL*(cdx/cd);
+    ay+=CFG.INWARD_PULL*(cdy/cd);
   }
 
-  // Гравитация от массивных объектов (синие гиганты + ЧД)
+  // Гравитация от массивных объектов через таблицу K_BASE/r^1.5
   for(const m of massiveObjects) {
     if(m===o) continue;
     const dx=m.x-o.x, dy=m.y-o.y;
     const d2=dx*dx+dy*dy;
     if(d2>CFG.MAX_INF_R*CFG.MAX_INF_R) continue;
     const d=Math.sqrt(d2)+0.001;
-    const force=m.mass*CFG.G_SCALE/(d2+CFG.SOFTENING2);
+    const ridx=Math.max(0,Math.min(19,Math.round(d)-1)); // индекс 0..19
+    const force=GRAVITY_TABLE[ridx]*m.mass;
     ax+=force*(dx/d);
     ay+=force*(dy/d);
   }
@@ -579,13 +594,12 @@ function leapfrogStep() {
     // omega для отображения
     o.omega=(-o.vx*Math.sin(o.theta)+o.vy*Math.cos(o.theta))/Math.max(o.r,0.1);
 
-    // Orbital drag — стабилизация орбит
+    // Orbital drag — тянет тангенциальную скорость к V_FLAT
     if(!o.debris && o.r>CFG.CHAOS_R) {
-      const v_circ=Math.sqrt(CFG.G_SCALE*CFG.CENTER_MASS/Math.max(o.r,1.0));
       const sinT=Math.sin(o.theta), cosT=Math.cos(o.theta);
       const v_tang=-o.vx*sinT+o.vy*cosT;
-      const excess=v_tang-rotDir*v_circ;
-      const massFactor=Math.min(2.0,o.mass/50.0);
+      const excess=v_tang-rotDir*CFG.V_FLAT;
+      const massFactor=Math.min(2.0,o.mass/300.0); // нормировка под новые массы
       const drift=-excess*CFG.ORBITAL_DRAG*massFactor;
       o.x+=cosT*drift;
       o.y+=sinT*drift;
@@ -619,33 +633,7 @@ function applyTemperature(toAdd) {
     if(!isStar(o)) continue;
     o.temp+=dtForStarType(o.star_type);
     o.temp=Math.max(0,Math.min(CFG.COLLAPSE_LIMIT,o.temp));
-
-    // П8: потеря массы
-    const dm=DM_STAR[o.star_type]||0;
-    if(dm<=0) continue;
-    let buf=(masslossBuffer.get(o.id)||0)+dm;
-    if(buf>=1) {
-      const lost=Math.floor(buf);
-      buf-=lost;
-      const minMass=o.star_type===STAR.WHITE?1:10;
-      const actualLost=Math.min(lost,Math.max(0,o.mass-minMass));
-      if(actualLost>=1) {
-        o.mass-=actualLost;
-        // оставляем туманность на месте
-        const nm=Math.min(actualLost,2);
-        const neb=makeObject(
-          o.x+(Math.random()-0.5)*2.0,
-          o.y+(Math.random()-0.5)*2.0,
-          TYPE.NEBULA,'',nm,
-          o.vx+(Math.random()-0.5)*0.05,
-          o.vy+(Math.random()-0.5)*0.05,
-          nm*CFG.NEB_TEMP_PER_MASS);
-        neb.debris=true;
-        neb.debris_ticks=10;
-        if(toAdd) toAdd.push(neb);
-      }
-    }
-    masslossBuffer.set(o.id,buf);
+    // Потеря массы отключена
   }
 }
 
@@ -657,7 +645,8 @@ function applyBHRadiation(toAdd) {
   const bhs = objects.filter(isBH);
   for(const bh of bhs) {
     if(bh.mass <= 0) { dying.push(bh.id); continue; }
-    const radiated = Math.min(bh.mass, CFG.BH_MASS_LOSS);
+    // Потеря массы: 5 единиц + 5% от массы, минимум 5
+    const radiated = Math.min(bh.mass, Math.ceil(5 + bh.mass * CFG.BH_LOSS_PCT));
     bh.mass -= radiated;
 
     // Нагрев ближайших звёзд
@@ -871,7 +860,7 @@ function checkFormationBirth(o, toAdd, dying) {
   if(res.type===TYPE.STAR) {
     const r=Math.max(o.r, 0.5);
     const theta=o.theta;
-    const vcirc=Math.sqrt(CFG.G_SCALE*CFG.CENTER_MASS/r);
+    const vcirc=CFG.V_FLAT; // плоская кривая вращения
     const vx=-rotDir*vcirc*Math.sin(theta);
     const vy= rotDir*vcirc*Math.cos(theta);
     const star=makeObject(o.x,o.y,TYPE.STAR,res.star_type,o.mass,vx,vy,startTempForStarType(res.star_type));
@@ -920,12 +909,9 @@ function processReturnPool(toAdd) {
     const type=actual<=CFG.NEB_RETURN_MAX?TYPE.NEBULA:TYPE.ASTEROID;
     const pos=inflowPoints[inflowIdx%inflowPoints.length]; inflowIdx++;
     const theta=Math.atan2(pos.y-CFG.CENTER, pos.x-CFG.CENTER);
-    const rInflow=Math.sqrt((pos.x-CFG.CENTER)**2+(pos.y-CFG.CENTER)**2);
-    const v_circ=Math.sqrt(CFG.G_SCALE*CFG.CENTER_MASS/Math.max(rInflow,1.0));
-    const v_tang=v_circ*0.7;
-    const v_rad=0.3;
-    const vx=-rotDir*v_tang*Math.sin(theta)-Math.cos(theta)*v_rad;
-    const vy= rotDir*v_tang*Math.cos(theta)-Math.sin(theta)*v_rad;
+    // Чисто радиальный влёт — orbital drag конвертирует в орбитальную скорость
+    const vx=-Math.cos(theta)*1.0;
+    const vy=-Math.sin(theta)*1.0;
     const obj=makeObject(pos.x,pos.y,type,'',actual,vx,vy,
       actual*(type===TYPE.NEBULA?CFG.NEB_TEMP_PER_MASS:CFG.AST_TEMP_PER_MASS));
     // Карантин 10 тиков — без гравитации
@@ -983,9 +969,7 @@ function resolveCollision(a, b, dying, toAdd) {
   else if(aBH&&bBH)                     CNT.colBB++;
   else if((aCloud&&bBH)||(aBH&&bCloud)) CNT.colCB++;
 
-  const dvx=(a.vx||0)-(b.vx||0), dvy=(a.vy||0)-(b.vy||0);
-  const vrel=Math.sqrt(dvx*dvx+dvy*dvy);
-  const kv=Math.min(CFG.MAX_KV,1+vrel/CFG.V_MAX_KV*4);
+  // kv убран — температура не зависит от скорости столкновения
 
   // ЧД поглощает всё
   if(aBH||bBH) {
@@ -1001,7 +985,8 @@ function resolveCollision(a, b, dying, toAdd) {
   }
 
   // Большое событие — тик предупреждения
-  if((isBigEvent(a)||isBigEvent(b)) && !a.unstable && !b.unstable) {
+  // Облака не триггерят unstable
+  if((isBigEvent(a)||isBigEvent(b)) && !aCloud && !bCloud && !a.unstable && !b.unstable) {
     a.unstable=true; a.unstable_partner=b.id;
     b.unstable=true; b.unstable_partner=a.id;
     a.vx=0; a.vy=0; b.vx=0; b.vy=0;
@@ -1015,7 +1000,7 @@ function resolveCollision(a, b, dying, toAdd) {
   const mvx=((a.vx||0)*a.mass+(b.vx||0)*b.mass)/totalMass;
   const mvy=((a.vy||0)*a.mass+(b.vy||0)*b.mass)/totalMass;
 
-  if(totalMass>=101) {
+  if(totalMass>=1001) {
     apply6040(mx,my,mvx,mvy,totalMass,toAdd);
     dying.push(a.id); dying.push(b.id);
     masslossBuffer.delete(a.id); masslossBuffer.delete(b.id);
@@ -1028,9 +1013,9 @@ function resolveCollision(a, b, dying, toAdd) {
     const [star,other]=aStar?[a,b]:(bStar?[b,a]:[a,b]);
     let newTemp;
     if(isStar(other)) {
-      newTemp=((star.temp||0)*star.mass+(other.temp||0)*other.mass)/totalMass*kv;
+      newTemp=((star.temp||0)*star.mass+(other.temp||0)*other.mass)/totalMass;
     } else {
-      newTemp=(star.temp||0)+(tempOfObject(other)*kv)*(other.mass/star.mass);
+      newTemp=(star.temp||0)+tempOfObject(other);
     }
     newTemp=Math.min(CFG.COLLAPSE_LIMIT,Math.max(0,newTemp));
 
@@ -1040,7 +1025,7 @@ function resolveCollision(a, b, dying, toAdd) {
     if(oldType===STAR.YELLOW&&newStarType===STAR.BLUE) CNT.evYB++;
 
     // НЗ при накоплении mass>=101 → распад
-    if(star.star_type===STAR.NEUTRON && totalMass>=101) {
+    if(star.star_type===STAR.NEUTRON && totalMass>=1001) {
       const tmp={...star, x:mx, y:my, mass:totalMass, vx:mvx, vy:mvy};
       disperseObject(tmp, toAdd, dying, 'decay', 'ejecta');
       if(!dying.includes(a.id)) dying.push(a.id);
@@ -1125,7 +1110,7 @@ function processUnstable() {
 
     // Создаём временный объект с суммарной массой для disperseObject
     const merged={...o, x:mx, y:my, mass:totalMass, vx:0, vy:0};
-    if(totalMass>=101) {
+    if(totalMass>=1001) {
       apply6040(mx,my,0,0,totalMass,toAdd);
     } else {
       doSupernova(merged, toAdd, dying);
@@ -1164,7 +1149,7 @@ function processStarLifecycle() {
     if(dying.includes(o.id)) continue;
 
     // НЗ рассыпается при mass >= 101 — полный распад, нет остатка
-    if(o.star_type===STAR.NEUTRON && o.mass>=101) {
+    if(o.star_type===STAR.NEUTRON && o.mass>=1001) {
       disperseObject(o, toAdd, dying, 'decay', 'ejecta');
       CNT.deathCool++; CNT.nsDiedMass++; CNT.nsDeaths++; CNT.nsTotalAge+=o.age;
       continue;
@@ -1572,7 +1557,7 @@ function applyGalaxy(galaxy) {
     const x=o.x+shiftX, y=o.y+shiftY;
     const r=Math.sqrt((x-CFG.CENTER)**2+(y-CFG.CENTER)**2);
     const theta=Math.atan2(y-CFG.CENTER, x-CFG.CENTER);
-    const vcirc=Math.sqrt(CFG.G_SCALE*CFG.CENTER_MASS/Math.max(r,0.5));
+    const vcirc=CFG.V_FLAT; // плоская кривая вращения
     const vx=-rotDir*vcirc*Math.sin(theta);
     const vy= rotDir*vcirc*Math.cos(theta);
     const omega=(-vx*Math.sin(theta)+vy*Math.cos(theta))/Math.max(r,0.1);
