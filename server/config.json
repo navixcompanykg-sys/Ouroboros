@@ -5,7 +5,7 @@
     "num_black_holes": 20,
     "num_nebulae": 200,
     "num_asteroid_fields": 800,
-    "galaxy_radius": 50.0,
+    "galaxy_radius": 80.0,
     "chaos_radius": 2.0,
     "min_dist": 1.2,
     "num_rays": 40,
@@ -33,10 +33,10 @@
     "mass_asteroid_max": 9
   },
   "physics": {
-    "g_scale": 0.005,
+    "g_scale": 0.001,
     "softening2": 1.0,
     "max_influence_radius": 20.0,
-    "center_mass": 2000
+    "center_mass": 10000
   },
   "temperature": {
     "collapse_limit": 1000,
@@ -53,8 +53,8 @@
     "dt_blue_giant": 4.7,
     "dt_neutron_star": -0.34,
     "dt_white_dwarf": -0.05,
-    "nebula_temp_per_mass": 15,
-    "asteroid_temp_per_mass": 3
+    "nebula_temp_per_mass": 5,
+    "asteroid_temp_per_mass": 1
   },
   "mass_loss": {
     "dm_red_dwarf": 0.03,
@@ -74,18 +74,19 @@
     "ejecta_fraction": 0.6,
     "remainder_fraction": 0.4,
     "formation_ticks": 3,
-    "impulse_min": 2.0,
-    "impulse_max": 3.0,
+    "impulse_min": 1.0,
+    "impulse_max": 1.0,
     "directions": 8,
     "big_event_mass_threshold": 61,
     "warning_ticks": 1,
-    "neutron_star_min_mass": 10
+    "neutron_star_min_mass": 10,
+    "debris_ticks": 10
   },
   "mass_return": {
     "nebula_return_max": 2,
     "asteroid_return_max": 5,
     "inflow_speed_min": 0.8,
-    "inflow_speed_max": 1.6
+    "inflow_speed_max": 1.0
   },
   "simulation": {
     "max_jump_tick": 2000

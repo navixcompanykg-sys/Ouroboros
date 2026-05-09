@@ -205,10 +205,11 @@ func generateGalaxy(seed int64, cfg *Config) Galaxy {
 		rotDir = -1.0
 	}
 
-	centerX := 50.0
-	centerY := 50.0
 	galaxyR := cfg.Generation.GalaxyRadius
 	chaosR := cfg.Generation.ChaosRadius
+	// CENTER = GALAXY_R * 1.25 — синхронно с galaxy.html recalcDerived()
+	centerX := math.Round(galaxyR * 1.25)
+	centerY := centerX
 	minDist := cfg.Generation.MinDist
 
 	objects := []GalaxyObject{}
