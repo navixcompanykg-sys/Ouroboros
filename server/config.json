@@ -1,0 +1,93 @@
+{
+  "generation": {
+    "seed": 42,
+    "num_stars": 2000,
+    "num_black_holes": 20,
+    "num_nebulae": 200,
+    "num_asteroid_fields": 800,
+    "galaxy_radius": 50.0,
+    "chaos_radius": 2.0,
+    "min_dist": 1.2,
+    "num_rays": 40,
+    "stars_on_ray": [1, 2, 3, 4, 5, 7, 9, 8, 6, 5],
+    "star_type_probs": [
+      [0.00, 0.10, 0.85, 0.05],
+      [0.15, 0.25, 0.55, 0.05],
+      [0.05, 0.35, 0.55, 0.05],
+      [0.00, 0.20, 0.75, 0.05],
+      [0.00, 0.10, 0.85, 0.05]
+    ],
+    "mass_blue_giant_min": 61,
+    "mass_blue_giant_max": 100,
+    "mass_yellow_dwarf_min": 31,
+    "mass_yellow_dwarf_max": 60,
+    "mass_red_dwarf_min": 20,
+    "mass_red_dwarf_max": 30,
+    "mass_white_dwarf_min": 10,
+    "mass_white_dwarf_max": 15,
+    "mass_black_hole_min": 101,
+    "mass_black_hole_max": 150,
+    "mass_nebula_min": 1,
+    "mass_nebula_max": 2,
+    "mass_asteroid_min": 3,
+    "mass_asteroid_max": 9
+  },
+  "physics": {
+    "g_scale": 0.005,
+    "softening2": 1.0,
+    "max_influence_radius": 20.0,
+    "center_mass": 2000
+  },
+  "temperature": {
+    "collapse_limit": 1000,
+    "death_limit": 10,
+    "max_kv": 2.5,
+    "v_max_kv": 0.9,
+    "start_temp_red_dwarf": 100,
+    "start_temp_yellow_dwarf": 250,
+    "start_temp_blue_giant": 150,
+    "start_temp_neutron_star": 500,
+    "start_temp_white_dwarf": 50,
+    "dt_red_dwarf": -0.14,
+    "dt_yellow_dwarf": -0.67,
+    "dt_blue_giant": 4.7,
+    "dt_neutron_star": -0.34,
+    "dt_white_dwarf": -0.05,
+    "nebula_temp_per_mass": 15,
+    "asteroid_temp_per_mass": 3
+  },
+  "mass_loss": {
+    "dm_red_dwarf": 0.03,
+    "dm_yellow_dwarf": 0.15,
+    "dm_blue_giant": 0.5,
+    "dm_white_dwarf": 0.01,
+    "dm_neutron_star": 0.0
+  },
+  "black_holes": {
+    "mass_loss_per_tick": 10,
+    "radiation_radius": 5.0,
+    "drift_per_10_mass": 0.1,
+    "bh_count_threshold_normal": 20,
+    "bh_count_threshold_max": 40
+  },
+  "dispersal": {
+    "ejecta_fraction": 0.6,
+    "remainder_fraction": 0.4,
+    "formation_ticks": 3,
+    "impulse_min": 2.0,
+    "impulse_max": 3.0,
+    "directions": 8,
+    "big_event_mass_threshold": 61,
+    "warning_ticks": 1,
+    "neutron_star_min_mass": 10
+  },
+  "mass_return": {
+    "nebula_return_max": 2,
+    "asteroid_return_max": 5,
+    "inflow_speed_min": 0.8,
+    "inflow_speed_max": 1.6
+  },
+  "simulation": {
+    "max_jump_tick": 2000
+  }
+}

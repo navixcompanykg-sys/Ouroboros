@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>OUROBOROS — Config</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap');
+  :root {
+    --bg: #04060f; --panel-bg: rgba(6,12,28,0.97); --border: rgba(60,130,200,0.18);
+    --accent: #2a7fff; --accent2: #00e5ff; --text: #8baac8; --text-bright: #cce4ff;
+    --mono: 'Share Tech Mono', monospace; --sans: 'Rajdhani', sans-serif;
+    --ok: #44cc88; --warn: #ffaa44; --err: #ff5544;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:var(--sans); min-height:100vh; }
+
+  header { display:flex; align-items:center; gap:16px; padding:10px 24px;
+    border-bottom:1px solid var(--border); background:var(--panel-bg); position:sticky; top:0; z-index:10; }
+  .logo { font-family:var(--mono); font-size:12px; letter-spacing:4px; color:var(--accent2); }
+  .header-title { font-size:13px; color:var(--text); letter-spacing:2px; }
+  .header-actions { margin-left:auto; display:flex; gap:8px; }
+  .btn { background:transparent; border:1px solid var(--border); color:var(--text);
+    font-family:var(--mono); font-size:10px; padding:5px 14px; cursor:pointer; letter-spacing:1px; transition:all 0.15s; }
+  .btn:hover { border-color:var(--accent); color:var(--accent2); }
+  .btn.primary { border-color:var(--accent2); color:var(--accent2); }
+  .btn.primary:hover { background:rgba(0,229,255,0.08); }
+  .btn.danger { border-color:rgba(255,80,60,0.4); color:rgba(255,120,100,0.8); }
+  .btn.danger:hover { border-color:var(--err); color:var(--err); }
+
+  #status-bar { padding:6px 24px; font-family:var(--mono); font-size:10px; letter-spacing:1px;
+    border-bottom:1px solid var(--border); min-height:28px; display:flex; align-items:center; gap:8px; }
+  .status-ok   { color:var(--ok); }
+  .status-err  { color:var(--err); }
+  .status-info { color:var(--accent2); opacity:0.8; }
+
+  .content { max-width:820px; margin:0 auto; padding:24px; }
+
+  .section { margin-bottom:32px; }
+  .section-title { font-family:var(--mono); font-size:9px; letter-spacing:4px; color:var(--accent);
+    text-transform:uppercase; margin-bottom:16px; padding-bottom:6px; border-bottom:1px solid var(--border); }
+
+  .fields { display:grid; grid-template-columns:1fr 1fr; gap:12px 24px; }
+  .fields.wide { grid-template-columns:1fr; }
+
+  .field { display:flex; flex-direction:column; gap:4px; }
+  .field label { font-size:11px; color:var(--text); opacity:0.75; letter-spacing:0.5px; }
+  .field input { background:rgba(0,0,0,0.4); border:1px solid var(--border); color:var(--text-bright);
+    font-family:var(--mono); font-size:12px; padding:5px 9px; outline:none; transition:border-color 0.15s; width:100%; }
+  .field input:focus { border-color:var(--accent); }
+  .field .hint { font-size:10px; color:var(--text); opacity:0.4; font-family:var(--mono); }
+  .field .default { font-size:10px; color:var(--text); opacity:0.35; font-family:var(--mono); }
+
+  .back-link { font-family:var(--mono); font-size:10px; color:var(--accent2); opacity:0.7;
+    text-decoration:none; letter-spacing:1px; }
+  .back-link:hover { opacity:1; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">OUROBOROS</div>
+  <div class="header-title">SIMULATION CONFIG</div>
+  <div class="header-actions">
+    <button class="btn danger" id="btn-reset">↺ RESET DEFAULTS</button>
+    <button class="btn primary" id="btn-save">✓ SAVE</button>
+  </div>
+</header>
+
+<div id="status-bar"><span class="status-info">Load config to edit parameters</span></div>
+
+<div class="content">
+
+  <div class="section">
+    <div class="section-title">Galaxy Generation</div>
+    <div class="fields">
+      <div class="field"><label>Seed</label><input type="number" data-path="generation.seed" min="0"><div class="default">default: 42</div></div>
+      <div class="field"><label>Number of Stars</label><input type="number" data-path="generation.num_stars" min="1"><div class="default">default: 2000</div></div>
+      <div class="field"><label>Number of Black Holes</label><input type="number" data-path="generation.num_black_holes" min="0"><div class="default">default: 20</div></div>
+      <div class="field"><label>Number of Nebulae</label><input type="number" data-path="generation.num_nebulae" min="0"><div class="default">default: 200</div></div>
+      <div class="field"><label>Number of Asteroid Fields</label><input type="number" data-path="generation.num_asteroid_fields" min="0"><div class="default">default: 800</div></div>
+      <div class="field"><label>Galaxy Radius (u)</label><input type="number" data-path="generation.galaxy_radius" step="0.1"><div class="default">default: 50</div></div>
+      <div class="field"><label>Chaos Zone Radius (u)</label><input type="number" data-path="generation.chaos_radius" step="0.1"><div class="default">default: 2</div></div>
+      <div class="field"><label>Min Distance Between Objects (u)</label><input type="number" data-path="generation.min_dist" step="0.01"><div class="default">default: 1.2</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Star Mass Ranges</div>
+    <div class="fields">
+      <div class="field"><label>Blue Giant — min mass</label><input type="number" data-path="generation.mass_blue_giant_min"><div class="default">default: 61</div></div>
+      <div class="field"><label>Blue Giant — max mass</label><input type="number" data-path="generation.mass_blue_giant_max"><div class="default">default: 100</div></div>
+      <div class="field"><label>Yellow Dwarf — min mass</label><input type="number" data-path="generation.mass_yellow_dwarf_min"><div class="default">default: 31</div></div>
+      <div class="field"><label>Yellow Dwarf — max mass</label><input type="number" data-path="generation.mass_yellow_dwarf_max"><div class="default">default: 60</div></div>
+      <div class="field"><label>Red Dwarf — min mass</label><input type="number" data-path="generation.mass_red_dwarf_min"><div class="default">default: 20</div></div>
+      <div class="field"><label>Red Dwarf — max mass</label><input type="number" data-path="generation.mass_red_dwarf_max"><div class="default">default: 30</div></div>
+      <div class="field"><label>White Dwarf — min mass</label><input type="number" data-path="generation.mass_white_dwarf_min"><div class="default">default: 10</div></div>
+      <div class="field"><label>White Dwarf — max mass</label><input type="number" data-path="generation.mass_white_dwarf_max"><div class="default">default: 15</div></div>
+      <div class="field"><label>Black Hole — min mass</label><input type="number" data-path="generation.mass_black_hole_min"><div class="default">default: 101</div></div>
+      <div class="field"><label>Black Hole — max mass</label><input type="number" data-path="generation.mass_black_hole_max"><div class="default">default: 150</div></div>
+      <div class="field"><label>Nebula — min mass</label><input type="number" data-path="generation.mass_nebula_min"><div class="default">default: 1</div></div>
+      <div class="field"><label>Nebula — max mass</label><input type="number" data-path="generation.mass_nebula_max"><div class="default">default: 2</div></div>
+      <div class="field"><label>Asteroid Field — min mass</label><input type="number" data-path="generation.mass_asteroid_min"><div class="default">default: 3</div></div>
+      <div class="field"><label>Asteroid Field — max mass</label><input type="number" data-path="generation.mass_asteroid_max"><div class="default">default: 9</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Physics — Cartesian Leapfrog (Newton)</div>
+    <div class="fields">
+      <div class="field"><label>Gravitational Constant G</label><input type="number" data-path="physics.g_scale" step="0.0001"><div class="default">default: 0.008</div></div>
+      <div class="field"><label>Softening ε² (singularity prevention)</label><input type="number" data-path="physics.softening2" step="0.1"><div class="default">default: 1.0</div></div>
+      <div class="field"><label>Max Gravitational Influence Radius (u)</label><input type="number" data-path="physics.max_influence_radius" step="0.5"><div class="default">default: 20</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Temperature System</div>
+    <div class="fields">
+      <div class="field"><label>Collapse Limit (T &gt; this → supernova)</label><input type="number" data-path="temperature.collapse_limit"><div class="default">default: 1000</div></div>
+      <div class="field"><label>Death Limit (T ≤ this → star dies)</label><input type="number" data-path="temperature.death_limit"><div class="default">default: 10</div></div>
+      <div class="field"><label>Max Kv (collision speed multiplier)</label><input type="number" data-path="temperature.max_kv" step="0.1"><div class="default">default: 5</div></div>
+      <div class="field"><label>V_max for Kv normalization (u/tick)</label><input type="number" data-path="temperature.v_max_kv" step="0.01"><div class="default">default: 0.9</div></div>
+      <div class="field"><label>Start T — Red Dwarf</label><input type="number" data-path="temperature.start_temp_red_dwarf"><div class="default">default: 100</div></div>
+      <div class="field"><label>Start T — Yellow Dwarf</label><input type="number" data-path="temperature.start_temp_yellow_dwarf"><div class="default">default: 250</div></div>
+      <div class="field"><label>Start T — Blue Giant</label><input type="number" data-path="temperature.start_temp_blue_giant"><div class="default">default: 150</div></div>
+      <div class="field"><label>Start T — Neutron Star</label><input type="number" data-path="temperature.start_temp_neutron_star"><div class="default">default: 500</div></div>
+      <div class="field"><label>Start T — White Dwarf</label><input type="number" data-path="temperature.start_temp_white_dwarf"><div class="default">default: 50</div></div>
+      <div class="field"><label>dT/tick — Red Dwarf</label><input type="number" data-path="temperature.dt_red_dwarf" step="0.01"><div class="default">default: -0.14</div></div>
+      <div class="field"><label>dT/tick — Yellow Dwarf</label><input type="number" data-path="temperature.dt_yellow_dwarf" step="0.01"><div class="default">default: -0.67</div></div>
+      <div class="field"><label>dT/tick — Blue Giant</label><input type="number" data-path="temperature.dt_blue_giant" step="0.1"><div class="default">default: +4.7</div></div>
+      <div class="field"><label>dT/tick — Neutron Star</label><input type="number" data-path="temperature.dt_neutron_star" step="0.01"><div class="default">default: -0.34</div></div>
+      <div class="field"><label>dT/tick — White Dwarf</label><input type="number" data-path="temperature.dt_white_dwarf" step="0.01"><div class="default">default: -0.05</div></div>
+      <div class="field"><label>Nebula T per unit mass</label><input type="number" data-path="temperature.nebula_temp_per_mass"><div class="default">default: 15</div></div>
+      <div class="field"><label>Asteroid T per unit mass</label><input type="number" data-path="temperature.asteroid_temp_per_mass"><div class="default">default: 3</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Black Holes</div>
+    <div class="fields">
+      <div class="field"><label>Mass Loss per Tick (Hawking radiation)</label><input type="number" data-path="black_holes.mass_loss_per_tick"><div class="default">default: 10</div></div>
+      <div class="field"><label>Radiation Heat Radius (u)</label><input type="number" data-path="black_holes.radiation_radius" step="0.5"><div class="default">default: 5</div></div>
+      <div class="field"><label>Drift Speed per 10 mass units (u/tick)</label><input type="number" data-path="black_holes.drift_per_10_mass" step="0.01"><div class="default">default: 0.1</div></div>
+      <div class="field"><label>BH Count — 100% chance of new BH</label><input type="number" data-path="black_holes.bh_count_threshold_normal"><div class="default">default: 20</div></div>
+      <div class="field"><label>BH Count — 0% chance of new BH</label><input type="number" data-path="black_holes.bh_count_threshold_max"><div class="default">default: 40</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Mass Loss per Tick (П8)</div>
+    <div class="fields">
+      <div class="field"><label>Red Dwarf — dM/tick</label><input type="number" data-path="mass_loss.dm_red_dwarf" step="0.001"><div class="default">default: 0.03</div></div>
+      <div class="field"><label>Yellow Dwarf — dM/tick</label><input type="number" data-path="mass_loss.dm_yellow_dwarf" step="0.01"><div class="default">default: 0.15</div></div>
+      <div class="field"><label>Blue Giant — dM/tick</label><input type="number" data-path="mass_loss.dm_blue_giant" step="0.05"><div class="default">default: 0.5</div></div>
+      <div class="field"><label>White Dwarf — dM/tick</label><input type="number" data-path="mass_loss.dm_white_dwarf" step="0.001"><div class="default">default: 0.01</div></div>
+      <div class="field"><label>Neutron Star — dM/tick</label><input type="number" data-path="mass_loss.dm_neutron_star" step="0.001"><div class="default">default: 0</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Dispersal — Universal 60/40 Rule</div>
+    <div class="fields">
+      <div class="field"><label>Ejecta Fraction (60%)</label><input type="number" data-path="dispersal.ejecta_fraction" step="0.05" min="0" max="1"><div class="default">default: 0.6</div></div>
+      <div class="field"><label>Remainder Fraction (40%)</label><input type="number" data-path="dispersal.remainder_fraction" step="0.05" min="0" max="1"><div class="default">default: 0.4</div></div>
+      <div class="field"><label>Formation Period (ticks)</label><input type="number" data-path="dispersal.formation_ticks" min="1"><div class="default">default: 3</div></div>
+      <div class="field"><label>Min Radial Impulse at Explosion (u/tick)</label><input type="number" data-path="dispersal.impulse_min" step="0.1"><div class="default">default: 1.0</div></div>
+      <div class="field"><label>Max Radial Impulse at Explosion (u/tick)</label><input type="number" data-path="dispersal.impulse_max" step="0.1"><div class="default">default: 1.5</div></div>
+      <div class="field"><label>Number of Ejecta Directions</label><input type="number" data-path="dispersal.directions" min="4" max="16"><div class="default">default: 8</div></div>
+      <div class="field"><label>Big Event Mass Threshold (u)</label><input type="number" data-path="dispersal.big_event_mass_threshold"><div class="hint">Objects ≥ this trigger warning tick before explosion</div><div class="default">default: 61</div></div>
+      <div class="field"><label>Warning Ticks Before Explosion</label><input type="number" data-path="dispersal.warning_ticks" min="0" max="5"><div class="default">default: 1</div></div>
+      <div class="field"><label>Neutron Star Min Mass (from Blue Giant remnant)</label><input type="number" data-path="dispersal.neutron_star_min_mass"><div class="hint">Remnant &lt; this → asteroid field instead of neutron star</div><div class="default">default: 10</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Mass Return (Inflow)</div>
+    <div class="fields">
+      <div class="field"><label>Front Edge Weight</label><input type="number" data-path="mass_return.front_edge_weight" min="1"><div class="default">default: 3</div></div>
+      <div class="field"><label>Side Edge Weight</label><input type="number" data-path="mass_return.side_edge_weight" min="0"><div class="default">default: 1</div></div>
+      <div class="field"><label>Max Nebula Mass on Return</label><input type="number" data-path="mass_return.nebula_return_max" min="1"><div class="default">default: 2</div></div>
+      <div class="field"><label>Max Asteroid Field Mass on Return</label><input type="number" data-path="mass_return.asteroid_return_max" min="1"><div class="default">default: 5</div></div>
+      <div class="field"><label>Inflow Min Speed (u/tick)</label><input type="number" data-path="mass_return.inflow_speed_min" step="0.1"><div class="default">default: 0.8</div></div>
+      <div class="field"><label>Inflow Max Speed (u/tick)</label><input type="number" data-path="mass_return.inflow_speed_max" step="0.1"><div class="default">default: 1.6</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Simulation</div>
+    <div class="fields">
+      <div class="field"><label>Max Jump-to-Tick value</label><input type="number" data-path="simulation.max_jump_tick" min="1"><div class="default">default: 2000</div></div>
+    </div>
+  </div>
+
+</div><!-- /content -->
+
+<script>
+'use strict';
+
+let configData = null;
+
+// --- Path helpers ---
+function getPath(obj, path) {
+  return path.split('.').reduce((o,k) => o?.[k], obj);
+}
+function setPath(obj, path, value) {
+  const keys = path.split('.');
+  let cur = obj;
+  for(let i=0;i<keys.length-1;i++){
+    if(cur[keys[i]]===undefined) cur[keys[i]]={};
+    cur = cur[keys[i]];
+  }
+  cur[keys[keys.length-1]] = value;
+}
+
+// --- Status bar ---
+function setStatus(msg, type='info') {
+  const bar = document.getElementById('status-bar');
+  bar.innerHTML = `<span class="status-${type}">${msg}</span>`;
+}
+
+// --- Load config from server ---
+async function loadConfig() {
+  try {
+    const r = await fetch('/config');
+    if(!r.ok) throw new Error('server not available');
+    configData = await r.json();
+    fillForm(configData);
+    setStatus('Config loaded successfully', 'ok');
+  } catch(e) {
+    setStatus(`Could not load config from server: ${e.message}. Showing defaults.`, 'err');
+    configData = getDefaults();
+    fillForm(configData);
+  }
+}
+
+// --- Fill form fields from config object ---
+function fillForm(cfg) {
+  document.querySelectorAll('[data-path]').forEach(input => {
+    const val = getPath(cfg, input.dataset.path);
+    if(val !== undefined) input.value = val;
+  });
+}
+
+// --- Read form into config object ---
+function readForm() {
+  const cfg = JSON.parse(JSON.stringify(configData || getDefaults()));
+  document.querySelectorAll('[data-path]').forEach(input => {
+    const raw = input.value.trim();
+    if(raw === '') return;
+    const num = Number(raw);
+    setPath(cfg, input.dataset.path, isNaN(num) ? raw : num);
+  });
+  return cfg;
+}
+
+// --- Save ---
+async function saveConfig() {
+  const cfg = readForm();
+  try {
+    const r = await fetch('/config', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(cfg)
+    });
+    if(!r.ok) throw new Error(await r.text());
+    configData = cfg;
+    setStatus('Saved to config.json ✓ — regenerate galaxy to apply changes', 'ok');
+  } catch(e) {
+    setStatus(`Save failed: ${e.message}`, 'err');
+  }
+}
+
+// --- Reset to defaults ---
+function resetDefaults() {
+  configData = getDefaults();
+  fillForm(configData);
+  setStatus('Reset to default values. Press SAVE to apply.', 'info');
+}
+
+// --- Default values ---
+function getDefaults() {
+  return {
+    generation: {
+      seed:42, num_stars:2000, num_black_holes:20, num_nebulae:200, num_asteroid_fields:800,
+      galaxy_radius:50, chaos_radius:2, min_dist:1.2, num_rays:40,
+      stars_on_ray:[1,2,3,4,5,7,9,8,6,5],
+      star_type_probs:[[0,0.1,0.85,0.05],[0.15,0.25,0.55,0.05],[0.05,0.35,0.55,0.05],[0,0.2,0.75,0.05],[0,0.1,0.85,0.05]],
+      mass_blue_giant_min:61, mass_blue_giant_max:100,
+      mass_yellow_dwarf_min:31, mass_yellow_dwarf_max:60,
+      mass_red_dwarf_min:20, mass_red_dwarf_max:30,
+      mass_white_dwarf_min:10, mass_white_dwarf_max:15,
+      mass_black_hole_min:101, mass_black_hole_max:150,
+      mass_nebula_min:1, mass_nebula_max:2,
+      mass_asteroid_min:3, mass_asteroid_max:9
+    },
+    physics: { g_scale:0.008, softening2:1.0, max_influence_radius:20 },
+    temperature: {
+      collapse_limit:1000, death_limit:10, max_kv:5, v_max_kv:0.9,
+      start_temp_red_dwarf:100, start_temp_yellow_dwarf:250, start_temp_blue_giant:150,
+      start_temp_neutron_star:500, start_temp_white_dwarf:50,
+      dt_red_dwarf:-0.14, dt_yellow_dwarf:-0.67, dt_blue_giant:4.7,
+      dt_neutron_star:-0.34, dt_white_dwarf:-0.05,
+      nebula_temp_per_mass:15, asteroid_temp_per_mass:3
+    },
+    mass_loss: {
+      dm_red_dwarf:0.03, dm_yellow_dwarf:0.15, dm_blue_giant:0.5,
+      dm_white_dwarf:0.01, dm_neutron_star:0.0
+    },
+    black_holes: { mass_loss_per_tick:10, radiation_radius:5, drift_per_10_mass:0.1,
+      bh_count_threshold_normal:20, bh_count_threshold_max:40 },
+    dispersal: {
+      ejecta_fraction:0.6, remainder_fraction:0.4, formation_ticks:3,
+      impulse_min:1.0, impulse_max:1.5, directions:8,
+      big_event_mass_threshold:61, warning_ticks:1, neutron_star_min_mass:10
+    },
+    mass_return: {
+      front_edge_weight:3, side_edge_weight:1,
+      nebula_return_max:2, asteroid_return_max:5,
+      inflow_speed_min:0.8, inflow_speed_max:1.6
+    },
+    simulation: { max_jump_tick:2000 }
+  };
+}
+
+document.getElementById('btn-save').addEventListener('click', saveConfig);
+document.getElementById('btn-reset').addEventListener('click', resetDefaults);
+
+loadConfig();
+</script>
+</body>
+</html>

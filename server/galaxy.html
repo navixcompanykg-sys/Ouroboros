@@ -5,85 +5,100 @@
 <title>OUROBOROS — Galaxy Simulation</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap');
-
   :root {
-    --bg: #04060f;
-    --panel-bg: rgba(6, 12, 28, 0.92);
-    --border: rgba(60, 130, 200, 0.18);
-    --accent: #2a7fff;
-    --accent2: #00e5ff;
-    --text: #8baac8;
-    --text-bright: #cce4ff;
-    --mono: 'Share Tech Mono', monospace;
-    --sans: 'Rajdhani', sans-serif;
+    --bg:#04060f; --panel-bg:rgba(6,12,28,0.92); --border:rgba(60,130,200,0.18);
+    --accent:#2a7fff; --accent2:#00e5ff; --text:#8baac8; --text-bright:#cce4ff;
+    --mono:'Share Tech Mono',monospace; --sans:'Rajdhani',sans-serif;
   }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: var(--bg); color: var(--text); font-family: var(--sans); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-
-  header { display: flex; align-items: center; gap: 20px; padding: 8px 20px; border-bottom: 1px solid var(--border); background: var(--panel-bg); flex-shrink: 0; flex-wrap: wrap; }
-  .logo { font-family: var(--mono); font-size: 12px; letter-spacing: 4px; color: var(--accent2); }
-  .tick-info { font-family: var(--mono); font-size: 11px; color: var(--text); opacity: 0.7; }
-  .tick-info span { color: var(--text-bright); }
-  .sim-controls { display: flex; align-items: center; gap: 6px; margin-left: auto; }
-
-  .sim-btn { background: transparent; border: 1px solid var(--border); color: var(--text); font-family: var(--mono); font-size: 10px; padding: 4px 10px; cursor: pointer; letter-spacing: 1px; transition: all 0.15s; }
-  .sim-btn:hover { border-color: var(--accent); color: var(--accent2); }
-  .sim-btn.active { border-color: var(--accent2); color: var(--accent2); background: rgba(0,229,255,0.06); }
-  .sim-btn.stop { border-color: rgba(255,80,60,0.4); color: rgba(255,120,100,0.8); }
-  .sim-btn.stop:hover { border-color: #ff5040; color: #ff8070; }
-  .grid-toggle { font-family: var(--mono); font-size: 10px; background: transparent; border: 1px solid var(--border); color: var(--text); padding: 4px 8px; cursor: pointer; transition: all 0.15s; }
-  .grid-toggle.on { border-color: var(--accent); color: var(--accent2); }
-
-  .main { display: flex; flex: 1; overflow: hidden; }
-  #canvas-wrap { flex: 1; position: relative; overflow: hidden; cursor: crosshair; }
-  canvas { display: block; width: 100%; height: 100%; }
-
-  .sidebar { width: 210px; flex-shrink: 0; background: var(--panel-bg); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
-  .panel { padding: 14px; border-bottom: 1px solid var(--border); }
-  .panel-title { font-family: var(--mono); font-size: 9px; letter-spacing: 3px; color: var(--accent); text-transform: uppercase; margin-bottom: 10px; opacity: 0.8; }
-  .stat-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
-  .stat-label { font-size: 11px; color: var(--text); opacity: 0.7; }
-  .stat-value { font-family: var(--mono); font-size: 11px; color: var(--text-bright); }
-  .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-  .legend-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-  .legend-label { font-size: 11px; color: var(--text); opacity: 0.8; }
-  .legend-count { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--text-bright); }
-
-  .zoom-controls { position: absolute; bottom: 20px; left: 20px; display: flex; flex-direction: column; gap: 4px; }
-  .zoom-btn { width: 30px; height: 30px; background: var(--panel-bg); border: 1px solid var(--border); color: var(--text-bright); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: var(--mono); transition: border-color 0.15s; }
-  .zoom-btn:hover { border-color: var(--accent); color: var(--accent2); }
-  .zoom-level { font-family: var(--mono); font-size: 9px; color: var(--text); text-align: center; opacity: 0.6; }
-
-  #tooltip { position: fixed; background: var(--panel-bg); border: 1px solid var(--border); padding: 8px 12px; font-size: 11px; font-family: var(--mono); color: var(--text-bright); pointer-events: none; display: none; z-index: 100; line-height: 1.8; backdrop-filter: blur(8px); }
-  #tooltip .tt-type { font-size: 9px; letter-spacing: 2px; margin-bottom: 3px; }
-
-  #loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; background: var(--bg); font-family: var(--mono); color: var(--accent2); font-size: 12px; letter-spacing: 3px; }
-  .loading-bar { width: 180px; height: 1px; background: var(--border); position: relative; overflow: hidden; }
-  .loading-bar::after { content: ''; position: absolute; top: 0; left: -50%; width: 50%; height: 100%; background: var(--accent2); animation: scan 1.2s ease-in-out infinite; }
-  @keyframes scan { to { left: 100%; } }
-
-  .instructions { position: absolute; bottom: 20px; right: 20px; font-family: var(--mono); font-size: 9px; color: var(--text); opacity: 0.3; line-height: 2; text-align: right; }
-  .flash { color: #ffaa44 !important; transition: color 0.6s; }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+  header{display:flex;align-items:center;gap:14px;padding:7px 16px;border-bottom:1px solid var(--border);background:var(--panel-bg);flex-shrink:0;flex-wrap:wrap;}
+  .logo{font-family:var(--mono);font-size:12px;letter-spacing:4px;color:var(--accent2);flex-shrink:0;}
+  .tick-info{font-family:var(--mono);font-size:11px;color:var(--text);opacity:0.7;flex-shrink:0;}
+  .tick-info span{color:var(--text-bright);}
+  .seed-group,.jump-group{display:flex;align-items:center;gap:5px;flex-shrink:0;}
+  .seed-label,.jump-label{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--text);opacity:0.6;}
+  .seed-input{background:rgba(0,0,0,0.4);border:1px solid var(--border);color:var(--text-bright);font-family:var(--mono);font-size:11px;padding:3px 7px;width:80px;outline:none;}
+  .seed-input:focus{border-color:var(--accent);}
+  .jump-input{background:rgba(0,0,0,0.4);border:1px solid var(--border);color:var(--text-bright);font-family:var(--mono);font-size:11px;padding:3px 7px;width:65px;outline:none;}
+  .jump-input:focus{border-color:var(--accent);}
+  .sim-controls{display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0;}
+  .sim-btn{background:transparent;border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:10px;padding:4px 10px;cursor:pointer;letter-spacing:1px;transition:all 0.15s;}
+  .sim-btn:hover{border-color:var(--accent);color:var(--accent2);}
+  .sim-btn:disabled{opacity:0.35;cursor:not-allowed;}
+  .sim-btn.active{border-color:var(--accent2);color:var(--accent2);background:rgba(0,229,255,0.06);}
+  .sim-btn.stop{border-color:rgba(255,80,60,0.4);color:rgba(255,120,100,0.8);}
+  .sim-btn.stop:hover{border-color:#ff5040;color:#ff8070;}
+  .sim-btn.gen{border-color:rgba(0,229,255,0.35);color:var(--accent2);}
+  .sim-btn.gen:hover{border-color:var(--accent2);background:rgba(0,229,255,0.08);}
+  .sim-btn.jump{border-color:rgba(80,180,255,0.35);color:#80c8ff;}
+  .sim-btn.jump:hover{border-color:#80c8ff;background:rgba(80,180,255,0.08);}
+  .sim-btn.cfg{border-color:rgba(150,150,200,0.3);color:#aaaacc;}
+  .sim-btn.cfg:hover{border-color:#aaaacc;}
+  .grid-toggle{font-family:var(--mono);font-size:10px;background:transparent;border:1px solid var(--border);color:var(--text);padding:4px 8px;cursor:pointer;transition:all 0.15s;}
+  .grid-toggle.on{border-color:var(--accent);color:var(--accent2);}
+  .main{display:flex;flex:1;overflow:hidden;}
+  #canvas-wrap{flex:1;position:relative;overflow:hidden;cursor:crosshair;}
+  canvas{display:block;width:100%;height:100%;}
+  .sidebar{width:230px;flex-shrink:0;background:var(--panel-bg);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;}
+  .panel{padding:12px 14px;border-bottom:1px solid var(--border);}
+  .panel-title{font-family:var(--mono);font-size:9px;letter-spacing:3px;color:var(--accent);text-transform:uppercase;margin-bottom:9px;opacity:0.8;}
+  .stat-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;}
+  .stat-label{font-size:11px;color:var(--text);opacity:0.7;}
+  .stat-value{font-family:var(--mono);font-size:11px;color:var(--text-bright);}
+  .legend-item{display:flex;align-items:center;gap:8px;margin-bottom:5px;}
+  .legend-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+  .legend-label{font-size:11px;color:var(--text);opacity:0.8;}
+  .legend-count{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--text-bright);}
+  .zoom-controls{position:absolute;bottom:20px;left:20px;display:flex;flex-direction:column;gap:4px;}
+  .zoom-btn{width:30px;height:30px;background:var(--panel-bg);border:1px solid var(--border);color:var(--text-bright);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:var(--mono);transition:border-color 0.15s;}
+  .zoom-btn:hover{border-color:var(--accent);color:var(--accent2);}
+  .zoom-level{font-family:var(--mono);font-size:9px;color:var(--text);text-align:center;opacity:0.6;}
+  #tooltip{position:fixed;background:var(--panel-bg);border:1px solid var(--border);padding:8px 12px;font-size:11px;font-family:var(--mono);color:var(--text-bright);pointer-events:none;display:none;z-index:100;line-height:1.8;backdrop-filter:blur(8px);}
+  #tooltip .tt-type{font-size:9px;letter-spacing:2px;margin-bottom:3px;}
+  #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;background:var(--bg);font-family:var(--mono);color:var(--accent2);font-size:12px;letter-spacing:3px;z-index:10;}
+  .loading-bar{width:180px;height:1px;background:var(--border);position:relative;overflow:hidden;}
+  .loading-bar::after{content:'';position:absolute;top:0;left:-50%;width:50%;height:100%;background:var(--accent2);animation:scan 1.2s ease-in-out infinite;}
+  @keyframes scan{to{left:100%;}}
+  #jump-overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;background:rgba(4,6,15,0.88);font-family:var(--mono);color:var(--accent2);font-size:11px;letter-spacing:3px;z-index:10;}
+  #jump-overlay.visible{display:flex;}
+  #jump-progress{font-size:16px;color:var(--text-bright);}
+  .instructions{position:absolute;bottom:20px;right:20px;font-family:var(--mono);font-size:9px;color:var(--text);opacity:0.3;line-height:2;text-align:right;}
+  .flash{color:#ffaa44!important;transition:color 0.6s;}
+  .warn-flash{color:#ff6644!important;}
+  /* Temp bar in sidebar */
+  .temp-bar-wrap{height:3px;background:rgba(255,255,255,0.06);margin-top:3px;border-radius:1px;overflow:hidden;}
+  .temp-bar{height:100%;border-radius:1px;transition:width 0.3s;}
 </style>
 </head>
 <body>
-
 <header>
   <div class="logo">OUROBOROS</div>
   <div class="tick-info">TICK <span id="tick-count">0</span> &nbsp;|&nbsp; SEED <span id="seed-val">—</span></div>
+  <div class="seed-group">
+    <span class="seed-label">SEED</span>
+    <input class="seed-input" id="seed-input" type="number" min="0" placeholder="42" value="42">
+    <button class="sim-btn gen" id="btn-generate">⟳ GEN</button>
+  </div>
+  <div class="jump-group">
+    <span class="jump-label">JUMP→</span>
+    <input class="jump-input" id="jump-input" type="number" min="1" max="2000" placeholder="1000">
+    <button class="sim-btn jump" id="btn-jump">▷ GO</button>
+  </div>
   <div class="sim-controls">
     <button class="grid-toggle" id="grid-btn">GRID</button>
     <button class="sim-btn" id="btn-1s">▶ 1s</button>
     <button class="sim-btn" id="btn-3s">▶ 3s</button>
     <button class="sim-btn" id="btn-10s">▶ 10s</button>
     <button class="sim-btn stop" id="btn-stop">■ STOP</button>
+    <button class="sim-btn cfg" id="btn-cfg" title="Open settings">⚙</button>
   </div>
 </header>
 
 <div class="main">
   <div id="canvas-wrap">
     <div id="loading"><div>LOADING GALAXY</div><div class="loading-bar"></div></div>
+    <div id="jump-overlay"><div>COMPUTING TICKS</div><div id="jump-progress">—</div></div>
     <canvas id="gc"></canvas>
     <div class="zoom-controls">
       <button class="zoom-btn" id="zi">+</button>
@@ -95,314 +110,1247 @@
   </div>
 
   <div class="sidebar">
+    <!-- Galaxy -->
     <div class="panel">
       <div class="panel-title">Galaxy</div>
       <div class="stat-row"><span class="stat-label">Objects</span><span class="stat-value" id="st-total">—</span></div>
       <div class="stat-row"><span class="stat-label">Total mass</span><span class="stat-value" id="st-mass">—</span></div>
       <div class="stat-row"><span class="stat-label">Rotation</span><span class="stat-value" id="st-rot">—</span></div>
+      <div class="stat-row"><span class="stat-label">Return pool</span><span class="stat-value" id="st-pool">0</span></div>
+      <div class="stat-row"><span class="stat-label">Avg star radius</span><span class="stat-value" id="st-avg-r">—</span></div>
     </div>
+    <!-- Simulation -->
     <div class="panel">
       <div class="panel-title">Simulation</div>
       <div class="stat-row"><span class="stat-label">Status</span><span class="stat-value" id="st-status">PAUSED</span></div>
       <div class="stat-row"><span class="stat-label">Tick speed</span><span class="stat-value" id="st-speed">—</span></div>
-      <div class="stat-row"><span class="stat-label">Mergers total</span><span class="stat-value" id="st-mergers">0</span></div>
+      <div class="stat-row"><span class="stat-label">Collisions total</span><span class="stat-value" id="st-mergers">0</span></div>
       <div class="stat-row"><span class="stat-label">This tick</span><span class="stat-value" id="st-mtick">0</span></div>
     </div>
+    <!-- Object counts -->
     <div class="panel">
       <div class="panel-title">Object Types</div>
       <div class="legend-item"><div class="legend-dot" style="background:#ff6644"></div><span class="legend-label">Red dwarf</span><span class="legend-count" id="c-red_dwarf">—</span></div>
       <div class="legend-item"><div class="legend-dot" style="background:#ffe066"></div><span class="legend-label">Yellow dwarf</span><span class="legend-count" id="c-yellow_dwarf">—</span></div>
       <div class="legend-item"><div class="legend-dot" style="background:#a0c8ff"></div><span class="legend-label">Blue giant</span><span class="legend-count" id="c-blue_giant">—</span></div>
       <div class="legend-item"><div class="legend-dot" style="background:#ddeeff"></div><span class="legend-label">White dwarf</span><span class="legend-count" id="c-white_dwarf">—</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#aaffcc"></div><span class="legend-label">Neutron star</span><span class="legend-count" id="c-neutron_star">—</span></div>
       <div class="legend-item"><div class="legend-dot" style="background:#bb44ff"></div><span class="legend-label">Black hole</span><span class="legend-count" id="c-black_hole">—</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ffcc44;border-radius:2px"></div><span class="legend-label">Formation</span><span class="legend-count" id="c-formation">—</span></div>
       <div class="legend-item"><div class="legend-dot" style="background:#44ffcc;border-radius:2px"></div><span class="legend-label">Nebula</span><span class="legend-count" id="c-nebula">—</span></div>
       <div class="legend-item"><div class="legend-dot" style="background:#8899aa;border-radius:1px"></div><span class="legend-label">Asteroid field</span><span class="legend-count" id="c-asteroid_field">—</span></div>
+    </div>
+    <!-- Deaths -->
+    <div class="panel">
+      <div class="panel-title">Deaths</div>
+      <div class="stat-row"><span class="stat-label">Cooled (T≤10)</span><span class="stat-value" id="d-cool">0</span></div>
+      <div class="stat-row"><span class="stat-label">Overheated (T>1000)</span><span class="stat-value" id="d-heat">0</span></div>
+      <div class="stat-row"><span class="stat-label">Supernovae</span><span class="stat-value" id="d-nova">0</span></div>
+    </div>
+    <!-- Evolution -->
+    <div class="panel">
+      <div class="panel-title">Evolution</div>
+      <div class="stat-row"><span class="stat-label">Red→Yellow</span><span class="stat-value" id="ev-ry">0</span></div>
+      <div class="stat-row"><span class="stat-label">Yellow→Blue</span><span class="stat-value" id="ev-yb">0</span></div>
+      <div class="stat-row"><span class="stat-label">Born from formation</span><span class="stat-value" id="ev-born">0</span></div>
+      <div class="stat-row"><span class="stat-label">Avg formations/tick</span><span class="stat-value" id="ev-form">0.00</span></div>
+      <div class="stat-row"><span class="stat-label">Avg return/tick</span><span class="stat-value" id="ev-ret">0.00</span></div>
+    </div>
+    <!-- Collisions by type -->
+    <div class="panel">
+      <div class="panel-title">Collisions</div>
+      <div class="stat-row"><span class="stat-label">Cloud×Cloud</span><span class="stat-value" id="col-cc">0</span></div>
+      <div class="stat-row"><span class="stat-label">Cloud×Star</span><span class="stat-value" id="col-cs">0</span></div>
+      <div class="stat-row"><span class="stat-label">Star×Star</span><span class="stat-value" id="col-ss">0</span></div>
+      <div class="stat-row"><span class="stat-label">Star×BH</span><span class="stat-value" id="col-sb">0</span></div>
+      <div class="stat-row"><span class="stat-label">BH×BH</span><span class="stat-value" id="col-bb">0</span></div>
+      <div class="stat-row"><span class="stat-label">Cloud×BH</span><span class="stat-value" id="col-cb">0</span></div>
+    </div>
+    <!-- Stars avg temp -->
+    <div class="panel">
+      <div class="panel-title">Avg Temperature</div>
+      <div class="stat-row"><span class="stat-label">Red dwarf</span><span class="stat-value" id="t-rd">—</span></div>
+      <div class="stat-row"><span class="stat-label">Yellow dwarf</span><span class="stat-value" id="t-yd">—</span></div>
+      <div class="stat-row"><span class="stat-label">Blue giant</span><span class="stat-value" id="t-bg">—</span></div>
+      <div class="stat-row"><span class="stat-label">Neutron star</span><span class="stat-value" id="t-ns">—</span></div>
+    </div>
+    <!-- П10: Neutron Stars -->
+    <div class="panel">
+      <div class="panel-title">Neutron Stars</div>
+      <div class="stat-row"><span class="stat-label">Born total</span><span class="stat-value" id="ns-born">0</span></div>
+      <div class="stat-row"><span class="stat-label">Died cooled</span><span class="stat-value" id="ns-cool">0</span></div>
+      <div class="stat-row"><span class="stat-label">Died overheated</span><span class="stat-value" id="ns-heat">0</span></div>
+      <div class="stat-row"><span class="stat-label">Died mass≥101</span><span class="stat-value" id="ns-mass">0</span></div>
+      <div class="stat-row"><span class="stat-label">Avg lifespan</span><span class="stat-value" id="ns-age">—</span></div>
+    </div>
+    <!-- П11: Black Holes -->
+    <div class="panel">
+      <div class="panel-title">Black Holes</div>
+      <div class="stat-row"><span class="stat-label">Born total</span><span class="stat-value" id="bh-born">0</span></div>
     </div>
   </div>
 </div>
 <div id="tooltip"></div>
 
 <script>
-// ============================================================
-// PHYSICS CONSTANTS
-// ============================================================
-const CENTER     = 50;
-const GALAXY_R   = 50;
-const CHAOS_R    = 2;
-const MIN_DIST   = 1.2;    // merger detection (game units)
-const G_SCALE    = 0.008;   // gravitational constant
-const SOFTENING2 = 1.0;    // softening ε² — prevents singularity at close range
-const MAX_INF_R  = 20;     // max gravitational influence radius
-const BH_THETA   = 0.7;    // Barnes-Hut opening angle
-const TANG_SCALE = 0.25;   // tangential force fraction
-const MAX_DVR    = 0.005;   // max radial velocity change per tick
-const MAX_DOM    = 0.0003; // max angular velocity change per tick
+'use strict';
 
-// Base angular velocity for stable circular orbit at radius R
-function baseOmega(r) {
-  if (r < CHAOS_R) r = CHAOS_R;
-  const period = 14 + 351 * (r - 2) / 48;
-  return (2 * Math.PI) / period;
+// ============================================================
+// CONFIG
+// ============================================================
+let CFG = {
+  CENTER:50, GALAXY_R:50, CHAOS_R:2,
+  MIN_DIST:1.2,
+  // П4: снижен G_SCALE для уменьшения аномальных ускорений
+  G_SCALE:0.005, SOFTENING2:1.0, MAX_INF_R:20,
+  // П1: центральный аттрактор — невидимый, только гравитация
+  CENTER_MASS:2000,
+  MAX_JUMP_TICK:2000,
+  // Temperature
+  COLLAPSE_LIMIT:1000, DEATH_LIMIT:10,
+  // П8: MAX_KV снижен вдвое против перегрева
+  MAX_KV:2.5, V_MAX_KV:0.9,
+  T_RED:100, T_YELLOW:250, T_BLUE:150, T_NEUTRON:500, T_WHITE:50,
+  DT_RED:-0.14, DT_YELLOW:-0.67, DT_BLUE:4.7, DT_NEUTRON:-0.34, DT_WHITE:-0.05,
+  NEB_TEMP_PER_MASS:15, AST_TEMP_PER_MASS:3,
+  // Mass loss per tick (П8)
+  DM_RED:0.03, DM_YELLOW:0.15, DM_BLUE:0.5, DM_WHITE:0.01, DM_NEUTRON:0.0,
+  // Black holes
+  BH_MASS_LOSS:10, BH_RAD_RADIUS:5, BH_DRIFT_PER_10:0.1,
+  BH_THRESH_NORMAL:20, BH_THRESH_MAX:40,
+  // Dispersal (универсальное 60/40)
+  EJECTA_FRACTION:0.6, REMAINDER_FRACTION:0.4,
+  // П12: импульс разлёта увеличен 2.0–3.0
+  IMPULSE_MIN:2.0, IMPULSE_MAX:3.0, EJECTA_DIRS:8,
+  FORMATION_TICKS:3, BIG_EVENT_MASS:61, WARNING_TICKS:1,
+  NS_MIN_MASS:10,
+  // Mass return
+  NEB_RETURN_MAX:2, AST_RETURN_MAX:5,
+  // П7: удвоенная скорость влёта
+  INFLOW_SPEED_MIN:0.8, INFLOW_SPEED_MAX:1.6,
+  GALAXY_DIR:'west'
+};
+
+async function loadConfig() {
+  try {
+    const r = await fetch('/config');
+    if(!r.ok) return;
+    const c = await r.json();
+    const p=c.physics||{}, g=c.generation||{}, s=c.simulation||{},
+          t=c.temperature||{}, bh=c.black_holes||{},
+          ml=c.mass_loss||{}, di=c.dispersal||{}, mr=c.mass_return||{};
+
+    // Generation
+    CFG.GALAXY_R  = g.galaxy_radius       ?? CFG.GALAXY_R;
+    CFG.CHAOS_R   = g.chaos_radius        ?? CFG.CHAOS_R;
+    CFG.MIN_DIST  = g.min_dist            ?? CFG.MIN_DIST;
+
+    // Physics
+    CFG.G_SCALE    = p.g_scale            ?? CFG.G_SCALE;
+    CFG.SOFTENING2 = p.softening2         ?? CFG.SOFTENING2;
+    CFG.MAX_INF_R  = p.max_influence_radius ?? CFG.MAX_INF_R;
+    CFG.CENTER_MASS= p.center_mass        ?? CFG.CENTER_MASS;
+
+    // Simulation
+    CFG.MAX_JUMP_TICK = s.max_jump_tick   ?? CFG.MAX_JUMP_TICK;
+
+    // Temperature
+    CFG.COLLAPSE_LIMIT = t.collapse_limit ?? CFG.COLLAPSE_LIMIT;
+    CFG.DEATH_LIMIT    = t.death_limit    ?? CFG.DEATH_LIMIT;
+    CFG.MAX_KV         = t.max_kv         ?? CFG.MAX_KV;
+    CFG.V_MAX_KV       = t.v_max_kv       ?? CFG.V_MAX_KV;
+    CFG.T_RED     = t.start_temp_red_dwarf    ?? CFG.T_RED;
+    CFG.T_YELLOW  = t.start_temp_yellow_dwarf ?? CFG.T_YELLOW;
+    CFG.T_BLUE    = t.start_temp_blue_giant   ?? CFG.T_BLUE;
+    CFG.T_NEUTRON = t.start_temp_neutron_star ?? CFG.T_NEUTRON;
+    CFG.T_WHITE   = t.start_temp_white_dwarf  ?? CFG.T_WHITE;
+    CFG.DT_RED    = t.dt_red_dwarf    ?? CFG.DT_RED;
+    CFG.DT_YELLOW = t.dt_yellow_dwarf ?? CFG.DT_YELLOW;
+    CFG.DT_BLUE   = t.dt_blue_giant   ?? CFG.DT_BLUE;
+    CFG.DT_NEUTRON= t.dt_neutron_star ?? CFG.DT_NEUTRON;
+    CFG.DT_WHITE  = t.dt_white_dwarf  ?? CFG.DT_WHITE;
+    CFG.NEB_TEMP_PER_MASS = t.nebula_temp_per_mass   ?? CFG.NEB_TEMP_PER_MASS;
+    CFG.AST_TEMP_PER_MASS = t.asteroid_temp_per_mass ?? CFG.AST_TEMP_PER_MASS;
+
+    // Mass loss per tick (П8)
+    CFG.DM_RED    = ml.dm_red_dwarf    ?? CFG.DM_RED;
+    CFG.DM_YELLOW = ml.dm_yellow_dwarf ?? CFG.DM_YELLOW;
+    CFG.DM_BLUE   = ml.dm_blue_giant   ?? CFG.DM_BLUE;
+    CFG.DM_WHITE  = ml.dm_white_dwarf  ?? CFG.DM_WHITE;
+    CFG.DM_NEUTRON= ml.dm_neutron_star ?? CFG.DM_NEUTRON;
+
+    // Black holes
+    CFG.BH_MASS_LOSS     = bh.mass_loss_per_tick        ?? CFG.BH_MASS_LOSS;
+    CFG.BH_RAD_RADIUS    = bh.radiation_radius          ?? CFG.BH_RAD_RADIUS;
+    CFG.BH_DRIFT_PER_10  = bh.drift_per_10_mass         ?? CFG.BH_DRIFT_PER_10;
+    CFG.BH_THRESH_NORMAL = bh.bh_count_threshold_normal ?? CFG.BH_THRESH_NORMAL;
+    CFG.BH_THRESH_MAX    = bh.bh_count_threshold_max    ?? CFG.BH_THRESH_MAX;
+
+    // Dispersal (универсальное 60/40)
+    CFG.EJECTA_FRACTION    = di.ejecta_fraction          ?? CFG.EJECTA_FRACTION;
+    CFG.REMAINDER_FRACTION = di.remainder_fraction       ?? CFG.REMAINDER_FRACTION;
+    CFG.IMPULSE_MIN        = di.impulse_min              ?? CFG.IMPULSE_MIN;
+    CFG.IMPULSE_MAX        = di.impulse_max              ?? CFG.IMPULSE_MAX;
+    CFG.EJECTA_DIRS        = di.directions               ?? CFG.EJECTA_DIRS;
+    CFG.FORMATION_TICKS    = di.formation_ticks          ?? CFG.FORMATION_TICKS;
+    CFG.BIG_EVENT_MASS     = di.big_event_mass_threshold ?? CFG.BIG_EVENT_MASS;
+    CFG.WARNING_TICKS      = di.warning_ticks            ?? CFG.WARNING_TICKS;
+    CFG.NS_MIN_MASS        = di.neutron_star_min_mass    ?? CFG.NS_MIN_MASS;
+
+    // Mass return
+    CFG.NEB_RETURN_MAX    = mr.nebula_return_max  ?? CFG.NEB_RETURN_MAX;
+    CFG.AST_RETURN_MAX    = mr.asteroid_return_max ?? CFG.AST_RETURN_MAX;
+    CFG.INFLOW_SPEED_MIN  = mr.inflow_speed_min   ?? CFG.INFLOW_SPEED_MIN;
+    CFG.INFLOW_SPEED_MAX  = mr.inflow_speed_max   ?? CFG.INFLOW_SPEED_MAX;
+
+    document.getElementById('jump-input').max = CFG.MAX_JUMP_TICK;
+  } catch(e) { console.warn('Config load failed, using defaults', e); }
 }
 
 // ============================================================
 // STATE
 // ============================================================
-let objects      = [];
-let tick         = 0;
-let mergersTotal = 0;
-let simTimer     = null;
-let showGrid     = false;
-let rotDir       = 1;
-let zoom = 1, panX = 0, panY = 0;
-let isDragging   = false;
-let dragStart    = {x:0,y:0}, panStart = {x:0,y:0};
+let objects=[], tick=0, rotDir=1;
+let simTimer=null, showGrid=false;
+let zoom=1, panX=0, panY=0, isDragging=false;
+let dragStart={x:0,y:0}, panStart={x:0,y:0};
+let nextId=100000;
+let returnPool=0;
+let targetMass=0;
+let hoveredId=-1;
+// П9: детерминированные точки влёта
+let inflowPoints=[], inflowIdx=0;
 
-const canvas  = document.getElementById('gc');
-const ctx     = canvas.getContext('2d');
-const wrap    = document.getElementById('canvas-wrap');
-const tooltip = document.getElementById('tooltip');
+const masslossBuffer = new Map();
+
+const CNT = {
+  collisions:0, colCC:0, colCS:0, colSS:0, colSB:0, colBB:0, colCB:0,
+  deathCool:0, deathHeat:0, supernovae:0,
+  evRY:0, evYB:0, bornFromFormation:0,
+  formationTicks:0, formationCount:0,
+  totalReturnMass:0,
+  bhBorn:0,
+  nsBorn:0, nsDiedCool:0, nsDiedHeat:0, nsDiedMass:0,
+  nsTotalAge:0, nsDeaths:0,
+};
+
+const canvas=document.getElementById('gc');
+const ctx=canvas.getContext('2d');
+const wrap=document.getElementById('canvas-wrap');
+const tooltip=document.getElementById('tooltip');
+
+// ============================================================
+// OBJECT TYPES & HELPERS
+// ============================================================
+const TYPE = {
+  STAR:'star', BH:'black_hole', NEBULA:'nebula', ASTEROID:'asteroid_field',
+  FORMATION:'formation'
+};
+const STAR = {
+  BLUE:'blue_giant', YELLOW:'yellow_dwarf', RED:'red_dwarf',
+  WHITE:'white_dwarf', NEUTRON:'neutron_star'
+};
+
+function isStar(o)    { return o.type===TYPE.STAR; }
+function isBH(o)      { return o.type===TYPE.BH; }
+function isCloud(o)   { return o.type===TYPE.NEBULA || o.type===TYPE.ASTEROID; }
+function isMassive(o) { return isBH(o) || (isStar(o) && o.star_type===STAR.BLUE); }
+function isBigEvent(o){ return o.mass >= CFG.BIG_EVENT_MASS; }
+
+function baseOmega(r) {
+  if(r<CFG.CHAOS_R) r=CFG.CHAOS_R;
+  return (2*Math.PI)/(14+351*(r-2)/48);
+}
+
+function tempOfObject(o) {
+  if(o.temp !== undefined) return o.temp;
+  if(o.type===TYPE.NEBULA)   return o.mass * CFG.NEB_TEMP_PER_MASS;
+  if(o.type===TYPE.ASTEROID) return o.mass * CFG.AST_TEMP_PER_MASS;
+  return 0;
+}
+
+function startTempForStarType(st) {
+  switch(st) {
+    case STAR.RED:     return CFG.T_RED;
+    case STAR.YELLOW:  return CFG.T_YELLOW;
+    case STAR.BLUE:    return CFG.T_BLUE;
+    case STAR.NEUTRON: return CFG.T_NEUTRON;
+    case STAR.WHITE:   return CFG.T_WHITE;
+  }
+  return 100;
+}
+
+function dtForStarType(st) {
+  switch(st) {
+    case STAR.RED:     return CFG.DT_RED;
+    case STAR.YELLOW:  return CFG.DT_YELLOW;
+    case STAR.BLUE:    return CFG.DT_BLUE;
+    case STAR.NEUTRON: return CFG.DT_NEUTRON;
+    case STAR.WHITE:   return CFG.DT_WHITE;
+  }
+  return -0.1;
+}
+
+// Determine star type from mass (for new/merged objects)
+function starTypeFromMass(mass) {
+  if(mass >= 61) return STAR.BLUE;
+  if(mass >= 31) return STAR.YELLOW;
+  if(mass >= 20) return STAR.RED;
+  return STAR.WHITE;
+}
+
+// Determine object type from mass (general)
+function typeFromMass(mass) {
+  if(mass >= 101) return {type:TYPE.BH};
+  if(mass >= 20)  return {type:TYPE.STAR, star_type: starTypeFromMass(mass)};
+  if(mass >= 10)  return {type:TYPE.FORMATION};
+  if(mass >= 3)   return {type:TYPE.ASTEROID};
+  return {type:TYPE.NEBULA};
+}
+
+// ============================================================
+// OBJECT FACTORY
+// ============================================================
+function makeObject(x, y, type, star_type, mass, vx, vy, temp) {
+  const r = Math.sqrt((x-CFG.CENTER)**2+(y-CFG.CENTER)**2);
+  const theta = Math.atan2(y-CFG.CENTER, x-CFG.CENTER);
+  const omega = baseOmega(r)*rotDir;
+  return {
+    id: nextId++, type, star_type: star_type||'', mass,
+    x, y, r, theta,
+    vx: vx??0, vy: vy??0,
+    vr: 0, omega, L: r*baseOmega(r),
+    temp: temp ?? startTempForStarType(star_type),
+    age: 0,
+    formation_tick: 0,
+    unstable: false,
+    unstable_partner: -1,
+    bh_drift_vx: 0, bh_drift_vy: 0,
+    prevX: x, prevY: y,
+    prevX2: x, prevY2: y,
+    prevX3: x, prevY3: y,
+  };
+}
 
 // ============================================================
 // COLORS
 // ============================================================
 const COLORS = {
   blue_giant:[160,200,255], yellow_dwarf:[255,224,102],
-  red_dwarf:[255,100,68],   white_dwarf:[210,235,255],
-  black_hole:[187,68,255],  nebula:[68,255,204], asteroid_field:[136,153,170],
+  red_dwarf:[255,100,68], white_dwarf:[210,235,255],
+  neutron_star:[180,255,210],
+  black_hole:[187,68,255], nebula:[68,255,204],
+  asteroid_field:[136,153,170], formation:[255,200,80],
 };
-function objColor(o)  { return o.type==='star'?(COLORS[o.star_type]||[255,255,255]):(COLORS[o.type]||[255,255,255]); }
-function massAlpha(o) { const ranges={star:[10,100],black_hole:[101,150],nebula:[1,2],asteroid_field:[3,9]}; const [lo,hi]=ranges[o.type]||[1,100]; return 0.3+0.7*Math.min(1,Math.max(0,(o.mass-lo)/(hi-lo))); }
-function objRadius(o) { const base={blue_giant:2.8,yellow_dwarf:2.0,red_dwarf:1.5,white_dwarf:1.3,black_hole:2.5,nebula:1.8,asteroid_field:1.3}; return (base[o.type==='star'?o.star_type:o.type]||1.5)*Math.max(0.4,zoom*0.55); }
 
-// ============================================================
-// COORDINATE TRANSFORMS
-// ============================================================
-function toScreen(gx,gy) { const W=canvas.width,H=canvas.height,s=(Math.min(W,H)/110)*zoom; return [W/2+(gx-CENTER)*s+panX,H/2+(gy-CENTER)*s+panY]; }
-function getScale()      { return (Math.min(canvas.width,canvas.height)/110)*zoom; }
-
-// ============================================================
-// DIRECT N-BODY — только синие гиганты и чёрные дыры
-// ============================================================
-
-function isMassive(o){
-  return o.type==='black_hole' || (o.type==='star' && o.star_type==='blue_giant');
+function objColor(o) {
+  if(o.type===TYPE.STAR) return COLORS[o.star_type]||[255,255,255];
+  return COLORS[o.type]||[255,255,255];
 }
 
-let massiveObjects = [];
+function massAlpha(o) {
+  const ranges={star:[10,100],black_hole:[101,200],nebula:[1,2],asteroid_field:[3,9],formation:[10,19]};
+  const [lo,hi]=ranges[o.type]||[1,100];
+  return 0.35+0.65*Math.min(1,Math.max(0,(o.mass-lo)/(hi-lo)));
+}
 
-function computeAccel(o){
-  const acc=[0,0];
-  const ox=o.x-CENTER, oy=o.y-CENTER;
-  const or_=Math.sqrt(ox*ox+oy*oy);
-  if(or_<0.01) return acc;
-  const rx=ox/or_, ry=oy/or_;
-  const tx=-ry*rotDir, ty=rx*rotDir;
+function objRadius(o) {
+  const base={blue_giant:2.8,yellow_dwarf:2.0,red_dwarf:1.5,white_dwarf:1.3,
+    neutron_star:1.2,black_hole:2.5,nebula:1.8,asteroid_field:1.3,formation:2.0};
+  return (base[o.type===TYPE.STAR?o.star_type:o.type]||1.5)*Math.max(0.4,zoom*0.55);
+}
 
-  for(const m of massiveObjects){
+// Temp color tint (hot = more white/orange)
+function tempTint(temp) {
+  const t = Math.min(1, temp/CFG.COLLAPSE_LIMIT);
+  return Math.floor(t*180);
+}
+
+// ============================================================
+// COORDINATES
+// ============================================================
+function toScreen(gx,gy) {
+  const W=canvas.width,H=canvas.height,s=(Math.min(W,H)/110)*zoom;
+  return [W/2+(gx-CFG.CENTER)*s+panX, H/2+(gy-CFG.CENTER)*s+panY];
+}
+function getScale() { return (Math.min(canvas.width,canvas.height)/110)*zoom; }
+
+function cartToVelocity(x,y) {
+  const theta=Math.atan2(y-CFG.CENTER,x-CFG.CENTER);
+  const r=Math.sqrt((x-CFG.CENTER)**2+(y-CFG.CENTER)**2)||0.01;
+  const period=14+351*(r-2)/48;
+  const v=2*Math.PI*r/period;
+  return {vx:-rotDir*v*Math.sin(theta), vy:rotDir*v*Math.cos(theta)};
+}
+
+// ============================================================
+// PHYSICS — чистый декартовый Leapfrog + Ньютон (П2)
+// x,y,vx,vy — без полярных ограничений скорости
+// ============================================================
+let massiveObjects=[];
+
+function computeAccelXY(o) {
+  let ax=0, ay=0;
+
+  // П1: гравитация центрального аттрактора (действует на всех объектов)
+  {
+    const cdx=CFG.CENTER-o.x, cdy=CFG.CENTER-o.y;
+    const cd2=cdx*cdx+cdy*cdy;
+    if(cd2>0.01) {
+      const cd=Math.sqrt(cd2)+0.001;
+      const cf=CFG.CENTER_MASS*CFG.G_SCALE/(cd2+CFG.SOFTENING2);
+      ax+=cf*(cdx/cd);
+      ay+=cf*(cdy/cd);
+    }
+  }
+
+  // Гравитация от массивных объектов (синие гиганты + ЧД)
+  for(const m of massiveObjects) {
     if(m===o) continue;
     const dx=m.x-o.x, dy=m.y-o.y;
     const d2=dx*dx+dy*dy;
-    if(d2>MAX_INF_R*MAX_INF_R) continue;
-    const force=m.mass*G_SCALE/(d2+SOFTENING2);
+    if(d2>CFG.MAX_INF_R*CFG.MAX_INF_R) continue;
     const d=Math.sqrt(d2)+0.001;
-    const fx=dx/d, fy=dy/d;
-    acc[0]+=force*(fx*(-rx)+fy*(-ry));
-    acc[1]+=force*(fx*tx+fy*ty)*TANG_SCALE;
+    const force=m.mass*CFG.G_SCALE/(d2+CFG.SOFTENING2);
+    ax+=force*(dx/d);
+    ay+=force*(dy/d);
   }
-  return acc;
+  return [ax,ay];
 }
 
-function leapfrogStep(){
+function leapfrogStep() {
   massiveObjects=objects.filter(isMassive);
+  const accels=objects.map(o=>computeAccelXY(o));
 
-  for(const o of objects){
-    const acc=computeAccel(o);
+  for(let i=0;i<objects.length;i++) {
+    const o=objects[i];
+    const [ax,ay]=accels[i];
 
-    // Clamp accelerations to prevent runaway
-    const ar = Math.max(-MAX_DVR, Math.min(MAX_DVR, acc[0]));
-    const at = Math.max(-MAX_DOM, Math.min(MAX_DOM, acc[1]/Math.max(o.r,0.1)));
+    // П4: сохраняем позицию ДО шага для хвоста
+    o.prevX3=o.prevX2; o.prevY3=o.prevY2;
+    o.prevX2=o.prevX??o.x; o.prevY2=o.prevY??o.y;
+    o.prevX=o.x; o.prevY=o.y;
 
-    // --- LEAPFROG ---
-    // Half-kick: update velocities by half step
-    o.vr    += ar * 0.5;
-    o.omega += at * 0.5;
+    // Half-kick
+    o.vx=(o.vx||0)+ax*0.5;
+    o.vy=(o.vy||0)+ay*0.5;
 
-    // Full drift: update positions
-    o.r     -= o.vr;
-    o.theta += o.omega;
-    // Сохранение момента импульса: при изменении omega пересчитываем r
-    if(Math.abs(o.omega) > 0.00001){
-      o.r = Math.min(GALAXY_R - 0.1, Math.max(CHAOS_R, o.L / Math.abs(o.omega)));
+    // Drift
+    o.x+=o.vx;
+    o.y+=o.vy;
+
+    // BH outward drift
+    if(isBH(o)){ o.x+=o.bh_drift_vx; o.y+=o.bh_drift_vy; }
+
+    // Update polar coords
+    o.r=Math.sqrt((o.x-CFG.CENTER)**2+(o.y-CFG.CENTER)**2);
+    o.theta=Math.atan2(o.y-CFG.CENTER, o.x-CFG.CENTER);
+
+    // Second half-kick
+    o.vx+=ax*0.5;
+    o.vy+=ay*0.5;
+
+    // omega для отображения
+    o.omega=(-o.vx*Math.sin(o.theta)+o.vy*Math.cos(o.theta))/Math.max(o.r,0.1);
+
+    o.age++;
+  }
+}
+
+// ============================================================
+// TEMPERATURE + П8: потеря массы звёздами
+// ============================================================
+const DM_STAR={
+  get red_dwarf()    { return CFG.DM_RED; },
+  get yellow_dwarf() { return CFG.DM_YELLOW; },
+  get blue_giant()   { return CFG.DM_BLUE; },
+  get white_dwarf()  { return CFG.DM_WHITE; },
+  get neutron_star() { return CFG.DM_NEUTRON; },
+};
+
+function applyTemperature(toAdd) {
+  for(const o of objects) {
+    if(!isStar(o)) continue;
+    o.temp+=dtForStarType(o.star_type);
+    o.temp=Math.max(0,Math.min(CFG.COLLAPSE_LIMIT,o.temp));
+
+    // П8: потеря массы
+    const dm=DM_STAR[o.star_type]||0;
+    if(dm<=0) continue;
+    let buf=(masslossBuffer.get(o.id)||0)+dm;
+    if(buf>=1) {
+      const lost=Math.floor(buf);
+      buf-=lost;
+      const minMass=o.star_type===STAR.WHITE?1:10;
+      const actualLost=Math.min(lost,Math.max(0,o.mass-minMass));
+      if(actualLost>=1) {
+        o.mass-=actualLost;
+        // оставляем туманность на месте
+        const nm=Math.min(actualLost,2);
+        const neb=makeObject(
+          o.x+(Math.random()-0.5)*CFG.MIN_DIST,
+          o.y+(Math.random()-0.5)*CFG.MIN_DIST,
+          TYPE.NEBULA,'',nm,
+          o.vx+(Math.random()-0.5)*0.05,
+          o.vy+(Math.random()-0.5)*0.05,
+          nm*CFG.NEB_TEMP_PER_MASS);
+        if(toAdd) toAdd.push(neb);
+      }
+    }
+    masslossBuffer.set(o.id,buf);
+  }
+}
+
+// ============================================================
+// BLACK HOLE RADIATION
+// ============================================================
+function applyBHRadiation(toAdd) {
+  const bhs = objects.filter(isBH);
+  for(const bh of bhs) {
+    if(bh.mass <= 0) continue;
+    const radiated = Math.min(bh.mass, CFG.BH_MASS_LOSS);
+    bh.mass -= radiated;
+
+    // Heat nearby objects
+    const nearby = objects.filter(o => o!==bh && Math.sqrt((o.x-bh.x)**2+(o.y-bh.y)**2) <= CFG.BH_RAD_RADIUS);
+    if(nearby.length > 0) {
+      const boost = radiated / nearby.length;
+      for(const o of nearby) {
+        if(isStar(o)) { o.temp = Math.min(CFG.COLLAPSE_LIMIT, o.temp + boost); }
+      }
     }
 
-    // Clamp r
-    if(o.r < CHAOS_R)  { o.r = CHAOS_R;        o.vr = Math.abs(o.vr)*0.1; }
-    if(o.r > GALAXY_R) { o.r = GALAXY_R - 0.1;  o.vr = -Math.abs(o.vr)*0.1; }
-
-    // Recompute cartesian (needed for next tree build)
-    o.x = CENTER + o.r*Math.cos(o.theta);
-    o.y = CENTER + o.r*Math.sin(o.theta);
-
-    // Second half-kick (uses same acc — standard leapfrog approximation)
-    o.vr    += ar * 0.5;
-    o.omega += at * 0.5;
-
-    // Clamp omega deviation from base (prevents runaway spin)
-    const base = baseOmega(o.r)*rotDir;
-    const maxDev = base * 0.5;
-    if(o.omega > base + maxDev) o.omega = base + maxDev;
-    if(o.omega < base - maxDev) o.omega = base - maxDev;
+    if(bh.mass <= 0) {
+      // BH evaporated — explode into nebulae
+      ejectMass(bh.x, bh.y, bh.vx, bh.vy, 20, toAdd);
+      dying.push(bh.id);
+    }
   }
 }
 
 // ============================================================
-// MERGER DETECTION (spatial grid, O(n))
+// UNIVERSAL DISPERSAL — правило 60/40 для всех распадов
+// 60% → 8 осколков (тип по массе порции)
+// 40% → остаток (тип по массе, НЗ если источник синий гигант и остаток ≥10)
 // ============================================================
-function detectMergers(){
-  const cs = MIN_DIST;
-  const grid = new Map();
-  for(const o of objects){
+
+// П5: шанс рождения ЧД зависит от их текущего числа
+function calcBHChance() {
+  const n=objects.filter(isBH).length;
+  if(n<CFG.BH_THRESH_NORMAL) return 1.0;
+  if(n>=CFG.BH_THRESH_MAX) return 0.0;
+  return 1.0-(n-CFG.BH_THRESH_NORMAL)/(CFG.BH_THRESH_MAX-CFG.BH_THRESH_NORMAL);
+}
+
+// Создаёт объект по его массе
+// mode: 'ejecta'        — осколок разлёта (тип по массе, НЗ не рождается)
+//       'remnant_nova'  — остаток сверхновой синего гиганта (ЧД или НЗ)
+//       'remnant_decay' — остаток остывшей звезды (белый карлик если 10–15)
+function makeByMass(x, y, vx, vy, mass, mode) {
+  if(mass<=0) return null;
+
+  if(mode==='remnant_nova') {
+    // П5: из синего гиганта — ЧД или НЗ
+    if(mass>=CFG.NS_MIN_MASS) {
+      if(mass>15 && Math.random()<calcBHChance()) {
+        const bh=makeObject(x,y,TYPE.BH,'',mass,vx,vy,0);
+        setBHDrift(bh); CNT.bhBorn++;
+        return bh;
+      }
+      const ns=makeObject(x,y,TYPE.STAR,STAR.NEUTRON,mass,vx,vy,CFG.T_NEUTRON);
+      CNT.nsBorn++; return ns;
+    }
+    if(mass>=3) return makeObject(x,y,TYPE.ASTEROID,'',mass,vx,vy,mass*CFG.AST_TEMP_PER_MASS);
+    return makeObject(x,y,TYPE.NEBULA,'',mass,vx,vy,mass*CFG.NEB_TEMP_PER_MASS);
+  }
+
+  if(mode==='remnant_decay') {
+    // П6: белый карлик из остатка остывшей звезды
+    if(mass>=10 && mass<=15) return makeObject(x,y,TYPE.STAR,STAR.WHITE,mass,vx,vy,CFG.T_WHITE);
+    if(mass>15) {
+      const form=makeObject(x,y,TYPE.FORMATION,'',mass,vx,vy,0);
+      form.formation_tick=tick; CNT.formationCount++; return form;
+    }
+    if(mass>=3) return makeObject(x,y,TYPE.ASTEROID,'',mass,vx,vy,mass*CFG.AST_TEMP_PER_MASS);
+    return makeObject(x,y,TYPE.NEBULA,'',mass,vx,vy,mass*CFG.NEB_TEMP_PER_MASS);
+  }
+
+  // mode==='ejecta': тип по массе, НЗ не рождается
+  if(mass<=2) return makeObject(x,y,TYPE.NEBULA,'',mass,vx,vy,mass*CFG.NEB_TEMP_PER_MASS);
+  if(mass<=9) return makeObject(x,y,TYPE.ASTEROID,'',mass,vx,vy,mass*CFG.AST_TEMP_PER_MASS);
+  // ≥10 → новообразование
+  const form=makeObject(x,y,TYPE.FORMATION,'',mass,vx,vy,0);
+  form.formation_tick=tick; CNT.formationCount++;
+  return form;
+}
+
+// П7: 60% → 8 осколков, смещение 2 у.е. от эпицентра
+function ejectSixty(x, y, srcVx, srcVy, mass60, toAdd) {
+  if(mass60<=0) return;
+  const dirs=CFG.EJECTA_DIRS;
+  const perDir=mass60/dirs;
+  for(let i=0;i<dirs;i++) {
+    const angle=(2*Math.PI/dirs)*i;
+    const impulse=CFG.IMPULSE_MIN+Math.random()*(CFG.IMPULSE_MAX-CFG.IMPULSE_MIN);
+    let m=Math.round(perDir); if(m<1) m=1;
+    // П7: смещение 2 у.е. вместо MIN_DIST*1.5
+    const nx=x+Math.cos(angle)*2.0;
+    const ny=y+Math.sin(angle)*2.0;
+    const obj=makeByMass(nx, ny, srcVx+Math.cos(angle)*impulse, srcVy+Math.sin(angle)*impulse, m, 'ejecta');
+    if(obj) toAdd.push(obj);
+  }
+}
+
+// Главная функция универсального распада
+// mode: 'decay' (скорость сохраняется) | 'explode' (скорость=0)
+// remnantMode: режим для 40% остатка ('ejecta'|'remnant_nova'|'remnant_decay')
+function disperseObject(o, toAdd, dying, mode, remnantMode) {
+  const srcVx=mode==='decay'?(o.vx||0):0;
+  const srcVy=mode==='decay'?(o.vy||0):0;
+  const mass60=Math.floor(o.mass*CFG.EJECTA_FRACTION);
+  const mass40=o.mass-mass60;
+  ejectSixty(o.x, o.y, srcVx, srcVy, mass60, toAdd);
+  const rem=makeByMass(o.x, o.y, srcVx, srcVy, mass40, remnantMode||'ejecta');
+  if(rem) toAdd.push(rem);
+  dying.push(o.id);
+  masslossBuffer.delete(o.id);
+}
+
+// П5: сверхновая синего гиганта даёт ЧД или НЗ в остатке
+function doSupernova(o, toAdd, dying) {
+  CNT.supernovae++; CNT.deathHeat++;
+  if(o.star_type===STAR.NEUTRON){ CNT.nsDiedHeat++; CNT.nsDeaths++; CNT.nsTotalAge+=o.age; }
+  const remMode=o.star_type===STAR.BLUE?'remnant_nova':'ejecta';
+  disperseObject(o, toAdd, dying, 'explode', remMode);
+}
+
+// устаревшая обёртка для BH evaporation
+function ejectMass(x, y, vx, vy, totalMass, toAdd) {
+  ejectSixty(x, y, vx, vy, totalMass, toAdd);
+}
+
+// П6: при остывании 40% → белый карлик если масса 10–15
+function checkStarDeath(o, toAdd, dying) {
+  if(o.temp>CFG.DEATH_LIMIT) return false;
+  CNT.deathCool++;
+  if(o.star_type===STAR.NEUTRON){ CNT.nsDiedCool++; CNT.nsDeaths++; CNT.nsTotalAge+=o.age; }
+  disperseObject(o, toAdd, dying, 'decay', 'remnant_decay');
+  return true;
+}
+
+// П60/40 при столкновении
+function apply6040(x, y, vx, vy, totalMass, toAdd) {
+  const mass60=Math.floor(totalMass*CFG.EJECTA_FRACTION);
+  ejectSixty(x, y, 0, 0, mass60, toAdd);
+  const rem=makeByMass(x, y, 0, 0, totalMass-mass60, 'ejecta');
+  if(rem) toAdd.push(rem);
+}
+
+// ============================================================
+// BLACK HOLE DRIFT
+// ============================================================
+function setBHDrift(bh) {
+  const dx=bh.x-CFG.CENTER, dy=bh.y-CFG.CENTER;
+  const d=Math.sqrt(dx*dx+dy*dy)||1;
+  const speed=(bh.mass/10)*CFG.BH_DRIFT_PER_10;
+  bh.bh_drift_vx=(dx/d)*speed;
+  bh.bh_drift_vy=(dy/d)*speed;
+}
+
+// ============================================================
+// FORMATION (STELLAR NURSERY)
+// ============================================================
+function checkFormationBirth(o, toAdd, dying) {
+  if(o.type !== TYPE.FORMATION) return;
+  const age = tick - o.formation_tick;
+  if(age < CFG.FORMATION_TICKS) return;
+
+  CNT.bornFromFormation++;
+
+  // Если масса > 100 — правило 60/40, ЧД невозможна
+  if(o.mass >= 101) {
+    apply6040(o.x, o.y, o.vx||0, o.vy||0, o.mass, toAdd);
+    dying.push(o.id);
+    return;
+  }
+
+  const res = typeFromMass(o.mass);
+  if(res.type === TYPE.STAR) {
+    const st = startTempForStarType(res.star_type);
+    const star = makeObject(o.x, o.y, TYPE.STAR, res.star_type, o.mass, 0, 0, st);
+    const vel = cartToVelocity(o.x, o.y);
+    star.vx=vel.vx; star.vy=vel.vy; star.omega=baseOmega(star.r)*rotDir;
+    toAdd.push(star);
+  } else if(res.type === TYPE.FORMATION) {
+    // Still too small — stays formation, reset timer
+    o.formation_tick = tick;
+    return;
+  } else {
+    // Nebula or asteroid — shouldn't normally happen but handle gracefully
+    const vel = cartToVelocity(o.x, o.y);
+    const obj = makeObject(o.x, o.y, res.type, '', o.mass, vel.vx, vel.vy,
+      o.mass*(res.type===TYPE.NEBULA?CFG.NEB_TEMP_PER_MASS:CFG.AST_TEMP_PER_MASS));
+    toAdd.push(obj);
+  }
+  dying.push(o.id);
+}
+
+// ============================================================
+// MASS RETURN — П9: детерминированные точки влёта
+// ============================================================
+
+// Seeded LCG — генерируем N точек по периметру квадрата, перемешанных сидом
+function generateInflowPoints(seed, n) {
+  let s=seed|0;
+  const rng=()=>{ s=(Math.imul(s,1664525)+1013904223)|0; return (s>>>0)/0xffffffff; };
+  const pts=[];
+  const ps=Math.floor(n/4);
+  for(let i=0;i<ps;i++) pts.push({x:0,   y:rng()*100});
+  for(let i=0;i<ps;i++) pts.push({x:100, y:rng()*100});
+  for(let i=0;i<ps;i++) pts.push({x:rng()*100, y:0});
+  for(let i=0;i<n-3*ps;i++) pts.push({x:rng()*100, y:100});
+  // Fisher-Yates shuffle
+  for(let i=pts.length-1;i>0;i--){
+    const j=Math.floor(rng()*(i+1));
+    [pts[i],pts[j]]=[pts[j],pts[i]];
+  }
+  return pts;
+}
+
+function processReturnPool(toAdd) {
+  const currentMass=objects.reduce((s,o)=>s+o.mass,0);
+  const deficit=targetMass-currentMass;
+  if(deficit<1) return;
+  CNT.totalReturnMass+=deficit;
+  let mass=Math.floor(deficit);
+  while(mass>=1) {
+    const m=mass>=3?Math.min(CFG.AST_RETURN_MAX,mass):Math.min(CFG.NEB_RETURN_MAX,mass);
+    const actual=Math.max(1,Math.min(m,mass));
+    const type=actual<=CFG.NEB_RETURN_MAX?TYPE.NEBULA:TYPE.ASTEROID;
+    // П9: следующая детерминированная точка влёта
+    const pos=inflowPoints[inflowIdx%inflowPoints.length]; inflowIdx++;
+    // Скорость к центру, без разброса угла (детерминировано)
+    const angleToCenter=Math.atan2(CFG.CENTER-pos.y, CFG.CENTER-pos.x);
+    // скорость варьируется детерминированно через индекс
+    const t=(inflowIdx%97)/97;
+    const speed=CFG.INFLOW_SPEED_MIN+t*(CFG.INFLOW_SPEED_MAX-CFG.INFLOW_SPEED_MIN);
+    // орбитальная составляющая
+    const theta=Math.atan2(pos.y-CFG.CENTER, pos.x-CFG.CENTER);
+    const vx=Math.cos(angleToCenter)*speed + (-rotDir*0.3*Math.sin(theta));
+    const vy=Math.sin(angleToCenter)*speed + ( rotDir*0.3*Math.cos(theta));
+    const obj=makeObject(pos.x,pos.y,type,'',actual,vx,vy,
+      actual*(type===TYPE.NEBULA?CFG.NEB_TEMP_PER_MASS:CFG.AST_TEMP_PER_MASS));
+    toAdd.push(obj);
+    mass-=actual;
+  }
+}
+
+function detectAndResolve() {
+  const cs=CFG.MIN_DIST;
+  const grid=new Map();
+  for(const o of objects) {
     const k=`${Math.floor(o.x/cs)},${Math.floor(o.y/cs)}`;
     if(!grid.has(k)) grid.set(k,[]);
     grid.get(k).push(o);
   }
-  const seen = new Set();
-  let count = 0;
-  const md2 = MIN_DIST*MIN_DIST;
-  for(const o of objects){
+  const seen=new Set(), dying=[], toAdd=[];
+  const md2=CFG.MIN_DIST*CFG.MIN_DIST;
+  let collCount=0;
+  for(const o of objects) {
     const cx=Math.floor(o.x/cs), cy=Math.floor(o.y/cs);
-    for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++){
+    for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++) {
       const nb=grid.get(`${cx+dx},${cy+dy}`);
       if(!nb) continue;
-      for(const b of nb){
+      for(const b of nb) {
         if(b===o) continue;
         const pk=o.id<b.id?`${o.id}:${b.id}`:`${b.id}:${o.id}`;
         if(seen.has(pk)) continue;
         seen.add(pk);
-        const ddx=o.x-b.x,ddy=o.y-b.y;
-        if(ddx*ddx+ddy*ddy<md2) count++;
+        const ddx=o.x-b.x, ddy=o.y-b.y;
+        if(ddx*ddx+ddy*ddy>=md2) continue;
+        if(dying.includes(o.id)||dying.includes(b.id)) continue;
+        collCount++; CNT.collisions++;
+        resolveCollision(o, b, dying, toAdd);
       }
     }
   }
-  return count;
+  const dyingSet=new Set(dying);
+  objects=objects.filter(o=>!dyingSet.has(o.id));
+  objects.push(...toAdd);
+  return collCount;
+}
+
+function resolveCollision(a, b, dying, toAdd) {
+  const aCloud=isCloud(a), bCloud=isCloud(b);
+  const aStar=isStar(a), bStar=isStar(b);
+  const aBH=isBH(a), bBH=isBH(b);
+
+  if(aCloud&&bCloud)                    CNT.colCC++;
+  else if(aCloud&&bStar||aStar&&bCloud) CNT.colCS++;
+  else if(aStar&&bStar)                 CNT.colSS++;
+  else if(aStar&&bBH||aBH&&bStar)       CNT.colSB++;
+  else if(aBH&&bBH)                     CNT.colBB++;
+  else if((aCloud&&bBH)||(aBH&&bCloud)) CNT.colCB++;
+
+  const dvx=(a.vx||0)-(b.vx||0), dvy=(a.vy||0)-(b.vy||0);
+  const vrel=Math.sqrt(dvx*dvx+dvy*dvy);
+  const kv=Math.min(CFG.MAX_KV,1+vrel/CFG.V_MAX_KV*4);
+
+  // ЧД поглощает всё
+  if(aBH||bBH) {
+    const bh=aBH?a:b, other=aBH?b:a;
+    bh.mass+=other.mass; setBHDrift(bh);
+    dying.push(other.id); masslossBuffer.delete(other.id);
+    return;
+  }
+
+  // Большое событие — тик предупреждения
+  if((isBigEvent(a)||isBigEvent(b)) && !a.unstable && !b.unstable) {
+    a.unstable=true; a.unstable_partner=b.id;
+    b.unstable=true; b.unstable_partner=a.id;
+    a.vx=0; a.vy=0; b.vx=0; b.vy=0;
+    return;
+  }
+
+  const totalMass=a.mass+b.mass;
+  const mx=(a.x*a.mass+b.x*b.mass)/totalMass;
+  const my=(a.y*a.mass+b.y*b.mass)/totalMass;
+  // П2: сохранение импульса
+  const mvx=((a.vx||0)*a.mass+(b.vx||0)*b.mass)/totalMass;
+  const mvy=((a.vy||0)*a.mass+(b.vy||0)*b.mass)/totalMass;
+
+  if(totalMass>=101) {
+    apply6040(mx,my,mvx,mvy,totalMass,toAdd);
+    dying.push(a.id); dying.push(b.id);
+    masslossBuffer.delete(a.id); masslossBuffer.delete(b.id);
+    return;
+  }
+
+  const res=typeFromMass(totalMass);
+
+  if(res.type===TYPE.STAR) {
+    const [star,other]=aStar?[a,b]:(bStar?[b,a]:[a,b]);
+    let newTemp;
+    if(isStar(other)) {
+      newTemp=((star.temp||0)*star.mass+(other.temp||0)*other.mass)/totalMass*kv;
+    } else {
+      newTemp=(star.temp||0)+(tempOfObject(other)*kv)*(other.mass/star.mass);
+    }
+    newTemp=Math.min(CFG.COLLAPSE_LIMIT,Math.max(0,newTemp));
+
+    const oldType=star.star_type;
+    const newStarType=starTypeFromMass(totalMass);
+    if(oldType===STAR.RED&&newStarType===STAR.YELLOW) CNT.evRY++;
+    if(oldType===STAR.YELLOW&&newStarType===STAR.BLUE) CNT.evYB++;
+
+    // НЗ при накоплении mass>=101 → распад
+    if(star.star_type===STAR.NEUTRON && totalMass>=101) {
+      const tmp={...star, x:mx, y:my, mass:totalMass, vx:mvx, vy:mvy};
+      disperseObject(tmp, toAdd, dying, 'decay', 'ejecta');
+      if(!dying.includes(a.id)) dying.push(a.id);
+      if(!dying.includes(b.id)) dying.push(b.id);
+      CNT.nsDiedMass++; CNT.nsDeaths++; CNT.nsTotalAge+=star.age;
+      masslossBuffer.delete(a.id); masslossBuffer.delete(b.id);
+      return;
+    }
+
+    // П2: скорость нового объекта = сохранение импульса
+    const newStar=makeObject(mx,my,TYPE.STAR,newStarType,totalMass,mvx,mvy,newTemp);
+    if(newTemp>=CFG.COLLAPSE_LIMIT) {
+      doSupernova(newStar,toAdd,dying);
+    } else {
+      toAdd.push(newStar);
+    }
+    dying.push(a.id); dying.push(b.id);
+    masslossBuffer.delete(a.id); masslossBuffer.delete(b.id);
+  }
+  else if(res.type===TYPE.FORMATION) {
+    // П2: formation наследует импульс родителей
+    const form=makeObject(mx,my,TYPE.FORMATION,'',totalMass,mvx,mvy,0);
+    form.formation_tick=tick; CNT.formationCount++;
+    toAdd.push(form);
+    dying.push(a.id); dying.push(b.id);
+    masslossBuffer.delete(a.id); masslossBuffer.delete(b.id);
+  }
+  else {
+    const obj=makeObject(mx,my,res.type,'',totalMass,mvx,mvy,
+      totalMass*(res.type===TYPE.NEBULA?CFG.NEB_TEMP_PER_MASS:CFG.AST_TEMP_PER_MASS));
+    toAdd.push(obj);
+    dying.push(a.id); dying.push(b.id);
+    masslossBuffer.delete(a.id); masslossBuffer.delete(b.id);
+  }
+}
+
+// supernovaInline удалён — используем doSupernova напрямую
+
+// ============================================================
+// PROCESS UNSTABLE — тик 1: взрыв
+// ============================================================
+function processUnstable() {
+  const dying=[], toAdd=[];
+  const unstable=objects.filter(o=>o.unstable && !dying.includes(o.id));
+
+  for(const o of unstable) {
+    if(dying.includes(o.id)) continue;
+    const partner=objects.find(p=>p.id===o.unstable_partner);
+
+    if(!partner || dying.includes(partner.id)) {
+      // партнёр пропал — взрываем solo
+      doSupernova(o, toAdd, dying);
+      continue;
+    }
+
+    const totalMass=o.mass+partner.mass;
+    const mx=(o.x*o.mass+partner.x*partner.mass)/totalMass;
+    const my=(o.y*o.mass+partner.y*partner.mass)/totalMass;
+
+    // Создаём временный объект с суммарной массой для disperseObject
+    const merged={...o, x:mx, y:my, mass:totalMass, vx:0, vy:0};
+    if(totalMass>=101) {
+      apply6040(mx,my,0,0,totalMass,toAdd);
+    } else {
+      doSupernova(merged, toAdd, dying);
+    }
+    dying.push(o.id); dying.push(partner.id);
+    masslossBuffer.delete(o.id); masslossBuffer.delete(partner.id);
+  }
+
+  const dyingSet=new Set(dying);
+  objects=objects.filter(o=>!dyingSet.has(o.id));
+  objects.push(...toAdd);
 }
 
 // ============================================================
-// TICK
+// BOUNDARY CHECK — П1: центр r<CHAOS_R = поглощение
 // ============================================================
-function runTick(){
+function checkBoundaries() {
+  const surviving=[];
+  for(const o of objects) {
+    if(o.r < CFG.CHAOS_R) { returnPool+=o.mass; continue; }
+    if(o.x < -2 || o.x > 102 || o.y < -2 || o.y > 102) { returnPool+=o.mass; continue; }
+    surviving.push(o);
+  }
+  objects=surviving;
+}
+
+// ============================================================
+// STAR LIFECYCLE
+// ============================================================
+function processStarLifecycle() {
+  const dying=[], toAdd=[];
+
+  for(const o of objects) {
+    if(!isStar(o)) continue;
+    if(dying.includes(o.id)) continue;
+
+    // П9: НЗ рассыпается при mass >= 101
+    if(o.star_type===STAR.NEUTRON && o.mass>=101) {
+      disperseObject(o, toAdd, dying, 'decay');
+      CNT.deathCool++; CNT.nsDiedMass++; CNT.nsDeaths++; CNT.nsTotalAge+=o.age;
+      continue;
+    }
+
+    // Остывание → распад (кроме синего гиганта — он нагревается)
+    if(o.star_type!==STAR.BLUE && o.temp<=CFG.DEATH_LIMIT) {
+      checkStarDeath(o, toAdd, dying);
+      continue;
+    }
+
+    // Перегрев → взрыв
+    if(o.temp>=CFG.COLLAPSE_LIMIT && !o.unstable) {
+      if(isBigEvent(o)) {
+        o.unstable=true; o.unstable_partner=-1;
+        o.vx=0; o.vy=0; // обнуляем скорость — взрыв стоит
+      } else {
+        doSupernova(o, toAdd, dying);
+      }
+    }
+  }
+
+  const dyingSet=new Set(dying);
+  objects=objects.filter(o=>!dyingSet.has(o.id));
+  objects.push(...toAdd);
+}
+
+// ============================================================
+// FORMATION LIFECYCLE
+// ============================================================
+function processFormations() {
+  const dying=[], toAdd=[];
+  for(const o of objects) {
+    if(o.type===TYPE.FORMATION) {
+      CNT.formationTicks++;
+      checkFormationBirth(o, toAdd, dying);
+    }
+  }
+  const dyingSet=new Set(dying);
+  objects=objects.filter(o=>!dyingSet.has(o.id));
+  objects.push(...toAdd);
+}
+
+// ============================================================
+// MAIN TICK
+// ============================================================
+function runTick() {
+  tick++;
+  const toAdd=[];
+
+  // 1. Return pool → новые объекты (П5)
+  processReturnPool(toAdd);
+  objects.push(...toAdd);
+
+  // 2. Physics (П2: чистый Leapfrog)
   leapfrogStep();
 
-  const m = detectMergers();
-  mergersTotal += m;
+  // 3. Boundary check (П1: центр = поглощение)
+  checkBoundaries();
+
+  // 4. Температура + П8: потеря массы
+  const nebAdd=[];
+  applyTemperature(nebAdd);
+  objects.push(...nebAdd);
+
+  // 5. BH radiation
+  const bhAdd=[];
+  applyBHRadiation(bhAdd);
+  objects.push(...bhAdd);
+
+  // 6. Star lifecycle
+  processStarLifecycle();
+
+  // 7. Unstable big events
+  processUnstable();
+
+  // 8. Collision detection
+  const collCount=detectAndResolve();
+
+  // 9. Formation births
+  processFormations();
+
+  // 10. DOM update
+  updateDOM(collCount);
+  draw();
+}
+
+function fastTick() {
   tick++;
-
-  document.getElementById('tick-count').textContent = tick;
-  document.getElementById('st-mergers').textContent = mergersTotal;
-  const mEl = document.getElementById('st-mtick');
-  mEl.textContent = m;
-  if(m>0){ mEl.classList.add('flash'); setTimeout(()=>mEl.classList.remove('flash'),800); }
-
-  draw();
+  const toAdd=[];
+  processReturnPool(toAdd); objects.push(...toAdd);
+  leapfrogStep();
+  checkBoundaries();
+  const nebAdd=[]; applyTemperature(nebAdd); objects.push(...nebAdd);
+  const bhAdd=[]; applyBHRadiation(bhAdd); objects.push(...bhAdd);
+  processStarLifecycle();
+  processUnstable();
+  detectAndResolve();
+  processFormations();
 }
 
 // ============================================================
-// SIMULATION CONTROLS
+// DOM UPDATE
 // ============================================================
-function startSim(ms){
-  stopSim();
-  simTimer=setInterval(runTick,ms);
-  document.getElementById('st-status').textContent='RUNNING';
-  document.getElementById('st-speed').textContent=(ms/1000)+'s/tick';
-  document.querySelectorAll('.sim-btn').forEach(b=>b.classList.remove('active'));
-  const ids={1000:'btn-1s',3000:'btn-3s',10000:'btn-10s'};
-  if(ids[ms]) document.getElementById(ids[ms]).classList.add('active');
-}
-function stopSim(){
-  if(simTimer){clearInterval(simTimer);simTimer=null;}
-  document.getElementById('st-status').textContent='PAUSED';
-  document.getElementById('st-speed').textContent='—';
-  document.querySelectorAll('.sim-btn').forEach(b=>b.classList.remove('active'));
+function updateDOM(collCount) {
+  document.getElementById('tick-count').textContent=tick;
+  document.getElementById('st-pool').textContent=Math.floor(returnPool);
+
+  // Collisions
+  const mEl=document.getElementById('st-mtick');
+  mEl.textContent=collCount;
+  if(collCount>0){mEl.classList.add('flash');setTimeout(()=>mEl.classList.remove('flash'),600);}
+  document.getElementById('st-mergers').textContent=CNT.collisions;
+
+  // Object counts
+  const bt={},bs={};
+  let total=0,mass=0;
+  let tRD=0,nRD=0,tYD=0,nYD=0,tBG=0,nBG=0,tNS=0,nNS=0;
+  let starRadSum=0, starCount=0;
+  for(const o of objects){
+    total++; mass+=o.mass;
+    bt[o.type]=(bt[o.type]||0)+1;
+    if(isStar(o)){
+      bs[o.star_type]=(bs[o.star_type]||0)+1;
+      if(o.star_type===STAR.RED){tRD+=o.temp;nRD++;}
+      else if(o.star_type===STAR.YELLOW){tYD+=o.temp;nYD++;}
+      else if(o.star_type===STAR.BLUE){tBG+=o.temp;nBG++;}
+      else if(o.star_type===STAR.NEUTRON){tNS+=o.temp;nNS++;}
+      // П10: средний радиус — только звёзды
+      starRadSum+=o.r; starCount++;
+    }
+  }
+  document.getElementById('st-total').textContent=total.toLocaleString();
+  document.getElementById('st-mass').textContent=mass.toLocaleString();
+  document.getElementById('c-red_dwarf').textContent=(bs.red_dwarf||0).toLocaleString();
+  document.getElementById('c-yellow_dwarf').textContent=(bs.yellow_dwarf||0).toLocaleString();
+  document.getElementById('c-blue_giant').textContent=(bs.blue_giant||0).toLocaleString();
+  document.getElementById('c-white_dwarf').textContent=(bs.white_dwarf||0).toLocaleString();
+  document.getElementById('c-neutron_star').textContent=(bs.neutron_star||0).toLocaleString();
+  document.getElementById('c-black_hole').textContent=(bt.black_hole||0).toLocaleString();
+  document.getElementById('c-formation').textContent=(bt.formation||0).toLocaleString();
+  document.getElementById('c-nebula').textContent=(bt.nebula||0).toLocaleString();
+  document.getElementById('c-asteroid_field').textContent=(bt.asteroid_field||0).toLocaleString();
+
+  // П10: средний радиус звёзд
+  const avgREl=document.getElementById('st-avg-r');
+  if(avgREl) avgREl.textContent=starCount>0?(starRadSum/starCount).toFixed(1):'—';
+
+  document.getElementById('d-cool').textContent=CNT.deathCool;
+  document.getElementById('d-heat').textContent=CNT.deathHeat;
+  document.getElementById('d-nova').textContent=CNT.supernovae;
+
+  document.getElementById('ev-ry').textContent=CNT.evRY;
+  document.getElementById('ev-yb').textContent=CNT.evYB;
+  document.getElementById('ev-born').textContent=CNT.bornFromFormation;
+  document.getElementById('ev-form').textContent=(tick>0?(CNT.formationCount/tick).toFixed(2):'0.00');
+  document.getElementById('ev-ret').textContent=(tick>0?(CNT.totalReturnMass/tick).toFixed(1):'0.0');
+
+  document.getElementById('col-cc').textContent=CNT.colCC;
+  document.getElementById('col-cs').textContent=CNT.colCS;
+  document.getElementById('col-ss').textContent=CNT.colSS;
+  document.getElementById('col-sb').textContent=CNT.colSB;
+  document.getElementById('col-bb').textContent=CNT.colBB;
+  document.getElementById('col-cb').textContent=CNT.colCB;
+
+  document.getElementById('t-rd').textContent=nRD?(tRD/nRD).toFixed(0):'—';
+  document.getElementById('t-yd').textContent=nYD?(tYD/nYD).toFixed(0):'—';
+  document.getElementById('t-bg').textContent=nBG?(tBG/nBG).toFixed(0):'—';
+  document.getElementById('t-ns').textContent=nNS?(tNS/nNS).toFixed(0):'—';
+
+  // П11: нейтронные звёзды
+  const nsEl=document.getElementById('ns-born');
+  if(nsEl){
+    nsEl.textContent=CNT.nsBorn;
+    document.getElementById('ns-cool').textContent=CNT.nsDiedCool;
+    document.getElementById('ns-heat').textContent=CNT.nsDiedHeat;
+    document.getElementById('ns-mass').textContent=CNT.nsDiedMass;
+    document.getElementById('ns-age').textContent=CNT.nsDeaths>0?Math.round(CNT.nsTotalAge/CNT.nsDeaths):'—';
+  }
+  // П11: чёрные дыры
+  const bhEl=document.getElementById('bh-born');
+  if(bhEl) bhEl.textContent=CNT.bhBorn;
 }
 
-document.getElementById('btn-1s').addEventListener('click',  ()=>startSim(1000));
-document.getElementById('btn-3s').addEventListener('click',  ()=>startSim(3000));
-document.getElementById('btn-10s').addEventListener('click', ()=>startSim(10000));
-document.getElementById('btn-stop').addEventListener('click', stopSim);
-document.getElementById('grid-btn').addEventListener('click', ()=>{
-  showGrid=!showGrid;
-  document.getElementById('grid-btn').classList.toggle('on',showGrid);
-  draw();
-});
+function updateLiveStats() {
+  updateDOM(0);
+}
 
 // ============================================================
 // DRAW
 // ============================================================
-function draw(){
+function draw() {
   if(!objects.length) return;
   const W=canvas.width,H=canvas.height;
   ctx.clearRect(0,0,W,H);
   ctx.fillStyle='#04060f'; ctx.fillRect(0,0,W,H);
 
   const scale=getScale();
-  const [cx,cy]=toScreen(CENTER,CENTER);
+  const [cx,cy]=toScreen(CFG.CENTER,CFG.CENTER);
 
-  ctx.beginPath(); ctx.arc(cx,cy,GALAXY_R*scale,0,Math.PI*2);
+  // Galaxy boundary
+  ctx.beginPath(); ctx.arc(cx,cy,CFG.GALAXY_R*scale,0,Math.PI*2);
   ctx.strokeStyle='rgba(40,80,140,0.10)'; ctx.lineWidth=1; ctx.stroke();
 
+  // Grid
   if(showGrid){
     ctx.strokeStyle='rgba(60,100,160,0.12)'; ctx.lineWidth=0.5;
     for(let g=0;g<=100;g+=5){
-      const [x0]=toScreen(g,0); ctx.beginPath(); ctx.moveTo(x0,0); ctx.lineTo(x0,H); ctx.stroke();
-      const [,y0]=toScreen(0,g); ctx.beginPath(); ctx.moveTo(0,y0); ctx.lineTo(W,y0); ctx.stroke();
+      const [x0]=toScreen(g,0); ctx.beginPath();ctx.moveTo(x0,0);ctx.lineTo(x0,H);ctx.stroke();
+      const [,y0]=toScreen(0,g); ctx.beginPath();ctx.moveTo(0,y0);ctx.lineTo(W,y0);ctx.stroke();
     }
     ctx.fillStyle='rgba(100,150,200,0.22)';
     ctx.font=`${Math.max(8,scale*0.55)}px Share Tech Mono,monospace`;
     ctx.textAlign='center';
     for(let g=0;g<=100;g+=10){
-      const [sx]=toScreen(g,0); const [,sy]=toScreen(0,g);
-      ctx.fillText(g,sx,cy+12);
-      if(g>0) ctx.fillText(g,cx+14,sy+4);
+      const [sx]=toScreen(g,0);const [,sy]=toScreen(0,g);
+      ctx.fillText(g,sx,cy+12); if(g>0)ctx.fillText(g,cx+14,sy+4);
     }
   }
 
-  ctx.beginPath(); ctx.arc(cx,cy,CHAOS_R*scale,0,Math.PI*2);
+  // Chaos zone
+  ctx.beginPath(); ctx.arc(cx,cy,CFG.CHAOS_R*scale,0,Math.PI*2);
   ctx.strokeStyle='rgba(180,60,255,0.2)'; ctx.lineWidth=1; ctx.stroke();
 
+  // Objects
+  const now=Date.now();
   for(const o of objects){
     const [sx,sy]=toScreen(o.x,o.y);
     if(sx<-20||sx>W+20||sy<-20||sy>H+20) continue;
     const col=objColor(o), alpha=massAlpha(o), r=objRadius(o);
+    const tint=isStar(o)?tempTint(o.temp||0):0;
 
-    // Trail
-    if(o.type==='star'||o.type==='black_hole'){
-      const prevTheta=o.theta-o.omega;
-      const [px,py]=toScreen(CENTER+o.r*Math.cos(prevTheta),CENTER+o.r*Math.sin(prevTheta));
+    // Unstable warning — pulse
+    if(o.unstable){
+      const pulse=0.4+0.4*Math.sin(now/150);
+      ctx.beginPath(); ctx.arc(sx,sy,r*3.5,0,Math.PI*2);
+      ctx.fillStyle=`rgba(255,120,40,${pulse*0.3})`; ctx.fill();
+    }
+
+    // Formation glow (orange haze)
+    if(o.type===TYPE.FORMATION){
+      const gr=ctx.createRadialGradient(sx,sy,0,sx,sy,r*4);
+      gr.addColorStop(0,`rgba(255,200,80,0.25)`);
+      gr.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.beginPath(); ctx.arc(sx,sy,r*4,0,Math.PI*2); ctx.fillStyle=gr; ctx.fill();
+    }
+
+    // П4: хвост 1 тик для всех объектов
+    if(o.prevX!==undefined && (o.prevX!==o.x || o.prevY!==o.y)) {
+      const [px,py]=toScreen(o.prevX,o.prevY);
       ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(sx,sy);
-      ctx.strokeStyle=`rgba(${col[0]},${col[1]},${col[2]},0.09)`;
-      ctx.lineWidth=0.7; ctx.stroke();
+      ctx.strokeStyle=`rgba(${col[0]},${col[1]},${col[2]},0.18)`;
+      ctx.lineWidth=0.8; ctx.stroke();
+    }
+    // 3 тика при наведении
+    if(hoveredId===o.id) {
+      if(o.prevX2!==undefined) {
+        const [px2,py2]=toScreen(o.prevX2,o.prevY2);
+        const [px,py]=toScreen(o.prevX??o.x,o.prevY??o.y);
+        ctx.beginPath(); ctx.moveTo(px2,py2); ctx.lineTo(px,py);
+        ctx.strokeStyle=`rgba(${col[0]},${col[1]},${col[2]},0.35)`;
+        ctx.lineWidth=1.3; ctx.stroke();
+      }
+      if(o.prevX3!==undefined) {
+        const [px3,py3]=toScreen(o.prevX3,o.prevY3);
+        const [px2,py2]=toScreen(o.prevX2??o.x,o.prevY2??o.y);
+        ctx.beginPath(); ctx.moveTo(px3,py3); ctx.lineTo(px2,py2);
+        ctx.strokeStyle=`rgba(${col[0]},${col[1]},${col[2]},0.20)`;
+        ctx.lineWidth=1.0; ctx.stroke();
+      }
     }
 
     // Glow
-    if(alpha>0.6&&r>1.1){
-      const gr=ctx.createRadialGradient(sx,sy,0,sx,sy,r*3);
-      gr.addColorStop(0,`rgba(${col[0]},${col[1]},${col[2]},${alpha*0.22})`);
+    if(alpha>0.5&&r>1){
+      const gr=ctx.createRadialGradient(sx,sy,0,sx,sy,r*2.8);
+      const rc=Math.min(255,col[0]+tint), gc=Math.max(0,col[1]-tint/2), bc=Math.max(0,col[2]-tint);
+      gr.addColorStop(0,`rgba(${rc},${gc},${bc},${alpha*0.25})`);
       gr.addColorStop(1,'rgba(0,0,0,0)');
-      ctx.beginPath(); ctx.arc(sx,sy,r*3,0,Math.PI*2); ctx.fillStyle=gr; ctx.fill();
+      ctx.beginPath(); ctx.arc(sx,sy,r*2.8,0,Math.PI*2); ctx.fillStyle=gr; ctx.fill();
     }
 
+    // Body
+    const rc=Math.min(255,col[0]+tint), gc=Math.max(0,col[1]-tint/3), bc=Math.max(0,col[2]-tint);
     ctx.beginPath();
-    if(o.type==='asteroid_field') ctx.rect(sx-r*0.7,sy-r*0.7,r*1.4,r*1.4);
+    if(o.type===TYPE.ASTEROID) ctx.rect(sx-r*0.7,sy-r*0.7,r*1.4,r*1.4);
+    else if(o.type===TYPE.FORMATION){
+      // Diamond shape
+      ctx.moveTo(sx,sy-r); ctx.lineTo(sx+r,sy); ctx.lineTo(sx,sy+r); ctx.lineTo(sx-r,sy); ctx.closePath();
+    }
     else ctx.arc(sx,sy,r,0,Math.PI*2);
-    ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${alpha})`; ctx.fill();
+    ctx.fillStyle=`rgba(${rc},${gc},${bc},${alpha})`; ctx.fill();
 
-    if(o.type==='black_hole'){
+    // BH ring
+    if(isBH(o)){
       ctx.beginPath(); ctx.arc(sx,sy,r*2.2,0,Math.PI*2);
-      ctx.strokeStyle='rgba(187,68,255,0.15)'; ctx.lineWidth=0.8; ctx.stroke();
+      ctx.strokeStyle='rgba(187,68,255,0.18)'; ctx.lineWidth=0.8; ctx.stroke();
+    }
+
+    // Neutron star inner dot
+    if(o.star_type===STAR.NEUTRON){
+      ctx.beginPath(); ctx.arc(sx,sy,r*0.35,0,Math.PI*2);
+      ctx.fillStyle='rgba(255,255,255,0.8)'; ctx.fill();
     }
   }
 
+  // Center
   ctx.beginPath(); ctx.arc(cx,cy,3,0,Math.PI*2);
   ctx.fillStyle='rgba(180,60,255,0.5)'; ctx.fill();
 }
@@ -412,92 +1360,225 @@ function draw(){
 // ============================================================
 function findNearest(mx,my){
   let best=null,bestD=14;
-  for(const o of objects){ const [sx,sy]=toScreen(o.x,o.y); const d=Math.hypot(sx-mx,sy-my); if(d<bestD){bestD=d;best=o;} }
+  for(const o of objects){
+    const [sx,sy]=toScreen(o.x,o.y);
+    const d=Math.hypot(sx-mx,sy-my);
+    if(d<bestD){bestD=d;best=o;}
+  }
   return best;
 }
+
 function showTip(o,mx,my){
   const col=objColor(o);
-  const label=o.type==='star'?o.star_type.replace('_',' ').toUpperCase():o.type.replace('_',' ').toUpperCase();
+  const label=isStar(o)?o.star_type.replace('_',' ').toUpperCase():o.type.replace('_',' ').toUpperCase();
+  const tempStr=o.temp!==undefined?`<br>T &nbsp;&nbsp;&nbsp;&nbsp;${Math.round(o.temp)}`:'';
+  const speed=Math.sqrt((o.vx||0)**2+(o.vy||0)**2);
   tooltip.innerHTML=`<div class="tt-type" style="color:rgb(${col[0]},${col[1]},${col[2]})">${label}</div>
-    MASS &nbsp;${o.mass}<br>R &nbsp;&nbsp;&nbsp;&nbsp;${o.r.toFixed(2)}<br>
-    θ &nbsp;&nbsp;&nbsp;&nbsp;${(o.theta*180/Math.PI).toFixed(1)}°<br>
-    vr &nbsp;&nbsp;&nbsp;${o.vr.toFixed(4)}<br>ω &nbsp;&nbsp;&nbsp;&nbsp;${(o.omega*1000).toFixed(3)}e-3`;
+    MASS &nbsp;${o.mass}${tempStr}<br>AGE &nbsp;&nbsp;${o.age}<br>
+    R &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${o.r.toFixed(2)}<br>
+    vx &nbsp;&nbsp;&nbsp;${(o.vx||0).toFixed(4)}<br>
+    vy &nbsp;&nbsp;&nbsp;${(o.vy||0).toFixed(4)}<br>
+    |v| &nbsp;&nbsp;${speed.toFixed(4)}`;
   let tx=mx+14,ty=my+14;
-  if(tx+170>window.innerWidth)tx=mx-180;
-  if(ty+140>window.innerHeight)ty=my-150;
+  if(tx+180>window.innerWidth) tx=mx-194;
+  if(ty+180>window.innerHeight) ty=my-190;
   tooltip.style.left=tx+'px'; tooltip.style.top=ty+'px'; tooltip.style.display='block';
 }
 
 // ============================================================
-// STATS
+// STATS (initial galaxy load)
 // ============================================================
-function updateStats(g){
-  document.getElementById('st-total').textContent=g.stats.total_objects.toLocaleString();
-  document.getElementById('st-mass').textContent=g.stats.total_mass.toLocaleString();
+function updateStats(g) {
+  document.getElementById('st-mass').textContent=(g.stats.total_mass||0).toLocaleString();
   document.getElementById('st-rot').textContent=g.rotation_dir>0?'CCW ↺':'CW ↻';
   document.getElementById('seed-val').textContent=g.seed;
-  const bt=g.stats.count_by_type||{},bs=g.stats.count_by_star_type||{};
-  document.getElementById('c-red_dwarf').textContent    =(bs.red_dwarf||0).toLocaleString();
-  document.getElementById('c-yellow_dwarf').textContent =(bs.yellow_dwarf||0).toLocaleString();
-  document.getElementById('c-blue_giant').textContent   =(bs.blue_giant||0).toLocaleString();
-  document.getElementById('c-white_dwarf').textContent  =(bs.white_dwarf||0).toLocaleString();
-  document.getElementById('c-black_hole').textContent   =(bt.black_hole||0).toLocaleString();
-  document.getElementById('c-nebula').textContent       =(bt.nebula||0).toLocaleString();
-  document.getElementById('c-asteroid_field').textContent=(bt.asteroid_field||0).toLocaleString();
+  document.getElementById('seed-input').value=g.seed;
 }
+
+// ============================================================
+// APPLY GALAXY
+// ============================================================
+function applyGalaxy(galaxy) {
+  rotDir=galaxy.rotation_dir;
+  tick=0; returnPool=0; nextId=100000;
+  masslossBuffer.clear();
+  Object.keys(CNT).forEach(k=>CNT[k]=0);
+  CFG.GALAXY_DIR='west';
+
+  // П9: генерируем детерминированные точки влёта по сиду галактики
+  inflowPoints=generateInflowPoints(galaxy.seed||42, 360);
+  inflowIdx=0;
+
+  objects=galaxy.objects.map(o=>{
+    const r=o.r||Math.sqrt((o.x-CFG.CENTER)**2+(o.y-CFG.CENTER)**2);
+    const theta=o.theta||Math.atan2(o.y-CFG.CENTER, o.x-CFG.CENTER);
+    // П3: пересчитываем vx/vy под v=sqrt(G*M_center/r) для устойчивых орбит
+    const vcirc=Math.sqrt(CFG.G_SCALE*CFG.CENTER_MASS/Math.max(r,0.5));
+    const vx=-rotDir*vcirc*Math.sin(theta);
+    const vy= rotDir*vcirc*Math.cos(theta);
+    const omega=(-vx*Math.sin(theta)+vy*Math.cos(theta))/Math.max(r,0.1);
+    let temp=0;
+    if(o.type===TYPE.STAR) temp=startTempForStarType(o.star_type);
+    else if(o.type===TYPE.NEBULA) temp=o.mass*CFG.NEB_TEMP_PER_MASS;
+    else if(o.type===TYPE.ASTEROID) temp=o.mass*CFG.AST_TEMP_PER_MASS;
+    return {
+      ...o, r, theta, vx, vy,
+      vr:0, omega, L:r*baseOmega(r),
+      temp, age:0,
+      formation_tick:0, unstable:false, unstable_partner:-1,
+      bh_drift_vx:0, bh_drift_vy:0,
+      prevX:o.x, prevY:o.y,
+      prevX2:o.x, prevY2:o.y,
+      prevX3:o.x, prevY3:o.y,
+    };
+  });
+
+  // П5: фиксируем целевую массу
+  targetMass=objects.reduce((s,o)=>s+o.mass,0);
+  for(const o of objects) { if(isBH(o)) setBHDrift(o); }
+
+  document.getElementById('tick-count').textContent=0;
+  document.getElementById('st-mergers').textContent=0;
+  document.getElementById('st-mtick').textContent=0;
+  document.getElementById('st-pool').textContent=0;
+  updateStats(galaxy);
+  draw();
+}
+
+// ============================================================
+// GENERATE & LOAD
+// ============================================================
+async function generateGalaxy(seed) {
+  stopSim();
+  const loading=document.getElementById('loading');
+  loading.style.display='flex';
+  loading.innerHTML='<div>GENERATING GALAXY</div><div class="loading-bar"></div>';
+  try {
+    const url=seed!==null?`/generate?seed=${seed}`:'/generate';
+    const resp=await fetch(url,{method:'POST'});
+    if(!resp.ok) throw new Error(await resp.text()||'generation failed');
+    const galaxy=await resp.json();
+    applyGalaxy(galaxy);
+    loading.style.display='none';
+  } catch(e) {
+    loading.innerHTML=`<div style="color:#ff5544;font-size:11px;text-align:center;padding:20px">GENERATION ERROR<br><br>${e.message}</div>`;
+  }
+}
+
+async function reloadGalaxy() {
+  try {
+    const resp=await fetch('/galaxy.json');
+    if(!resp.ok) return;
+    const galaxy=await resp.json();
+    applyGalaxy(galaxy);
+  } catch(e) { console.error('reload failed',e); }
+}
+
+// ============================================================
+// JUMP TO TICK
+// ============================================================
+async function jumpToTick(target) {
+  if(target<=tick) await reloadGalaxy();
+  const remaining=target-tick;
+  if(remaining<=0) return;
+  stopSim();
+  const overlay=document.getElementById('jump-overlay');
+  const progress=document.getElementById('jump-progress');
+  overlay.classList.add('visible');
+  const CHUNK=50; let done=0;
+  const runChunk=()=>{
+    const end=Math.min(done+CHUNK,remaining);
+    while(done<end){fastTick();done++;}
+    progress.textContent=`${tick} / ${target}`;
+    if(done<remaining) requestAnimationFrame(runChunk);
+    else { overlay.classList.remove('visible'); updateLiveStats(); draw(); }
+  };
+  requestAnimationFrame(runChunk);
+}
+
+// ============================================================
+// SIMULATION CONTROLS
+// ============================================================
+function startSim(ms) {
+  stopSim();
+  simTimer=setInterval(runTick,ms);
+  document.getElementById('st-status').textContent='RUNNING';
+  document.getElementById('st-speed').textContent=(ms/1000)+'s/tick';
+  document.querySelectorAll('.sim-btn').forEach(b=>b.classList.remove('active'));
+  const ids={1000:'btn-1s',3000:'btn-3s',10000:'btn-10s'};
+  if(ids[ms]) document.getElementById(ids[ms]).classList.add('active');
+}
+function stopSim() {
+  if(simTimer){clearInterval(simTimer);simTimer=null;}
+  document.getElementById('st-status').textContent='PAUSED';
+  document.getElementById('st-speed').textContent='—';
+  document.querySelectorAll('.sim-btn').forEach(b=>b.classList.remove('active'));
+}
+
+document.getElementById('btn-1s').addEventListener('click',()=>startSim(1000));
+document.getElementById('btn-3s').addEventListener('click',()=>startSim(3000));
+document.getElementById('btn-10s').addEventListener('click',()=>startSim(10000));
+document.getElementById('btn-stop').addEventListener('click',stopSim);
+document.getElementById('grid-btn').addEventListener('click',()=>{showGrid=!showGrid;document.getElementById('grid-btn').classList.toggle('on',showGrid);draw();});
+document.getElementById('btn-cfg').addEventListener('click',()=>window.open('/config.html','_blank'));
+document.getElementById('btn-generate').addEventListener('click',async()=>{
+  const raw=document.getElementById('seed-input').value.trim();
+  await generateGalaxy(raw!==''?parseInt(raw,10):null);
+});
+document.getElementById('seed-input').addEventListener('keydown',async e=>{
+  if(e.key==='Enter'){const raw=e.target.value.trim();await generateGalaxy(raw!==''?parseInt(raw,10):null);}
+});
+document.getElementById('btn-jump').addEventListener('click',()=>{
+  const val=parseInt(document.getElementById('jump-input').value,10);
+  if(!isNaN(val)&&val>=1) jumpToTick(Math.min(val,CFG.MAX_JUMP_TICK));
+});
+document.getElementById('jump-input').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){const val=parseInt(e.target.value,10);if(!isNaN(val)&&val>=1)jumpToTick(Math.min(val,CFG.MAX_JUMP_TICK));}
+});
 
 // ============================================================
 // ZOOM & PAN
 // ============================================================
-function updateZoomLabel(){ document.getElementById('zl').textContent=Math.round(zoom*100)+'%'; }
+function updateZoomLabel(){document.getElementById('zl').textContent=Math.round(zoom*100)+'%';}
 document.getElementById('zi').addEventListener('click',()=>{zoom=Math.min(20,zoom*1.3);updateZoomLabel();draw();});
 document.getElementById('zo').addEventListener('click',()=>{zoom=Math.max(0.3,zoom/1.3);updateZoomLabel();draw();});
 document.getElementById('zr').addEventListener('click',()=>{zoom=1;panX=0;panY=0;updateZoomLabel();draw();});
-
 wrap.addEventListener('wheel',e=>{
   e.preventDefault();
   const rect=canvas.getBoundingClientRect();
   const mx=e.clientX-rect.left,my=e.clientY-rect.top;
   const f=e.deltaY<0?1.12:1/1.12,prev=zoom;
   zoom=Math.min(20,Math.max(0.3,zoom*f));
-  panX=mx-(mx-panX)*(zoom/prev); panY=my-(my-panY)*(zoom/prev);
-  updateZoomLabel(); draw();
+  panX=mx-(mx-panX)*(zoom/prev);panY=my-(my-panY)*(zoom/prev);
+  updateZoomLabel();draw();
 },{passive:false});
-
-wrap.addEventListener('mousedown',e=>{ isDragging=true; dragStart={x:e.clientX,y:e.clientY}; panStart={x:panX,y:panY}; canvas.style.cursor='grabbing'; });
+wrap.addEventListener('mousedown',e=>{isDragging=true;dragStart={x:e.clientX,y:e.clientY};panStart={x:panX,y:panY};canvas.style.cursor='grabbing';});
 window.addEventListener('mousemove',e=>{
-  if(isDragging){ panX=panStart.x+(e.clientX-dragStart.x); panY=panStart.y+(e.clientY-dragStart.y); draw(); tooltip.style.display='none'; }
-  else { const rect=canvas.getBoundingClientRect(); const o=findNearest(e.clientX-rect.left,e.clientY-rect.top); if(o){showTip(o,e.clientX,e.clientY);canvas.style.cursor='pointer';}else{tooltip.style.display='none';canvas.style.cursor='crosshair';} }
+  if(isDragging){panX=panStart.x+(e.clientX-dragStart.x);panY=panStart.y+(e.clientY-dragStart.y);draw();tooltip.style.display='none';}
+  else{const rect=canvas.getBoundingClientRect();const o=findNearest(e.clientX-rect.left,e.clientY-rect.top);if(o){hoveredId=o.id;showTip(o,e.clientX,e.clientY);canvas.style.cursor='pointer';}else{hoveredId=-1;tooltip.style.display='none';canvas.style.cursor='crosshair';}}
 });
 window.addEventListener('mouseup',()=>{isDragging=false;canvas.style.cursor='crosshair';});
 
 // ============================================================
-// RESIZE & LOAD
+// RESIZE & INIT
 // ============================================================
-function resize(){ canvas.width=wrap.clientWidth; canvas.height=wrap.clientHeight; draw(); }
+function resize(){canvas.width=wrap.clientWidth;canvas.height=wrap.clientHeight;draw();}
 window.addEventListener('resize',resize);
 resize();
 
-async function load(){
+async function init(){
+  await loadConfig();
   try{
-    const resp=await fetch('galaxy.json');
-    if(!resp.ok) throw new Error('galaxy.json not found — run: go run galaxy_gen.go');
+    const resp=await fetch('/galaxy.json');
+    if(!resp.ok) throw new Error('galaxy.json not found — run: go run main.go');
     const galaxy=await resp.json();
-    rotDir=galaxy.rotation_dir;
-    objects=galaxy.objects.map(o=>({
-  ...o,
-  vr:    0,
-  omega: baseOmega(o.r) * rotDir,
-  L:     o.r * baseOmega(o.r),  // момент импульса = r * omega (без знака)
-    }));
+    applyGalaxy(galaxy);
     document.getElementById('loading').style.display='none';
-    updateStats(galaxy);
-    resize();
   }catch(e){
-    document.getElementById('loading').innerHTML=`<div style="color:#ff5544;font-size:11px">${e.message}</div>`;
+    document.getElementById('loading').innerHTML=`<div style="color:#ff5544;font-size:11px;text-align:center;padding:20px">${e.message}</div>`;
   }
 }
-load();
+init();
 </script>
 </body>
 </html>

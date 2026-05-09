@@ -2,11 +2,62 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"math"
 	"math/rand"
 	"os"
 )
+
+// ============================================================
+// CONFIG
+// ============================================================
+
+type Config struct {
+	Generation struct {
+		Seed              int64       `json:"seed"`
+		NumStars          int         `json:"num_stars"`
+		NumBlackHoles     int         `json:"num_black_holes"`
+		NumNebulae        int         `json:"num_nebulae"`
+		NumAsteroidFields int         `json:"num_asteroid_fields"`
+		GalaxyRadius      float64     `json:"galaxy_radius"`
+		ChaosRadius       float64     `json:"chaos_radius"`
+		MinDist           float64     `json:"min_dist"`
+		NumRays           int         `json:"num_rays"`
+		StarsOnRay        []int       `json:"stars_on_ray"`
+		StarTypeProbs     [][]float64 `json:"star_type_probs"`
+		MassBGMin         int         `json:"mass_blue_giant_min"`
+		MassBGMax         int         `json:"mass_blue_giant_max"`
+		MassYDMin         int         `json:"mass_yellow_dwarf_min"`
+		MassYDMax         int         `json:"mass_yellow_dwarf_max"`
+		MassRDMin         int         `json:"mass_red_dwarf_min"`
+		MassRDMax         int         `json:"mass_red_dwarf_max"`
+		MassWDMin         int         `json:"mass_white_dwarf_min"`
+		MassWDMax         int         `json:"mass_white_dwarf_max"`
+		MassBHMin         int         `json:"mass_black_hole_min"`
+		MassBHMax         int         `json:"mass_black_hole_max"`
+		MassNebMin        int         `json:"mass_nebula_min"`
+		MassNebMax        int         `json:"mass_nebula_max"`
+		MassAstMin        int         `json:"mass_asteroid_min"`
+		MassAstMax        int         `json:"mass_asteroid_max"`
+	} `json:"generation"`
+}
+
+func loadConfig(path string) (Config, error) {
+	var cfg Config
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return cfg, fmt.Errorf("cannot read config: %w", err)
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return cfg, fmt.Errorf("cannot parse config: %w", err)
+	}
+	return cfg, nil
+}
+
+// ============================================================
+// TYPES
+// ============================================================
 
 type ObjectType string
 type StarType string
@@ -21,28 +72,7 @@ const (
 	StarYellowDwarf StarType = "yellow_dwarf"
 	StarRedDwarf    StarType = "red_dwarf"
 	StarWhiteDwarf  StarType = "white_dwarf"
-
-	CenterX     = 50.0
-	CenterY     = 50.0
-	GalaxyR     = 50.0
-	ChaosR      = 2.0
-	MinDist     = 1.2 // min distance between objects
-	NumRays     = 40
-	NumStars    = 2000
-	NumBH       = 20
-	NumNebulae  = 200
-	NumAsteroid = 800
 )
-
-var starsOnRay = [10]int{1, 2, 3, 4, 5, 7, 9, 8, 6, 5}
-
-var starTypeProbs = [5][4]float64{
-	{0.00, 0.10, 0.85, 0.05},
-	{0.15, 0.25, 0.55, 0.05},
-	{0.05, 0.35, 0.55, 0.05},
-	{0.00, 0.20, 0.75, 0.05},
-	{0.00, 0.10, 0.85, 0.05},
-}
 
 type GalaxyObject struct {
 	ID       int        `json:"id"`
@@ -71,23 +101,26 @@ type Galaxy struct {
 	RotationDir float64        `json:"rotation_dir"`
 }
 
-// --- Spatial grid ---
+// ============================================================
+// SPATIAL GRID
+// ============================================================
+
 type Grid struct {
 	cells    map[[2]int][][2]float64
 	cellSize float64
 }
 
-func newGrid() *Grid {
-	return &Grid{cells: map[[2]int][][2]float64{}, cellSize: MinDist}
+func newGrid(minDist float64) *Grid {
+	return &Grid{cells: map[[2]int][][2]float64{}, cellSize: minDist}
 }
 
 func (g *Grid) key(x, y float64) [2]int {
 	return [2]int{int(math.Floor(x / g.cellSize)), int(math.Floor(y / g.cellSize))}
 }
 
-func (g *Grid) isFree(x, y float64) bool {
+func (g *Grid) isFree(x, y, minDist float64) bool {
 	ck := g.key(x, y)
-	minD2 := MinDist * MinDist
+	minD2 := minDist * minDist
 	for dx := -2; dx <= 2; dx++ {
 		for dy := -2; dy <= 2; dy++ {
 			for _, p := range g.cells[[2]int{ck[0] + dx, ck[1] + dy}] {
@@ -106,60 +139,85 @@ func (g *Grid) add(x, y float64) {
 	g.cells[ck] = append(g.cells[ck], [2]float64{x, y})
 }
 
-// --- Helpers ---
+// ============================================================
+// HELPERS
+// ============================================================
+
 func dist2(x1, y1, x2, y2 float64) float64 {
 	return math.Sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1))
 }
 
-func inGalaxy(x, y float64) bool   { return dist2(x, y, CenterX, CenterY) <= GalaxyR }
-func inChaos(x, y float64) bool    { return dist2(x, y, CenterX, CenterY) < ChaosR }
-func ok(x, y float64, g *Grid) bool { return inGalaxy(x, y) && !inChaos(x, y) && g.isFree(x, y) }
-
-func velocity(x, y, rotDir float64) (vx, vy float64) {
-	theta := math.Atan2(y-CenterY, x-CenterX)
-	r := dist2(x, y, CenterX, CenterY)
-	if r < 0.01 {
+func velocity(x, y, rotDir, centerX, centerY float64) (vx, vy float64) {
+	theta := math.Atan2(y-centerY, x-centerX)
+	r := dist2(x, y, centerX, centerY)
+	if r < 0.5 {
 		return
 	}
-	period := 14.0 + (365.0-14.0)*(r-2.0)/48.0
-	v := 2 * math.Pi * r / period
+	// П3: скорость для устойчивой орбиты вокруг центрального аттрактора
+	// v = sqrt(G * M_center / r), G=0.005, M_center=2000
+	const G = 0.005
+	const M = 2000.0
+	v := math.Sqrt(G * M / r)
 	vx = -rotDir * v * math.Sin(theta)
 	vy = rotDir * v * math.Cos(theta)
 	return
 }
 
-func pickStarType(r float64, rng *rand.Rand) StarType {
-	band := int(r/10.0)
-	if band > 4 { band = 4 }
-	probs := starTypeProbs[band]
+func pickStarType(r float64, rng *rand.Rand, probs [][]float64) StarType {
+	band := int(r / 10.0)
+	if band >= len(probs) {
+		band = len(probs) - 1
+	}
+	p := probs[band]
 	roll, cum := rng.Float64(), 0.0
 	types := []StarType{StarBlueGiant, StarYellowDwarf, StarRedDwarf, StarWhiteDwarf}
-	for i, p := range probs {
-		cum += p
-		if roll < cum { return types[i] }
+	for i, prob := range p {
+		cum += prob
+		if roll < cum {
+			return types[i]
+		}
 	}
 	return StarRedDwarf
 }
 
-func starMass(st StarType, rng *rand.Rand) int {
+func starMass(st StarType, rng *rand.Rand, g *Config) int {
 	switch st {
-	case StarBlueGiant:   return 61 + rng.Intn(40)
-	case StarYellowDwarf: return 31 + rng.Intn(30)
-	case StarRedDwarf:    return 20 + rng.Intn(11)
-	case StarWhiteDwarf:  return 10 + rng.Intn(6)
+	case StarBlueGiant:
+		return g.Generation.MassBGMin + rng.Intn(g.Generation.MassBGMax-g.Generation.MassBGMin+1)
+	case StarYellowDwarf:
+		return g.Generation.MassYDMin + rng.Intn(g.Generation.MassYDMax-g.Generation.MassYDMin+1)
+	case StarRedDwarf:
+		return g.Generation.MassRDMin + rng.Intn(g.Generation.MassRDMax-g.Generation.MassRDMin+1)
+	case StarWhiteDwarf:
+		return g.Generation.MassWDMin + rng.Intn(g.Generation.MassWDMax-g.Generation.MassWDMin+1)
 	}
 	return 20
 }
 
-// --- Generation ---
-func generateGalaxy(seed int64) Galaxy {
+// ============================================================
+// GENERATION
+// ============================================================
+
+func generateGalaxy(seed int64, cfg *Config) Galaxy {
 	rng := rand.New(rand.NewSource(seed))
 	rotDir := 1.0
-	if rng.Intn(2) == 0 { rotDir = -1.0 }
+	if rng.Intn(2) == 0 {
+		rotDir = -1.0
+	}
+
+	centerX := 50.0
+	centerY := 50.0
+	galaxyR := cfg.Generation.GalaxyRadius
+	chaosR := cfg.Generation.ChaosRadius
+	minDist := cfg.Generation.MinDist
 
 	objects := []GalaxyObject{}
-	grid := newGrid()
+	grid := newGrid(minDist)
 	id := 0
+
+	inGalaxy := func(x, y float64) bool { return dist2(x, y, centerX, centerY) <= galaxyR }
+	inChaos := func(x, y float64) bool  { return dist2(x, y, centerX, centerY) < chaosR }
+	isFree := func(x, y float64) bool   { return inGalaxy(x, y) && !inChaos(x, y) && grid.isFree(x, y, minDist) }
 
 	add := func(obj GalaxyObject) {
 		obj.ID = id
@@ -169,36 +227,40 @@ func generateGalaxy(seed int64) Galaxy {
 	}
 
 	makeObj := func(x, y float64, t ObjectType, st StarType, mass int) GalaxyObject {
-		r := dist2(x, y, CenterX, CenterY)
-		theta := math.Atan2(y-CenterY, x-CenterX)
-		vx, vy := velocity(x, y, rotDir)
+		r := dist2(x, y, centerX, centerY)
+		theta := math.Atan2(y-centerY, x-centerX)
+		vx, vy := velocity(x, y, rotDir, centerX, centerY)
 		return GalaxyObject{Type: t, StarType: st, X: x, Y: y, Mass: mass, R: r, Theta: theta, VX: vx, VY: vy}
 	}
 
-	// Random point uniformly distributed inside galaxy circle
 	randInGalaxy := func() (float64, float64) {
 		angle := rng.Float64() * 2 * math.Pi
-		radius := math.Sqrt(rng.Float64()) * GalaxyR
-		return CenterX + radius*math.Cos(angle), CenterY + radius*math.Sin(angle)
+		radius := math.Sqrt(rng.Float64()) * galaxyR
+		return centerX + radius*math.Cos(angle), centerY + radius*math.Sin(angle)
 	}
 
 	// --- Stars via spiral rays ---
 	placed := 0
-	for i := 0; i < NumRays; i++ {
-		phi := float64(i) * math.Pi / 20.0
-		for j := 0; j < 10; j++ {
-			minR := float64(j) * 5.0
-			if j == 0 { minR = ChaosR }
-			maxR := float64(j+1) * 5.0
-			for s := 0; s < starsOnRay[j]; s++ {
+	numRings := len(cfg.Generation.StarsOnRay)
+	ringSize := (galaxyR - chaosR) / float64(numRings)
+
+	for i := 0; i < cfg.Generation.NumRays; i++ {
+		phi := float64(i) * math.Pi / float64(cfg.Generation.NumRays/2)
+		for j := 0; j < numRings; j++ {
+			minR := chaosR + float64(j)*ringSize
+			maxR := chaosR + float64(j+1)*ringSize
+			count := cfg.Generation.StarsOnRay[j]
+			for s := 0; s < count; s++ {
 				for attempt := 0; attempt < 40; attempt++ {
 					r := minR + rng.Float64()*(maxR-minR)
-					delta := (rng.Float64() - 0.5) * (math.Pi / 20.0)
-					x := CenterX + r*math.Cos(phi+delta)
-					y := CenterY + r*math.Sin(phi+delta)
-					if !ok(x, y, grid) { continue }
-					st := pickStarType(r, rng)
-					add(makeObj(x, y, TypeStar, st, starMass(st, rng)))
+					delta := (rng.Float64() - 0.5) * (math.Pi / float64(cfg.Generation.NumRays/2))
+					x := centerX + r*math.Cos(phi+delta)
+					y := centerY + r*math.Sin(phi+delta)
+					if !isFree(x, y) {
+						continue
+					}
+					st := pickStarType(r, rng, cfg.Generation.StarTypeProbs)
+					add(makeObj(x, y, TypeStar, st, starMass(st, rng, cfg)))
 					placed++
 					break
 				}
@@ -207,22 +269,26 @@ func generateGalaxy(seed int64) Galaxy {
 	}
 
 	// Fill missing stars
-	for missing := NumStars - placed; missing > 0; {
+	for missing := cfg.Generation.NumStars - placed; missing > 0; {
 		x, y := randInGalaxy()
-		if !ok(x, y, grid) { continue }
-		r := dist2(x, y, CenterX, CenterY)
-		st := pickStarType(r, rng)
-		add(makeObj(x, y, TypeStar, st, starMass(st, rng)))
+		if !isFree(x, y) {
+			continue
+		}
+		r := dist2(x, y, centerX, centerY)
+		st := pickStarType(r, rng, cfg.Generation.StarTypeProbs)
+		add(makeObj(x, y, TypeStar, st, starMass(st, rng, cfg)))
 		missing--
 	}
 
-	// Generic random placer with attempt limit
+	// Generic random placer
 	placeN := func(n int, t ObjectType, massLo, massHi int) int {
 		placed := 0
 		maxTries := n * 500
 		for tries := 0; placed < n && tries < maxTries; tries++ {
 			x, y := randInGalaxy()
-			if !ok(x, y, grid) { continue }
+			if !isFree(x, y) {
+				continue
+			}
 			mass := massLo + rng.Intn(massHi-massLo+1)
 			add(makeObj(x, y, t, "", mass))
 			placed++
@@ -230,14 +296,14 @@ func generateGalaxy(seed int64) Galaxy {
 		return placed
 	}
 
-	placedBH  := placeN(NumBH,       TypeBlackHole,     101, 150)
-	placedNeb := placeN(NumNebulae,   TypeNebula,        1,   2)
-	placedAst := placeN(NumAsteroid,  TypeAsteroidField, 3,   9)
+	placedBH  := placeN(cfg.Generation.NumBlackHoles,     TypeBlackHole,     cfg.Generation.MassBHMin, cfg.Generation.MassBHMax)
+	placedNeb := placeN(cfg.Generation.NumNebulae,         TypeNebula,        cfg.Generation.MassNebMin, cfg.Generation.MassNebMax)
+	placedAst := placeN(cfg.Generation.NumAsteroidFields,  TypeAsteroidField, cfg.Generation.MassAstMin, cfg.Generation.MassAstMax)
 
-	fmt.Printf("  Stars: %d/%d\n", len(objects)-placedBH-placedNeb-placedAst, NumStars)
-	fmt.Printf("  Black holes: %d/%d\n", placedBH, NumBH)
-	fmt.Printf("  Nebulae: %d/%d\n", placedNeb, NumNebulae)
-	fmt.Printf("  Asteroid fields: %d/%d\n", placedAst, NumAsteroid)
+	fmt.Printf("  Stars: %d/%d\n", len(objects)-placedBH-placedNeb-placedAst, cfg.Generation.NumStars)
+	fmt.Printf("  Black holes: %d/%d\n", placedBH, cfg.Generation.NumBlackHoles)
+	fmt.Printf("  Nebulae: %d/%d\n", placedNeb, cfg.Generation.NumNebulae)
+	fmt.Printf("  Asteroid fields: %d/%d\n", placedAst, cfg.Generation.NumAsteroidFields)
 
 	// Stats
 	stats := GalaxyStats{
@@ -256,18 +322,37 @@ func generateGalaxy(seed int64) Galaxy {
 	return Galaxy{Seed: seed, Objects: objects, Stats: stats, RotationDir: rotDir}
 }
 
+// ============================================================
+// MAIN
+// ============================================================
+
 func main() {
-	seed := int64(42)
-	fmt.Println("Generating galaxy with seed", seed, "...")
-	galaxy := generateGalaxy(seed)
+	seedFlag := flag.Int64("seed", -1, "Galaxy seed (-1 = use config.json value)")
+	configPath := flag.String("config", "config.json", "Path to config.json")
+	outputPath := flag.String("out", "galaxy.json", "Output path for galaxy.json")
+	flag.Parse()
+
+	cfg, err := loadConfig(*configPath)
+	if err != nil {
+		fmt.Println("Error:", err)
+		os.Exit(1)
+	}
+
+	seed := cfg.Generation.Seed
+	if *seedFlag >= 0 {
+		seed = *seedFlag
+	}
+
+	fmt.Printf("Generating galaxy with seed %d ...\n", seed)
+	galaxy := generateGalaxy(seed, &cfg)
 
 	data, _ := json.MarshalIndent(galaxy, "", "  ")
-	if err := os.WriteFile("galaxy.json", data, 0644); err != nil {
+	if err := os.WriteFile(*outputPath, data, 0644); err != nil {
 		fmt.Println("Error:", err)
 		os.Exit(1)
 	}
 
 	fmt.Printf("\nTotal objects: %d\n", galaxy.Stats.TotalObjects)
 	fmt.Printf("Total mass:    %d\n", galaxy.Stats.TotalMass)
-	fmt.Println("Saved to galaxy.json")
+	fmt.Printf("Saved to %s\n", *outputPath)
 }
