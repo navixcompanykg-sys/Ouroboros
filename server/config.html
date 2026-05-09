@@ -111,6 +111,7 @@
       <div class="field"><label>Center Attractor Mass (u)</label><input type="number" data-path="physics.center_mass" step="100"><div class="default">default: 10000</div></div>
       <div class="field"><label>Softening ε² (singularity prevention)</label><input type="number" data-path="physics.softening2" step="0.1"><div class="default">default: 1.0</div></div>
       <div class="field"><label>Max Gravitational Influence Radius (u)</label><input type="number" data-path="physics.max_influence_radius" step="0.5"><div class="default">default: 20</div></div>
+      <div class="field"><label>Orbital Drag Coefficient</label><input type="number" data-path="physics.orbital_drag" step="0.001" min="0" max="0.2"><div class="hint">Radial position correction per tick proportional to deviation from circular orbit speed. 0 = off. Recommend range: 0.005–0.05.</div><div class="default">default: 0.02</div></div>
     </div>
   </div>
 
@@ -139,11 +140,10 @@
   <div class="section">
     <div class="section-title">Black Holes</div>
     <div class="fields">
-      <div class="field"><label>Mass Loss per Tick (Hawking radiation)</label><input type="number" data-path="black_holes.mass_loss_per_tick"><div class="default">default: 10</div></div>
+      <div class="field"><label>Mass Loss per Tick (Hawking radiation)</label><input type="number" data-path="black_holes.mass_loss_per_tick"><div class="default">default: 5</div></div>
       <div class="field"><label>Radiation Heat Radius (u)</label><input type="number" data-path="black_holes.radiation_radius" step="0.5"><div class="default">default: 5</div></div>
       <div class="field"><label>Drift Speed per 10 mass units (u/tick)</label><input type="number" data-path="black_holes.drift_per_10_mass" step="0.01"><div class="default">default: 0.1</div></div>
-      <div class="field"><label>BH Count — 100% chance of new BH</label><input type="number" data-path="black_holes.bh_count_threshold_normal"><div class="default">default: 20</div></div>
-      <div class="field"><label>BH Count — 0% chance of new BH</label><input type="number" data-path="black_holes.bh_count_threshold_max"><div class="default">default: 40</div></div>
+      <div class="field"><label>BH Count — 0% chance of new BH (max threshold)</label><input type="number" data-path="black_holes.bh_count_threshold_max"><div class="default">default: 40</div></div>
     </div>
   </div>
 
@@ -298,7 +298,7 @@ function getDefaults() {
       mass_asteroid_min:3, mass_asteroid_max:9
     },
     physics: {
-      g_scale:0.001, softening2:1.0, max_influence_radius:20, center_mass:10000
+      g_scale:0.001, softening2:1.0, max_influence_radius:20, center_mass:10000, orbital_drag:0.02
     },
     temperature: {
       collapse_limit:1000, death_limit:10, max_kv:2.5, v_max_kv:0.9,
@@ -312,8 +312,8 @@ function getDefaults() {
       dm_red_dwarf:0.03, dm_yellow_dwarf:0.15, dm_blue_giant:0.5,
       dm_white_dwarf:0.01, dm_neutron_star:0.0
     },
-    black_holes: { mass_loss_per_tick:10, radiation_radius:5, drift_per_10_mass:0.1,
-      bh_count_threshold_normal:20, bh_count_threshold_max:40 },
+    black_holes: { mass_loss_per_tick:5, radiation_radius:5, drift_per_10_mass:0.1,
+      bh_count_threshold_max:40 },
     dispersal: {
       ejecta_fraction:0.6, remainder_fraction:0.4, formation_ticks:3,
       impulse_min:1.0, impulse_max:1.0, directions:8,

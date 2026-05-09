@@ -91,6 +91,7 @@
     <button class="sim-btn" id="btn-3s">▶ 3s</button>
     <button class="sim-btn" id="btn-10s">▶ 10s</button>
     <button class="sim-btn stop" id="btn-stop">■ STOP</button>
+    <button class="ctrl-btn sim-btn" onclick="exportSnapshot()">💾 Export</button>
     <button class="sim-btn cfg" id="btn-cfg" title="Open settings">⚙</button>
   </div>
 </header>
@@ -182,6 +183,14 @@
       <div class="stat-row"><span class="stat-label">White dwarf</span><span class="stat-value" id="life-wd">—</span></div>
       <div class="stat-row"><span class="stat-label">Neutron star</span><span class="stat-value" id="life-ns">—</span></div>
     </div>
+    <!-- Velocity Stats -->
+    <div class="panel">
+      <div class="panel-title">Velocity Stats</div>
+      <div class="stat-row"><span class="stat-label">Avg |v| stars</span><span class="stat-value" id="vel-avg">—</span></div>
+      <div class="stat-row"><span class="stat-label">Avg ω stars</span><span class="stat-value" id="vel-omega">—</span></div>
+      <div class="stat-row"><span class="stat-label">Max |v| star</span><span class="stat-value" id="vel-max">—</span></div>
+      <div class="stat-row"><span class="stat-label">Avg |v| clouds</span><span class="stat-value" id="vel-cloud">—</span></div>
+    </div>
     <!-- П10: Neutron Stars -->
     <div class="panel">
       <div class="panel-title">Neutron Stars</div>
@@ -218,8 +227,9 @@ let CFG = {
   DT_RED:-0.14, DT_YELLOW:-0.67, DT_BLUE:4.7, DT_NEUTRON:-0.34, DT_WHITE:-0.05,
   NEB_TEMP_PER_MASS:5, AST_TEMP_PER_MASS:1,
   DM_RED:0.03, DM_YELLOW:0.15, DM_BLUE:0.5, DM_WHITE:0.01, DM_NEUTRON:0.0,
-  BH_MASS_LOSS:10, BH_RAD_RADIUS:5, BH_DRIFT_PER_10:0.1,
-  BH_THRESH_NORMAL:20, BH_THRESH_MAX:40,
+  BH_MASS_LOSS:5, BH_RAD_RADIUS:5, BH_DRIFT_PER_10:0.1,
+  BH_THRESH_MAX:40,
+  ORBITAL_DRAG:0.02,
   EJECTA_FRACTION:0.6, REMAINDER_FRACTION:0.4,
   IMPULSE_MIN:1.0, IMPULSE_MAX:1.0, EJECTA_DIRS:8,
   FORMATION_TICKS:3, BIG_EVENT_MASS:61, WARNING_TICKS:1,
@@ -260,7 +270,8 @@ async function loadConfig() {
     CFG.G_SCALE    = p.g_scale            ?? CFG.G_SCALE;
     CFG.SOFTENING2 = p.softening2         ?? CFG.SOFTENING2;
     CFG.MAX_INF_R  = p.max_influence_radius ?? CFG.MAX_INF_R;
-    CFG.CENTER_MASS= p.center_mass        ?? CFG.CENTER_MASS;
+    CFG.CENTER_MASS   = p.center_mass         ?? CFG.CENTER_MASS;
+    CFG.ORBITAL_DRAG  = p.orbital_drag        ?? CFG.ORBITAL_DRAG;
 
     // Simulation
     CFG.MAX_JUMP_TICK = s.max_jump_tick   ?? CFG.MAX_JUMP_TICK;
@@ -294,7 +305,6 @@ async function loadConfig() {
     CFG.BH_MASS_LOSS     = bh.mass_loss_per_tick        ?? CFG.BH_MASS_LOSS;
     CFG.BH_RAD_RADIUS    = bh.radiation_radius          ?? CFG.BH_RAD_RADIUS;
     CFG.BH_DRIFT_PER_10  = bh.drift_per_10_mass         ?? CFG.BH_DRIFT_PER_10;
-    CFG.BH_THRESH_NORMAL = bh.bh_count_threshold_normal ?? CFG.BH_THRESH_NORMAL;
     CFG.BH_THRESH_MAX    = bh.bh_count_threshold_max    ?? CFG.BH_THRESH_MAX;
 
     // Dispersal (универсальное 60/40)
@@ -558,9 +568,6 @@ function leapfrogStep() {
     o.x+=o.vx;
     o.y+=o.vy;
 
-    // BH outward drift
-    if(isBH(o)){ o.x+=o.bh_drift_vx; o.y+=o.bh_drift_vy; }
-
     // Update polar coords
     o.r=Math.sqrt((o.x-CFG.CENTER)**2+(o.y-CFG.CENTER)**2);
     o.theta=Math.atan2(o.y-CFG.CENTER, o.x-CFG.CENTER);
@@ -571,6 +578,20 @@ function leapfrogStep() {
 
     // omega для отображения
     o.omega=(-o.vx*Math.sin(o.theta)+o.vy*Math.cos(o.theta))/Math.max(o.r,0.1);
+
+    // Orbital drag — стабилизация орбит
+    if(!o.debris && o.r>CFG.CHAOS_R) {
+      const v_circ=Math.sqrt(CFG.G_SCALE*CFG.CENTER_MASS/Math.max(o.r,1.0));
+      const sinT=Math.sin(o.theta), cosT=Math.cos(o.theta);
+      const v_tang=-o.vx*sinT+o.vy*cosT;
+      const excess=v_tang-rotDir*v_circ;
+      const massFactor=Math.min(2.0,o.mass/50.0);
+      const drift=-excess*CFG.ORBITAL_DRAG*massFactor;
+      o.x+=cosT*drift;
+      o.y+=sinT*drift;
+      o.r=Math.sqrt((o.x-CFG.CENTER)**2+(o.y-CFG.CENTER)**2);
+      o.theta=Math.atan2(o.y-CFG.CENTER, o.x-CFG.CENTER);
+    }
 
     // П3: debris — countdown, после 10 тиков становится обычным объектом
     if(o.debris) {
@@ -613,12 +634,14 @@ function applyTemperature(toAdd) {
         // оставляем туманность на месте
         const nm=Math.min(actualLost,2);
         const neb=makeObject(
-          o.x+(Math.random()-0.5)*CFG.MIN_DIST,
-          o.y+(Math.random()-0.5)*CFG.MIN_DIST,
+          o.x+(Math.random()-0.5)*2.0,
+          o.y+(Math.random()-0.5)*2.0,
           TYPE.NEBULA,'',nm,
           o.vx+(Math.random()-0.5)*0.05,
           o.vy+(Math.random()-0.5)*0.05,
           nm*CFG.NEB_TEMP_PER_MASS);
+        neb.debris=true;
+        neb.debris_ticks=10;
         if(toAdd) toAdd.push(neb);
       }
     }
@@ -680,12 +703,17 @@ function makeByMass(x, y, vx, vy, mass, mode) {
   if(mass<=0) return null;
 
   if(mode==='remnant_nova') {
-    // П5: из синего гиганта — ЧД или НЗ
+    // Детерминированный выбор: ЧД если число ЧД ≤ BH_THRESH_MAX, иначе НЗ
     if(mass>=CFG.NS_MIN_MASS) {
-      if(mass>15 && Math.random()<calcBHChance()) {
-        const bh=makeObject(x,y,TYPE.BH,'',mass,vx,vy,0);
-        setBHDrift(bh); CNT.bhBorn++;
-        return bh;
+      if(mass>15) {
+        const bhCount=objects.filter(isBH).length;
+        if(bhCount<=CFG.BH_THRESH_MAX) {
+          const bh=makeObject(x,y,TYPE.BH,'',mass,vx,vy,0);
+          setBHDrift(bh); CNT.bhBorn++;
+          return bh;
+        }
+        const ns=makeObject(x,y,TYPE.STAR,STAR.NEUTRON,mass,vx,vy,CFG.T_NEUTRON);
+        CNT.nsBorn++; return ns;
       }
       const ns=makeObject(x,y,TYPE.STAR,STAR.NEUTRON,mass,vx,vy,CFG.T_NEUTRON);
       CNT.nsBorn++; return ns;
@@ -891,12 +919,13 @@ function processReturnPool(toAdd) {
     const actual=Math.max(1,Math.min(m,mass));
     const type=actual<=CFG.NEB_RETURN_MAX?TYPE.NEBULA:TYPE.ASTEROID;
     const pos=inflowPoints[inflowIdx%inflowPoints.length]; inflowIdx++;
-    const angleToCenter=Math.atan2(CFG.CENTER-pos.y, CFG.CENTER-pos.x);
-    // Скорость 1 у.е./тик к центру + орбитальная составляющая
-    const speed=1.0;
     const theta=Math.atan2(pos.y-CFG.CENTER, pos.x-CFG.CENTER);
-    const vx=Math.cos(angleToCenter)*speed + (-rotDir*0.3*Math.sin(theta));
-    const vy=Math.sin(angleToCenter)*speed + ( rotDir*0.3*Math.cos(theta));
+    const rInflow=Math.sqrt((pos.x-CFG.CENTER)**2+(pos.y-CFG.CENTER)**2);
+    const v_circ=Math.sqrt(CFG.G_SCALE*CFG.CENTER_MASS/Math.max(rInflow,1.0));
+    const v_tang=v_circ*0.7;
+    const v_rad=0.3;
+    const vx=-rotDir*v_tang*Math.sin(theta)-Math.cos(theta)*v_rad;
+    const vy= rotDir*v_tang*Math.cos(theta)-Math.sin(theta)*v_rad;
     const obj=makeObject(pos.x,pos.y,type,'',actual,vx,vy,
       actual*(type===TYPE.NEBULA?CFG.NEB_TEMP_PER_MASS:CFG.AST_TEMP_PER_MASS));
     // Карантин 10 тиков — без гравитации
@@ -1021,8 +1050,31 @@ function resolveCollision(a, b, dying, toAdd) {
       return;
     }
 
-    // П2: скорость нового объекта = сохранение импульса
+    if(newStarType === star.star_type) {
+      // Тип не изменился — мутируем звезду на месте, id и age сохраняются
+      star.mass  = totalMass;
+      star.x     = mx; star.y = my;
+      star.vx    = mvx; star.vy = mvy;
+      star.temp  = newTemp;
+      star.r     = Math.sqrt((mx-CFG.CENTER)**2+(my-CFG.CENTER)**2);
+      star.theta = Math.atan2(my-CFG.CENTER, mx-CFG.CENTER);
+      star.omega = (-mvx*Math.sin(star.theta)+mvy*Math.cos(star.theta))/Math.max(star.r,0.1);
+      dying.push(other.id);
+      masslossBuffer.delete(other.id);
+      if(star.temp>=CFG.COLLAPSE_LIMIT && !star.unstable) {
+        if(isBigEvent(star)){
+          star.unstable=true; star.unstable_partner=-1;
+          star.vx=0; star.vy=0;
+        } else {
+          doSupernova(star, toAdd, dying);
+        }
+      }
+      return;
+    }
+
+    // Тип изменился — пересоздаём звезду
     const newStar=makeObject(mx,my,TYPE.STAR,newStarType,totalMass,mvx,mvy,newTemp);
+    newStar.age=star.age;
     if(newTemp>=CFG.COLLAPSE_LIMIT) {
       doSupernova(newStar,toAdd,dying);
     } else {
@@ -1232,6 +1284,7 @@ function updateDOM(collCount) {
   let total=0,mass=0;
   let tRD=0,nRD=0,tYD=0,nYD=0,tBG=0,nBG=0,tNS=0,nNS=0;
   let starRadSum=0, starCount=0;
+  let sumV=0, nV=0, maxV=0, sumOmega=0, sumVcloud=0, nVcloud=0;
   for(const o of objects){
     total++; mass+=o.mass;
     bt[o.type]=(bt[o.type]||0)+1;
@@ -1243,6 +1296,15 @@ function updateDOM(collCount) {
       else if(o.star_type===STAR.NEUTRON){tNS+=o.temp;nNS++;}
       // П10: средний радиус — только звёзды
       starRadSum+=o.r; starCount++;
+    }
+    const spd=Math.sqrt((o.vx||0)**2+(o.vy||0)**2);
+    if(isStar(o)){
+      sumV+=spd; nV++;
+      if(spd>maxV) maxV=spd;
+      sumOmega+=Math.abs(o.omega||0);
+    }
+    if(isCloud(o)){
+      sumVcloud+=spd; nVcloud++;
     }
   }
   document.getElementById('st-total').textContent=total.toLocaleString();
@@ -1300,6 +1362,14 @@ function updateDOM(collCount) {
     document.getElementById('ns-heat').textContent=CNT.nsDiedHeat;
     document.getElementById('ns-mass').textContent=CNT.nsDiedMass;
     document.getElementById('ns-age').textContent=CNT.nsDeaths>0?Math.round(CNT.nsTotalAge/CNT.nsDeaths):'—';
+  }
+  // Velocity Stats
+  const velAvgEl=document.getElementById('vel-avg');
+  if(velAvgEl){
+    velAvgEl.textContent                                   =nV>0      ?(sumV/nV).toFixed(4)        :'—';
+    document.getElementById('vel-omega').textContent       =nV>0      ?(sumOmega/nV).toFixed(5)    :'—';
+    document.getElementById('vel-max').textContent         =nV>0      ?maxV.toFixed(4)              :'—';
+    document.getElementById('vel-cloud').textContent       =nVcloud>0 ?(sumVcloud/nVcloud).toFixed(4):'—';
   }
   // ЧД
   const bhEl=document.getElementById('bh-born');
@@ -1485,7 +1555,7 @@ function applyGalaxy(galaxy) {
   CFG.GALAXY_DIR='west';
 
   // П9: генерируем детерминированные точки влёта по сиду галактики
-  inflowPoints=generateInflowPoints(galaxy.seed||42, 360);
+  inflowPoints=generateInflowPoints(galaxy.seed||42, 800);
   inflowIdx=0;
 
   // Определяем старый центр по среднему координат ЗВЁЗД (они симметричны по спирали)
@@ -1550,6 +1620,38 @@ async function generateGalaxy(seed) {
   } catch(e) {
     loading.innerHTML=`<div style="color:#ff5544;font-size:11px;text-align:center;padding:20px">GENERATION ERROR<br><br>${e.message}</div>`;
   }
+}
+
+function exportSnapshot() {
+  const snap = {
+    tick,
+    rotation_dir: rotDir,
+    target_mass:  targetMass,
+    return_pool:  returnPool,
+    counters:     {...CNT},
+    objects: objects.map(o => ({
+      id:        o.id,
+      type:      o.type,
+      star_type: o.star_type || '',
+      x:         +o.x.toFixed(4),
+      y:         +o.y.toFixed(4),
+      r:         +o.r.toFixed(4),
+      theta:     +o.theta.toFixed(4),
+      mass:      o.mass,
+      vx:        +(o.vx||0).toFixed(6),
+      vy:        +(o.vy||0).toFixed(6),
+      omega:     +(o.omega||0).toFixed(6),
+      temp:      o.temp !== undefined ? +o.temp.toFixed(2) : null,
+      age:       o.age || 0,
+      debris:    o.debris || false,
+    }))
+  };
+  const blob = new Blob([JSON.stringify(snap, null, 2)], {type: 'application/json'});
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = `snapshot_tick_${tick}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 async function reloadGalaxy() {

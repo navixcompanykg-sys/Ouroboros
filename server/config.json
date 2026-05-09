@@ -36,7 +36,8 @@
     "g_scale": 0.001,
     "softening2": 1.0,
     "max_influence_radius": 20.0,
-    "center_mass": 10000
+    "center_mass": 10000,
+    "orbital_drag": 0.02
   },
   "temperature": {
     "collapse_limit": 1000,
@@ -64,7 +65,7 @@
     "dm_neutron_star": 0.0
   },
   "black_holes": {
-    "mass_loss_per_tick": 10,
+    "mass_loss_per_tick": 5,
     "radiation_radius": 5.0,
     "drift_per_10_mass": 0.1,
     "bh_count_threshold_normal": 20,
