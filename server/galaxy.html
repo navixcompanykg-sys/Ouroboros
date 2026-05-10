@@ -229,7 +229,7 @@ let CFG = {
   T_RED:100, T_YELLOW:250, T_BLUE:150, T_NEUTRON:500, T_WHITE:50,
   DT_RED:-0.14, DT_YELLOW:-0.67, DT_BLUE:4.7, DT_NEUTRON:-0.34, DT_WHITE:-0.05,
   NEB_TEMP_PER_MASS:15, AST_TEMP_PER_MASS:3,
-  BH_MASS_LOSS:100, BH_LOSS_PCT:0.0, BH_RAD_RADIUS:10, BH_HEAT_MAX:0.14,
+  BH_MASS_LOSS:10, BH_LOSS_PCT:0.1, BH_RAD_RADIUS:10, BH_HEAT_MAX:0.14,
   ORBITAL_DRAG:0.05,
   EJECTA_FRACTION:0.6,
   IMPULSE_MIN:1.5, EJECTA_DIRS:12,
@@ -743,27 +743,41 @@ function ejectRng(seed) {
   return () => { s = (Math.imul(s, 1664525) + 1013904223) | 0; return (s >>> 0) / 0xffffffff; };
 }
 
+// 2 объекта на каждое из 12 направлений = 24 итого.
+// Сначала резервируем туманности (1–2 у.е. псевдорандомно), остаток — тяжёлые осколки.
+// Импульс ×2 для обоих. Туманность стартует на +0.5 дальше тяжёлого осколка.
 function ejectSixty(x, y, srcVx, srcVy, mass60, toAdd) {
   if(mass60<=0) return;
   const dirs=CFG.EJECTA_DIRS;
-  const perDir=mass60/dirs;
-  // Сид: тик + грубая позиция, чтоб два взрыва в одном тике давали разные узоры
   const rng = ejectRng((tick * 73856093) ^ (Math.round(x) * 19349663) ^ (Math.round(y) * 83492791));
+
+  // Шаг 1: резервируем 1–2 массы на туманность в каждом направлении
+  const nebM = Array.from({length:dirs}, () => 1 + Math.floor(rng() * 2));
+  const totalNeb = nebM.reduce((s,v)=>s+v, 0);
+  const heavyPool = Math.max(0, mass60 - totalNeb);
+  const perDir = heavyPool / dirs;
+
+  const imp = CFG.IMPULSE_MIN * 2; // ×2 для всех осколков
+
   for(let i=0;i<dirs;i++) {
-    const angle=(2*Math.PI/dirs)*i;
-    const r      = 1.0 + rng() * 1.0;          // случайное смещение 1–2 у.е.
-    const imp    = CFG.IMPULSE_MIN * (1.0 + rng() * 0.5); // импульс 1.0–1.5× от IMPULSE_MIN
-    const nx=x+Math.cos(angle)*r;
-    const ny=y+Math.sin(angle)*r;
-    const evx=Math.cos(angle)*imp;
-    const evy=Math.sin(angle)*imp;
-    let m=Math.round(perDir); if(m<1) m=1;
-    const obj=makeByMass(nx, ny, evx, evy, m, 'ejecta');
-    if(obj) {
-      obj.debris=true;
-      obj.debris_ticks=5;
-      toAdd.push(obj);
+    const angle = (2*Math.PI/dirs)*i;
+    const cos_a = Math.cos(angle), sin_a = Math.sin(angle);
+    const r_h   = 0.5 + rng() * 0.5; // тяжёлый: 0.5–1 у.е. от эпицентра
+    const r_n   = r_h + 0.5;          // туманность: ещё +0.5 дальше
+
+    // Тяжёлый осколок (тип по массе через makeByMass)
+    const m_h = Math.round(perDir);
+    if(m_h >= 1) {
+      const obj = makeByMass(x+cos_a*r_h, y+sin_a*r_h, cos_a*imp, sin_a*imp, m_h, 'ejecta');
+      if(obj){ obj.debris=true; obj.debris_ticks=5; toAdd.push(obj); }
     }
+
+    // Туманность — создаём напрямую, минуя makeByMass
+    const nm = nebM[i];
+    const neb = makeObject(x+cos_a*r_n, y+sin_a*r_n, TYPE.NEBULA,'',nm,
+      cos_a*imp, sin_a*imp, nm*CFG.NEB_TEMP_PER_MASS);
+    neb.debris=true; neb.debris_ticks=5;
+    toAdd.push(neb);
   }
 }
 
