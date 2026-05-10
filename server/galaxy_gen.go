@@ -36,9 +36,9 @@ type Config struct {
 		MassWDMax         int         `json:"mass_white_dwarf_max"`
 		MassBHMin         int         `json:"mass_black_hole_min"`
 		MassBHMax         int         `json:"mass_black_hole_max"`
-		MassNebMin        int         `json:"mass_nebula_min"`
+		MassNebMin        int         `json:"mass_nebula_min"` // 1–5
 		MassNebMax        int         `json:"mass_nebula_max"`
-		MassAstMin        int         `json:"mass_asteroid_min"`
+		MassAstMin        int         `json:"mass_asteroid_min"` // 6–30
 		MassAstMax        int         `json:"mass_asteroid_max"`
 	} `json:"generation"`
 }
