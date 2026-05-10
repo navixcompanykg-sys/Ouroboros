@@ -154,7 +154,9 @@
       <div class="stat-row"><span class="stat-label">Yellow→Blue</span><span class="stat-value" id="ev-yb">0</span></div>
       <div class="stat-row"><span class="stat-label">Born from formation</span><span class="stat-value" id="ev-born">0</span></div>
       <div class="stat-row"><span class="stat-label">Avg formations/tick</span><span class="stat-value" id="ev-form">0.00</span></div>
-      <div class="stat-row"><span class="stat-label">Avg return/tick</span><span class="stat-value" id="ev-ret">0.00</span></div>
+      <div class="stat-row"><span class="stat-label">Avg return mass/tick</span><span class="stat-value" id="ev-ret">0.0</span></div>
+      <div class="stat-row"><span class="stat-label">Avg return obj/tick</span><span class="stat-value" id="ev-ret-obj">0.00</span></div>
+      <div class="stat-row"><span class="stat-label">Avg mass per return</span><span class="stat-value" id="ev-ret-avg">0.0</span></div>
     </div>
     <!-- Collisions by type -->
     <div class="panel">
@@ -218,26 +220,21 @@
 let CFG = {
   GALAXY_R:80, CHAOS_R:2,
   MIN_DIST:0.9,
-  G_SCALE:0.005, SOFTENING2:1.0, MAX_INF_R:20,
-  CENTER_MASS:100000,
+  MAX_INF_R:20,
   V_FLAT:1.3963,       // единая орбитальная скорость (T=360 при r=80)
-  INWARD_PULL:0.003,   // слабое радиальное притяжение к центру
+  RADIAL_DAMP:0.12,    // затухание радиальной скорости (правка №1)
+  DRIFT_K:2.2e-3,      // массовый дрифт к центру: dr = DRIFT_K × mass / r за тик (только звёзды, ЧД, формации)
   MAX_JUMP_TICK:2000,
   COLLAPSE_LIMIT:1000, DEATH_LIMIT:10,
-  MAX_KV:2.5, V_MAX_KV:0.9,
   T_RED:100, T_YELLOW:250, T_BLUE:150, T_NEUTRON:500, T_WHITE:50,
   DT_RED:-0.14, DT_YELLOW:-0.67, DT_BLUE:4.7, DT_NEUTRON:-0.34, DT_WHITE:-0.05,
   NEB_TEMP_PER_MASS:15, AST_TEMP_PER_MASS:3,
-  DM_RED:0.0, DM_YELLOW:0.0, DM_BLUE:0.0, DM_WHITE:0.0, DM_NEUTRON:0.0,
-  BH_MASS_LOSS:5, BH_LOSS_PCT:0.05, BH_RAD_RADIUS:5, BH_DRIFT_PER_10:0.1,
-  BH_THRESH_MAX:40,
-  ORBITAL_DRAG:0.02,
-  EJECTA_FRACTION:0.6, REMAINDER_FRACTION:0.4,
-  IMPULSE_MIN:1.0, IMPULSE_MAX:1.0, EJECTA_DIRS:8,
-  FORMATION_TICKS:3, BIG_EVENT_MASS:601, WARNING_TICKS:1,
-  NS_MIN_MASS:10,
-  NEB_RETURN_MAX:2, AST_RETURN_MAX:5,
-  GALAXY_DIR:'west',
+  BH_MASS_LOSS:100, BH_LOSS_PCT:0.0, BH_RAD_RADIUS:10, BH_HEAT_MAX:0.14,
+  ORBITAL_DRAG:0.05,
+  EJECTA_FRACTION:0.6,
+  IMPULSE_MIN:1.5, EJECTA_DIRS:12,
+  FORMATION_TICKS:6, BIG_EVENT_MASS:601,
+  NEB_RETURN_MAX:2, AST_RETURN_MAX:30, INFLOW_SPEED:4.0,
   // Вычисляемые из GALAXY_R (не задавать вручную)
   CENTER:100,   // = GALAXY_R * 1.25
   FIELD_SIZE:200 // = CENTER * 2
@@ -269,13 +266,16 @@ async function loadConfig() {
     recalcDerived();
 
     // Physics
-    CFG.G_SCALE    = p.g_scale            ?? CFG.G_SCALE;
-    CFG.SOFTENING2 = p.softening2         ?? CFG.SOFTENING2;
-    CFG.MAX_INF_R  = p.max_influence_radius ?? CFG.MAX_INF_R;
-    CFG.CENTER_MASS   = p.center_mass         ?? CFG.CENTER_MASS;
-    CFG.V_FLAT        = p.v_flat              ?? CFG.V_FLAT;
-    CFG.INWARD_PULL   = p.inward_pull         ?? CFG.INWARD_PULL;
-    CFG.ORBITAL_DRAG  = p.orbital_drag        ?? CFG.ORBITAL_DRAG;
+    CFG.MAX_INF_R     = p.max_influence_radius ?? CFG.MAX_INF_R;
+    if(p.gravity_k_base !== undefined || p.gravity_power !== undefined) {
+      const kb = p.gravity_k_base ?? GRAVITY_K_BASE;
+      const pw = p.gravity_power  ?? GRAVITY_POWER;
+      GRAVITY_TABLE = buildGravityTable(kb, pw);
+    }
+    CFG.V_FLAT        = p.v_flat               ?? CFG.V_FLAT;
+    CFG.ORBITAL_DRAG  = p.orbital_drag         ?? CFG.ORBITAL_DRAG;
+    CFG.RADIAL_DAMP   = p.radial_damp          ?? CFG.RADIAL_DAMP;
+    CFG.DRIFT_K       = p.drift_k              ?? CFG.DRIFT_K;
 
     // Simulation
     CFG.MAX_JUMP_TICK = s.max_jump_tick   ?? CFG.MAX_JUMP_TICK;
@@ -283,8 +283,6 @@ async function loadConfig() {
     // Temperature
     CFG.COLLAPSE_LIMIT = t.collapse_limit ?? CFG.COLLAPSE_LIMIT;
     CFG.DEATH_LIMIT    = t.death_limit    ?? CFG.DEATH_LIMIT;
-    CFG.MAX_KV         = t.max_kv         ?? CFG.MAX_KV;
-    CFG.V_MAX_KV       = t.v_max_kv       ?? CFG.V_MAX_KV;
     CFG.T_RED     = t.start_temp_red_dwarf    ?? CFG.T_RED;
     CFG.T_YELLOW  = t.start_temp_yellow_dwarf ?? CFG.T_YELLOW;
     CFG.T_BLUE    = t.start_temp_blue_giant   ?? CFG.T_BLUE;
@@ -298,36 +296,23 @@ async function loadConfig() {
     CFG.NEB_TEMP_PER_MASS = t.nebula_temp_per_mass   ?? CFG.NEB_TEMP_PER_MASS;
     CFG.AST_TEMP_PER_MASS = t.asteroid_temp_per_mass ?? CFG.AST_TEMP_PER_MASS;
 
-    // Mass loss per tick (П8)
-    CFG.DM_RED    = ml.dm_red_dwarf    ?? CFG.DM_RED;
-    CFG.DM_YELLOW = ml.dm_yellow_dwarf ?? CFG.DM_YELLOW;
-    CFG.DM_BLUE   = ml.dm_blue_giant   ?? CFG.DM_BLUE;
-    CFG.DM_WHITE  = ml.dm_white_dwarf  ?? CFG.DM_WHITE;
-    CFG.DM_NEUTRON= ml.dm_neutron_star ?? CFG.DM_NEUTRON;
-
     // Black holes
     CFG.BH_MASS_LOSS     = bh.mass_loss_per_tick        ?? CFG.BH_MASS_LOSS;
     CFG.BH_LOSS_PCT      = bh.mass_loss_pct             ?? CFG.BH_LOSS_PCT;
     CFG.BH_RAD_RADIUS    = bh.radiation_radius          ?? CFG.BH_RAD_RADIUS;
-    CFG.BH_DRIFT_PER_10  = bh.drift_per_10_mass         ?? CFG.BH_DRIFT_PER_10;
-    CFG.BH_THRESH_MAX    = bh.bh_count_threshold_max    ?? CFG.BH_THRESH_MAX;
+    CFG.BH_HEAT_MAX      = bh.heat_max                  ?? CFG.BH_HEAT_MAX;
 
     // Dispersal (универсальное 60/40)
     CFG.EJECTA_FRACTION    = di.ejecta_fraction          ?? CFG.EJECTA_FRACTION;
-    CFG.REMAINDER_FRACTION = di.remainder_fraction       ?? CFG.REMAINDER_FRACTION;
     CFG.IMPULSE_MIN        = di.impulse_min              ?? CFG.IMPULSE_MIN;
-    CFG.IMPULSE_MAX        = di.impulse_max              ?? CFG.IMPULSE_MAX;
     CFG.EJECTA_DIRS        = di.directions               ?? CFG.EJECTA_DIRS;
     CFG.FORMATION_TICKS    = di.formation_ticks          ?? CFG.FORMATION_TICKS;
     CFG.BIG_EVENT_MASS     = di.big_event_mass_threshold ?? CFG.BIG_EVENT_MASS;
-    CFG.WARNING_TICKS      = di.warning_ticks            ?? CFG.WARNING_TICKS;
-    CFG.NS_MIN_MASS        = di.neutron_star_min_mass    ?? CFG.NS_MIN_MASS;
 
     // Mass return
-    CFG.NEB_RETURN_MAX    = mr.nebula_return_max  ?? CFG.NEB_RETURN_MAX;
+    CFG.NEB_RETURN_MAX    = mr.nebula_return_max   ?? CFG.NEB_RETURN_MAX;
     CFG.AST_RETURN_MAX    = mr.asteroid_return_max ?? CFG.AST_RETURN_MAX;
-    CFG.INFLOW_SPEED_MIN  = mr.inflow_speed_min   ?? CFG.INFLOW_SPEED_MIN;
-    CFG.INFLOW_SPEED_MAX  = mr.inflow_speed_max   ?? CFG.INFLOW_SPEED_MAX;
+    CFG.INFLOW_SPEED      = mr.inflow_speed        ?? CFG.INFLOW_SPEED;
 
     document.getElementById('jump-input').max = CFG.MAX_JUMP_TICK;
   } catch(e) { console.warn('Config load failed, using defaults', e); }
@@ -355,6 +340,7 @@ const CNT = {
   evRY:0, evYB:0, bornFromFormation:0,
   formationTicks:0, formationCount:0,
   totalReturnMass:0,
+  retCount:0, retMassActual:0,  // число и фактическая масса влетевших объектов
   bhBorn:0,
   nsBorn:0, nsDiedCool:0, nsDiedHeat:0, nsDiedMass:0,
   nsTotalAge:0, nsDeaths:0,
@@ -422,18 +408,20 @@ function dtForStarType(st) {
   return -0.1;
 }
 
-// Determine star type from mass (for new/merged objects)
+// Determine star type from mass (для новых/merged объектов и формаций)
+// Правка №4: 51–100 → красный карлик (белый карлик только при остывании)
 function starTypeFromMass(mass) {
   if(mass >= 601) return STAR.BLUE;
   if(mass >= 301) return STAR.YELLOW;
   if(mass >= 101) return STAR.RED;
-  return STAR.WHITE;  // 51–100
+  if(mass >= 51)  return STAR.RED;  // не белый — правка №4
+  return null; // ниже 51 — не звезда
 }
 
 // Determine object type from mass (general)
+// Звёзды рождаются ТОЛЬКО через checkFormationBirth после 6 тиков формации
 function typeFromMass(mass) {
   if(mass >= 1001) return {type:TYPE.BH};
-  if(mass >= 51)   return {type:TYPE.STAR, star_type: starTypeFromMass(mass)};
   if(mass >= 31)   return {type:TYPE.FORMATION};
   if(mass >= 3)    return {type:TYPE.ASTEROID};
   return {type:TYPE.NEBULA};
@@ -456,7 +444,6 @@ function makeObject(x, y, type, star_type, mass, vx, vy, temp) {
     formation_tick: 0,
     unstable: false,
     unstable_partner: -1,
-    bh_drift_vx: 0, bh_drift_vy: 0,
     prevX: x, prevY: y,
     prevX2: x, prevY2: y,
     prevX3: x, prevY3: y,
@@ -522,7 +509,7 @@ let massiveObjects=[];
 
 // Таблица гравитационных коэффициентов для объектов (r=1..20)
 // GRAVITY_TABLE[i] = K_BASE / (i+1)^1.5   пересчитывается при loadConfig
-const GRAVITY_K_BASE = 0.00002;
+const GRAVITY_K_BASE = 0.0001;
 const GRAVITY_POWER  = 1.5;
 let GRAVITY_TABLE = buildGravityTable(GRAVITY_K_BASE, GRAVITY_POWER);
 
@@ -539,12 +526,16 @@ function computeAccelXY(o) {
 
   let ax=0, ay=0;
 
-  // Слабое радиальное притяжение к центру (держит галактику вместе)
   {
     const cdx=CFG.CENTER-o.x, cdy=CFG.CENTER-o.y;
     const cd=Math.sqrt(cdx*cdx+cdy*cdy)+0.001;
-    ax+=CFG.INWARD_PULL*(cdx/cd);
-    ay+=CFG.INWARD_PULL*(cdy/cd);
+
+    // Центростремительное ускорение для плоской кривой вращения: a = V_FLAT² / r
+    // Удерживает объект на текущей орбите — нейтрально к радиусу
+    const centripetal=CFG.V_FLAT*CFG.V_FLAT/cd;
+    ax+=centripetal*(cdx/cd);
+    ay+=centripetal*(cdy/cd);
+
   }
 
   // Гравитация от массивных объектов через таблицу K_BASE/r^1.5
@@ -599,12 +590,34 @@ function leapfrogStep() {
       const sinT=Math.sin(o.theta), cosT=Math.cos(o.theta);
       const v_tang=-o.vx*sinT+o.vy*cosT;
       const excess=v_tang-rotDir*CFG.V_FLAT;
-      const massFactor=Math.min(2.0,o.mass/300.0); // нормировка под новые массы
+      const massFactor=Math.min(2.0,o.mass/300.0);
       const drift=-excess*CFG.ORBITAL_DRAG*massFactor;
       o.x+=cosT*drift;
       o.y+=sinT*drift;
       o.r=Math.sqrt((o.x-CFG.CENTER)**2+(o.y-CFG.CENTER)**2);
       o.theta=Math.atan2(o.y-CFG.CENTER, o.x-CFG.CENTER);
+
+      // Radial drag — гасит радиальную скорость, помогает захвату на орбиту (правка №1)
+      const cosT2=Math.cos(o.theta), sinT2=Math.sin(o.theta);
+      const v_rad=o.vx*cosT2+o.vy*sinT2;
+      const v_rad_new=v_rad*(1-CFG.RADIAL_DAMP);
+      const dv=v_rad_new-v_rad;
+      o.vx+=dv*cosT2;
+      o.vy+=dv*sinT2;
+    }
+
+    // Массовый дрифт к центру — прямая позиционная коррекция, не через скорость.
+    // Применяется ПОСЛЕ radial drag чтобы не гаситься им.
+    // dr = DRIFT_K × mass / r за тик. Только звёзды, ЧД, формации (не облака).
+    // Калибровка: mass=500, r=50 → 5 у.е. за один орбитальный период (~225 тиков).
+    if(!o.debris && o.r > CFG.CHAOS_R) {
+      const dr = CFG.DRIFT_K * o.mass / o.r;
+      const cosD = Math.cos(o.theta);
+      const sinD = Math.sin(o.theta);
+      o.x -= cosD * dr;
+      o.y -= sinD * dr;
+      o.r  = Math.sqrt((o.x-CFG.CENTER)**2+(o.y-CFG.CENTER)**2);
+      o.theta = Math.atan2(o.y-CFG.CENTER, o.x-CFG.CENTER);
     }
 
     // П3: debris — countdown, после 10 тиков становится обычным объектом
@@ -646,16 +659,16 @@ function applyBHRadiation(toAdd) {
   for(const bh of bhs) {
     if(bh.mass <= 0) { dying.push(bh.id); continue; }
     // Потеря массы: 5 единиц + 5% от массы, минимум 5
-    const radiated = Math.min(bh.mass, Math.ceil(5 + bh.mass * CFG.BH_LOSS_PCT));
+    const radiated = Math.min(bh.mass, Math.ceil(CFG.BH_MASS_LOSS + bh.mass * CFG.BH_LOSS_PCT));
     bh.mass -= radiated;
 
-    // Нагрев ближайших звёзд
-    const nearby = objects.filter(o => o!==bh && Math.sqrt((o.x-bh.x)**2+(o.y-bh.y)**2) <= CFG.BH_RAD_RADIUS);
-    if(nearby.length > 0) {
-      const boost = radiated / nearby.length;
-      for(const o of nearby) {
-        if(isStar(o)) { o.temp = Math.min(CFG.COLLAPSE_LIMIT, o.temp + boost); }
-      }
+    // Нагрев ближайших звёзд — линейно убывает с расстоянием, независимо для каждой (правка ТЗ §10)
+    const nearby = objects.filter(o => o!==bh && isStar(o) &&
+      Math.sqrt((o.x-bh.x)**2+(o.y-bh.y)**2) <= CFG.BH_RAD_RADIUS);
+    for(const o of nearby) {
+      const d=Math.sqrt((o.x-bh.x)**2+(o.y-bh.y)**2);
+      const boost=CFG.BH_HEAT_MAX*(1-d/CFG.BH_RAD_RADIUS);
+      o.temp=Math.min(CFG.COLLAPSE_LIMIT, o.temp+boost);
     }
 
     if(bh.mass <= 0) {
@@ -672,98 +685,105 @@ function applyBHRadiation(toAdd) {
 
 // ============================================================
 // UNIVERSAL DISPERSAL — правило 60/40 для всех распадов
-// 60% → 8 осколков (тип по массе порции)
-// 40% → остаток (тип по массе, НЗ если источник синий гигант и остаток ≥10)
+// 60% → 12 осколков (тип по массе порции), 8 направлений по 45°
+// 40% → остаток (тип/скорость зависят от режима)
 // ============================================================
-
-// П5: шанс рождения ЧД зависит от их текущего числа
-function calcBHChance() {
-  const n=objects.filter(isBH).length;
-  if(n<CFG.BH_THRESH_NORMAL) return 1.0;
-  if(n>=CFG.BH_THRESH_MAX) return 0.0;
-  return 1.0-(n-CFG.BH_THRESH_NORMAL)/(CFG.BH_THRESH_MAX-CFG.BH_THRESH_NORMAL);
-}
 
 // Создаёт объект по его массе
 // mode: 'ejecta'        — осколок разлёта (тип по массе, НЗ не рождается)
-//       'remnant_nova'  — остаток сверхновой синего гиганта (ЧД или НЗ)
-//       'remnant_decay' — остаток остывшей звезды (белый карлик если 10–15)
+//       'remnant_nova'  — остаток сверхновой синего гиганта (ЧД или НЗ детерминированно)
+//       'remnant_decay' — остаток остывшей звезды
 function makeByMass(x, y, vx, vy, mass, mode) {
   if(mass<=0) return null;
 
   if(mode==='remnant_nova') {
-    // Детерминированный выбор: ЧД если число ЧД ≤ BH_THRESH_MAX, иначе НЗ
-    if(mass>=CFG.NS_MIN_MASS) {
-      if(mass>15) {
-        const bhCount=objects.filter(isBH).length;
-        if(bhCount<=CFG.BH_THRESH_MAX) {
-          const bh=makeObject(x,y,TYPE.BH,'',mass,vx,vy,0);
-          setBHDrift(bh); CNT.bhBorn++;
-          return bh;
-        }
-        const ns=makeObject(x,y,TYPE.STAR,STAR.NEUTRON,mass,vx,vy,CFG.T_NEUTRON);
-        CNT.nsBorn++; return ns;
-      }
-      const ns=makeObject(x,y,TYPE.STAR,STAR.NEUTRON,mass,vx,vy,CFG.T_NEUTRON);
-      CNT.nsBorn++; return ns;
+    // Соотношение ЧД:НЗ = 1:2 детерминированно по порядку сверхновых:
+    // 1→НЗ, 2→НЗ, 3→ЧД, 4→НЗ, 5→НЗ, 6→ЧД ...
+    const isBHturn = (CNT.supernovae % 3 === 0);
+    if(isBHturn) {
+      const bh=makeObject(x,y,TYPE.BH,'',mass,vx,vy,0);
+      CNT.bhBorn++;
+      return bh;
     }
-    if(mass>=3) return makeObject(x,y,TYPE.ASTEROID,'',mass,vx,vy,mass*CFG.AST_TEMP_PER_MASS);
-    return makeObject(x,y,TYPE.NEBULA,'',mass,vx,vy,mass*CFG.NEB_TEMP_PER_MASS);
+    const ns=makeObject(x,y,TYPE.STAR,STAR.NEUTRON,mass,vx,vy,CFG.T_NEUTRON);
+    CNT.nsBorn++; return ns;
   }
 
   if(mode==='remnant_decay') {
-    // П6: белый карлик из остатка остывшей звезды
+    // Остаток остывшей звезды: масса 10–15 → белый карлик, >15 → формация с V_FLAT
     if(mass>=10 && mass<=15) return makeObject(x,y,TYPE.STAR,STAR.WHITE,mass,vx,vy,CFG.T_WHITE);
     if(mass>15) {
-      const form=makeObject(x,y,TYPE.FORMATION,'',mass,vx,vy,0);
+      const theta=Math.atan2(y-CFG.CENTER,x-CFG.CENTER);
+      const fvx=-rotDir*CFG.V_FLAT*Math.sin(theta);
+      const fvy= rotDir*CFG.V_FLAT*Math.cos(theta);
+      const form=makeObject(x,y,TYPE.FORMATION,'',mass,fvx,fvy,0);
       form.formation_tick=tick; CNT.formationCount++; return form;
     }
     if(mass>=3) return makeObject(x,y,TYPE.ASTEROID,'',mass,vx,vy,mass*CFG.AST_TEMP_PER_MASS);
     return makeObject(x,y,TYPE.NEBULA,'',mass,vx,vy,mass*CFG.NEB_TEMP_PER_MASS);
   }
 
-  // mode==='ejecta': тип по массе, НЗ не рождается
-  if(mass<=2) return makeObject(x,y,TYPE.NEBULA,'',mass,vx,vy,mass*CFG.NEB_TEMP_PER_MASS);
-  if(mass<=9) return makeObject(x,y,TYPE.ASTEROID,'',mass,vx,vy,mass*CFG.AST_TEMP_PER_MASS);
-  // ≥10 → новообразование
-  const form=makeObject(x,y,TYPE.FORMATION,'',mass,vx,vy,0);
-  form.formation_tick=tick; CNT.formationCount++;
-  return form;
+  // mode==='ejecta': тип по массе, звёзды не рождаются напрямую — только через формацию
+  if(mass<=2)  return makeObject(x,y,TYPE.NEBULA,'',mass,vx,vy,mass*CFG.NEB_TEMP_PER_MASS);
+  if(mass<=30) return makeObject(x,y,TYPE.ASTEROID,'',mass,vx,vy,mass*CFG.AST_TEMP_PER_MASS);
+  // ≥31 → формация; скорость из аргументов (ejecta-импульс).
+  // orbital drag выровняет орбиту после того как спадёт debris-флаг (5 тиков).
+  // V_FLAT не подставляем — это сломало бы разлёт, создавая мгновенные круги.
+  {
+    const form=makeObject(x,y,TYPE.FORMATION,'',mass,vx,vy,0);
+    form.formation_tick=tick; CNT.formationCount++;
+    return form;
+  }
 }
 
-// П3: 60% → 8 осколков, debris=true на 10 тиков, импульс 1.0 у.е./тик без гравитации
+// 60% → 12 осколков по 30°, смещение 2 у.е., импульс 1.5 у.е./тик, debris=true (правки №2, №7)
+// Детерминированный LCG от тика и позиции взрыва — одинаковый тик+место = одинаковый узор
+function ejectRng(seed) {
+  let s = seed | 0;
+  return () => { s = (Math.imul(s, 1664525) + 1013904223) | 0; return (s >>> 0) / 0xffffffff; };
+}
+
 function ejectSixty(x, y, srcVx, srcVy, mass60, toAdd) {
   if(mass60<=0) return;
   const dirs=CFG.EJECTA_DIRS;
   const perDir=mass60/dirs;
+  // Сид: тик + грубая позиция, чтоб два взрыва в одном тике давали разные узоры
+  const rng = ejectRng((tick * 73856093) ^ (Math.round(x) * 19349663) ^ (Math.round(y) * 83492791));
   for(let i=0;i<dirs;i++) {
     const angle=(2*Math.PI/dirs)*i;
-    // П3: фиксированный импульс 1.0, без разброса
-    const evx=Math.cos(angle)*1.0;
-    const evy=Math.sin(angle)*1.0;
+    const r      = 1.0 + rng() * 1.0;          // случайное смещение 1–2 у.е.
+    const imp    = CFG.IMPULSE_MIN * (1.0 + rng() * 0.5); // импульс 1.0–1.5× от IMPULSE_MIN
+    const nx=x+Math.cos(angle)*r;
+    const ny=y+Math.sin(angle)*r;
+    const evx=Math.cos(angle)*imp;
+    const evy=Math.sin(angle)*imp;
     let m=Math.round(perDir); if(m<1) m=1;
-    const nx=x+Math.cos(angle)*2.0;
-    const ny=y+Math.sin(angle)*2.0;
     const obj=makeByMass(nx, ny, evx, evy, m, 'ejecta');
     if(obj) {
-      // П3: помечаем как debris — 10 тиков без гравитации
       obj.debris=true;
-      obj.debris_ticks=10;
+      obj.debris_ticks=5;
       toAdd.push(obj);
     }
   }
 }
 
 // Главная функция универсального распада
-// mode: 'decay' (скорость сохраняется) | 'explode' (скорость=0)
+// mode: 'decay' (скорость сохраняется) | 'explode' (остаток получает V_FLAT)
 // remnantMode: режим для 40% остатка ('ejecta'|'remnant_nova'|'remnant_decay')
 function disperseObject(o, toAdd, dying, mode, remnantMode) {
   const srcVx=mode==='decay'?(o.vx||0):0;
   const srcVy=mode==='decay'?(o.vy||0):0;
+  // Остаток при взрыве получает круговую скорость V_FLAT (правка №5)
+  let remVx=srcVx, remVy=srcVy;
+  if(mode==='explode') {
+    const theta=Math.atan2(o.y-CFG.CENTER, o.x-CFG.CENTER);
+    remVx=-rotDir*CFG.V_FLAT*Math.sin(theta);
+    remVy= rotDir*CFG.V_FLAT*Math.cos(theta);
+  }
   const mass60=Math.floor(o.mass*CFG.EJECTA_FRACTION);
   const mass40=o.mass-mass60;
   ejectSixty(o.x, o.y, srcVx, srcVy, mass60, toAdd);
-  const rem=makeByMass(o.x, o.y, srcVx, srcVy, mass40, remnantMode||'ejecta');
+  const rem=makeByMass(o.x, o.y, remVx, remVy, mass40, remnantMode||'ejecta');
   if(rem) toAdd.push(rem);
   dying.push(o.id);
   masslossBuffer.delete(o.id);
@@ -778,7 +798,7 @@ function trackStarDeath(o) {
   }
 }
 
-// П5: сверхновая синего гиганта даёт ЧД или НЗ в остатке
+// Сверхновая: синий гигант → remnant_nova (ЧД или НЗ), остальные → ejecta (правка №5)
 function doSupernova(o, toAdd, dying) {
   CNT.supernovae++; CNT.deathHeat++;
   if(o.star_type===STAR.NEUTRON){ CNT.nsDiedHeat++; CNT.nsDeaths++; CNT.nsTotalAge+=o.age; }
@@ -811,67 +831,55 @@ function apply6040(x, y, vx, vy, totalMass, toAdd) {
 }
 
 // ============================================================
-// BLACK HOLE DRIFT
-// ============================================================
-function setBHDrift(bh) {
-  const dx=bh.x-CFG.CENTER, dy=bh.y-CFG.CENTER;
-  const d=Math.sqrt(dx*dx+dy*dy)||1;
-  const speed=(bh.mass/10)*CFG.BH_DRIFT_PER_10;
-  bh.bh_drift_vx=(dx/d)*speed;
-  bh.bh_drift_vy=(dy/d)*speed;
-}
-
 // ============================================================
 // FORMATION (STELLAR NURSERY)
 // ============================================================
 function checkFormationBirth(o, toAdd, dying) {
   if(o.type!==TYPE.FORMATION) return;
-  if(tick-o.formation_tick < CFG.FORMATION_TICKS) return;
 
-  // Если масса недостаточна — пробуем поглотить туманности в радиусе 5 у.е.
-  if(o.mass < 20) {
-    const nearby = objects.filter(p =>
-      p!==o && !dying.includes(p.id) &&
-      (p.type===TYPE.NEBULA || p.type===TYPE.ASTEROID) &&
-      Math.sqrt((p.x-o.x)**2+(p.y-o.y)**2) <= 5.0
-    ).sort((a,b) => {
-      const da=(a.x-o.x)**2+(a.y-o.y)**2;
-      const db=(b.x-o.x)**2+(b.y-o.y)**2;
-      return da-db;
-    });
-
-    for(const nb of nearby) {
-      o.mass += nb.mass;
-      dying.push(nb.id);
-      masslossBuffer.delete(nb.id);
-      if(o.mass >= 20) break;
-    }
-
-    // Всё ещё мало — продлеваем таймер ещё на FORMATION_TICKS
-    if(o.mass < 20) {
-      o.formation_tick = tick;
-      return;
-    }
+  // Аккреция каждый тик — поглощаем ближайшие облака в радиусе 5 у.е.
+  // Не ограничиваем по массе — формация копит всё время жизни (FORMATION_TICKS тиков)
+  const nearby = objects.filter(p =>
+    p!==o && !dying.includes(p.id) &&
+    (p.type===TYPE.NEBULA || p.type===TYPE.ASTEROID) &&
+    Math.sqrt((p.x-o.x)**2+(p.y-o.y)**2) <= 5.0
+  ).sort((a,b) => {
+    const da=(a.x-o.x)**2+(a.y-o.y)**2;
+    const db=(b.x-o.x)**2+(b.y-o.y)**2;
+    return da-db;
+  });
+  for(const nb of nearby) {
+    o.mass += nb.mass;
+    dying.push(nb.id);
+    masslossBuffer.delete(nb.id);
   }
 
+  // Ждём полные FORMATION_TICKS тиков независимо от накопленной массы
+  if(tick - o.formation_tick < CFG.FORMATION_TICKS) return;
+
+  // Время вышло — рожаем звезду по итоговой массе
   CNT.bornFromFormation++;
-  if(o.mass>=101) { apply6040(o.x,o.y,0,0,o.mass,toAdd); dying.push(o.id); return; }
-  const res=typeFromMass(o.mass);
-  if(res.type===TYPE.STAR) {
-    const r=Math.max(o.r, 0.5);
-    const theta=o.theta;
-    const vcirc=CFG.V_FLAT; // плоская кривая вращения
-    const vx=-rotDir*vcirc*Math.sin(theta);
-    const vy= rotDir*vcirc*Math.cos(theta);
-    const star=makeObject(o.x,o.y,TYPE.STAR,res.star_type,o.mass,vx,vy,startTempForStarType(res.star_type));
-    toAdd.push(star);
-  } else if(res.type===TYPE.FORMATION) {
-    o.formation_tick=tick; return;
-  } else {
-    const obj=makeObject(o.x,o.y,res.type,'',o.mass,o.vx||0,o.vy||0,
-      o.mass*(res.type===TYPE.NEBULA?CFG.NEB_TEMP_PER_MASS:CFG.AST_TEMP_PER_MASS));
-    toAdd.push(obj);
+
+  // Если масса всё ещё меньше 51 — продлеваем, ждём ещё цикл
+  if(o.mass < 51) {
+    o.formation_tick = tick;
+    return;
   }
+
+  // mass >= 1001 — немедленный 60/40 распад
+  if(o.mass >= 1001) {
+    apply6040(o.x, o.y, 0, 0, o.mass, toAdd);
+    dying.push(o.id);
+    return;
+  }
+
+  // Рождаем звезду по итоговой массе (тип через starTypeFromMass)
+  const newSt = starTypeFromMass(o.mass);
+  const theta = o.theta;
+  const vx = -rotDir * CFG.V_FLAT * Math.sin(theta);
+  const vy =  rotDir * CFG.V_FLAT * Math.cos(theta);
+  const star = makeObject(o.x, o.y, TYPE.STAR, newSt, o.mass, vx, vy, startTempForStarType(newSt));
+  toAdd.push(star);
   dying.push(o.id);
 }
 
@@ -910,13 +918,15 @@ function processReturnPool(toAdd) {
     const pos=inflowPoints[inflowIdx%inflowPoints.length]; inflowIdx++;
     const theta=Math.atan2(pos.y-CFG.CENTER, pos.x-CFG.CENTER);
     // Чисто радиальный влёт — orbital drag конвертирует в орбитальную скорость
-    const vx=-Math.cos(theta)*1.0;
-    const vy=-Math.sin(theta)*1.0;
+    const vx=-Math.cos(theta)*CFG.INFLOW_SPEED;
+    const vy=-Math.sin(theta)*CFG.INFLOW_SPEED;
     const obj=makeObject(pos.x,pos.y,type,'',actual,vx,vy,
       actual*(type===TYPE.NEBULA?CFG.NEB_TEMP_PER_MASS:CFG.AST_TEMP_PER_MASS));
-    // Карантин 10 тиков — без гравитации
+    // Карантин 5 тиков — без гравитации
     obj.debris=true;
-    obj.debris_ticks=10;
+    obj.debris_ticks=5;
+    CNT.retCount++;
+    CNT.retMassActual+=actual;
     toAdd.push(obj);
     mass-=actual;
   }
@@ -964,7 +974,7 @@ function resolveCollision(a, b, dying, toAdd) {
 
   if(aCloud&&bCloud)                    CNT.colCC++;
   else if(aCloud&&bStar||aStar&&bCloud) CNT.colCS++;
-  else if(aStar&&bStar)                 CNT.colSS++;
+  // colSS считается внутри блока слияния звезда+звезда
   else if(aStar&&bBH||aBH&&bStar)       CNT.colSB++;
   else if(aBH&&bBH)                     CNT.colBB++;
   else if((aCloud&&bBH)||(aBH&&bCloud)) CNT.colCB++;
@@ -974,7 +984,7 @@ function resolveCollision(a, b, dying, toAdd) {
   // ЧД поглощает всё
   if(aBH||bBH) {
     const bh=aBH?a:b, other=aBH?b:a;
-    bh.mass+=other.mass; setBHDrift(bh);
+    bh.mass+=other.mass;
     // Счётчик гибели НЗ при поглощении ЧД
     if(isStar(other) && other.star_type===STAR.NEUTRON) {
       CNT.nsDiedCool++; CNT.nsDeaths++; CNT.nsTotalAge+=other.age;
@@ -984,105 +994,95 @@ function resolveCollision(a, b, dying, toAdd) {
     return;
   }
 
-  // Большое событие — тик предупреждения
-  // Облака не триггерят unstable
-  if((isBigEvent(a)||isBigEvent(b)) && !aCloud && !bCloud && !a.unstable && !b.unstable) {
-    a.unstable=true; a.unstable_partner=b.id;
-    b.unstable=true; b.unstable_partner=a.id;
-    a.vx=0; a.vy=0; b.vx=0; b.vy=0;
-    return;
-  }
+  // Столкновение звезда+звезда:
+  // СИНИЙ ГИГАНТ — всегда Режим 1 (дисперсия): взрыв + НЗ/ЧД.
+  // Синий гигант не оставляет формацию — иначе НЗ и ЧД перестанут рождаться.
+  // Все остальные пары — Режим 2 (слияние): 40% осколки, 60% формация с V_FLAT.
+  if(aStar && bStar) {
+    CNT.colSS++;
+    const aBlue = a.star_type === STAR.BLUE;
+    const bBlue = b.star_type === STAR.BLUE;
 
-  const totalMass=a.mass+b.mass;
-  const mx=(a.x*a.mass+b.x*b.mass)/totalMass;
-  const my=(a.y*a.mass+b.y*b.mass)/totalMass;
-  // П2: сохранение импульса
-  const mvx=((a.vx||0)*a.mass+(b.vx||0)*b.mass)/totalMass;
-  const mvy=((a.vy||0)*a.mass+(b.vy||0)*b.mass)/totalMass;
-
-  if(totalMass>=1001) {
-    apply6040(mx,my,mvx,mvy,totalMass,toAdd);
-    dying.push(a.id); dying.push(b.id);
-    masslossBuffer.delete(a.id); masslossBuffer.delete(b.id);
-    return;
-  }
-
-  const res=typeFromMass(totalMass);
-
-  if(res.type===TYPE.STAR) {
-    const [star,other]=aStar?[a,b]:(bStar?[b,a]:[a,b]);
-    let newTemp;
-    if(isStar(other)) {
-      newTemp=((star.temp||0)*star.mass+(other.temp||0)*other.mass)/totalMass;
-    } else {
-      newTemp=(star.temp||0)+tempOfObject(other);
-    }
-    newTemp=Math.min(CFG.COLLAPSE_LIMIT,Math.max(0,newTemp));
-
-    const oldType=star.star_type;
-    const newStarType=starTypeFromMass(totalMass);
-    if(oldType===STAR.RED&&newStarType===STAR.YELLOW) CNT.evRY++;
-    if(oldType===STAR.YELLOW&&newStarType===STAR.BLUE) CNT.evYB++;
-
-    // НЗ при накоплении mass>=101 → распад
-    if(star.star_type===STAR.NEUTRON && totalMass>=1001) {
-      const tmp={...star, x:mx, y:my, mass:totalMass, vx:mvx, vy:mvy};
-      disperseObject(tmp, toAdd, dying, 'decay', 'ejecta');
+    if(aBlue || bBlue) {
+      // Режим 1: синий гигант взрывается, оставляет НЗ или ЧД
+      const blue   = aBlue ? a : b;
+      const other  = aBlue ? b : a;
+      const totalMass = a.mass + b.mass;
+      const mx = (a.x*a.mass + b.x*b.mass) / totalMass;
+      const my = (a.y*a.mass + b.y*b.mass) / totalMass;
+      // Создаём временный объект синего гиганта с суммарной массой
+      const merged = {...blue, x:mx, y:my, mass:totalMass, vx:0, vy:0};
+      doSupernova(merged, toAdd, dying);
       if(!dying.includes(a.id)) dying.push(a.id);
       if(!dying.includes(b.id)) dying.push(b.id);
-      CNT.nsDiedMass++; CNT.nsDeaths++; CNT.nsTotalAge+=star.age;
       masslossBuffer.delete(a.id); masslossBuffer.delete(b.id);
       return;
     }
 
-    if(newStarType === star.star_type) {
-      // Тип не изменился — мутируем звезду на месте, id и age сохраняются
-      star.mass  = totalMass;
-      star.x     = mx; star.y = my;
-      star.vx    = mvx; star.vy = mvy;
-      star.temp  = newTemp;
-      star.r     = Math.sqrt((mx-CFG.CENTER)**2+(my-CFG.CENTER)**2);
-      star.theta = Math.atan2(my-CFG.CENTER, mx-CFG.CENTER);
-      star.omega = (-mvx*Math.sin(star.theta)+mvy*Math.cos(star.theta))/Math.max(star.r,0.1);
-      dying.push(other.id);
-      masslossBuffer.delete(other.id);
-      if(star.temp>=CFG.COLLAPSE_LIMIT && !star.unstable) {
-        if(isBigEvent(star)){
-          star.unstable=true; star.unstable_partner=-1;
-          star.vx=0; star.vy=0;
-        } else {
-          doSupernova(star, toAdd, dying);
-        }
-      }
-      return;
-    }
-
-    // Тип изменился — пересоздаём звезду
-    const newStar=makeObject(mx,my,TYPE.STAR,newStarType,totalMass,mvx,mvy,newTemp);
-    newStar.age=star.age;
-    if(newTemp>=CFG.COLLAPSE_LIMIT) {
-      doSupernova(newStar,toAdd,dying);
-    } else {
-      toAdd.push(newStar);
-    }
-    dying.push(a.id); dying.push(b.id);
-    masslossBuffer.delete(a.id); masslossBuffer.delete(b.id);
-  }
-  else if(res.type===TYPE.FORMATION) {
-    // П2: formation наследует импульс родителей
-    const form=makeObject(mx,my,TYPE.FORMATION,'',totalMass,mvx,mvy,0);
-    form.formation_tick=tick; CNT.formationCount++;
+    // Режим 2: слияние через формацию
+    const totalMass = a.mass + b.mass;
+    const mx = (a.x*a.mass + b.x*b.mass) / totalMass;
+    const my = (a.y*a.mass + b.y*b.mass) / totalMass;
+    const mass40 = Math.floor(totalMass * 0.4);
+    ejectSixty(mx, my, 0, 0, mass40, toAdd);
+    const mass60 = totalMass - mass40;
+    const theta = Math.atan2(my - CFG.CENTER, mx - CFG.CENTER);
+    const fvx = -rotDir * CFG.V_FLAT * Math.sin(theta);
+    const fvy =  rotDir * CFG.V_FLAT * Math.cos(theta);
+    const form = makeObject(mx, my, TYPE.FORMATION, '', mass60, fvx, fvy, 0);
+    form.formation_tick = tick;
+    CNT.formationCount++;
     toAdd.push(form);
     dying.push(a.id); dying.push(b.id);
     masslossBuffer.delete(a.id); masslossBuffer.delete(b.id);
+    return;
   }
-  else {
-    const obj=makeObject(mx,my,res.type,'',totalMass,mvx,mvy,
-      totalMass*(res.type===TYPE.NEBULA?CFG.NEB_TEMP_PER_MASS:CFG.AST_TEMP_PER_MASS));
-    toAdd.push(obj);
-    dying.push(a.id); dying.push(b.id);
-    masslossBuffer.delete(a.id); masslossBuffer.delete(b.id);
+
+  const totalMass=a.mass+b.mass;
+
+  // Правка №6: обычные столкновения (не звезда+звезда, не ЧД) — больший поглощает меньшего
+  // Позиция и скорость поглотителя не меняются
+  if(!aStar || !bStar) {
+    // Определяем поглотителя (больший объект)
+    const [absorber, absorbed] = a.mass >= b.mass ? [a, b] : [b, a];
+    absorber.mass = totalMass;
+    // Температура: звезда + облако
+    if(isStar(absorber)) {
+      absorber.temp = Math.min(CFG.COLLAPSE_LIMIT, (absorber.temp||0) + tempOfObject(absorbed));
+    }
+    // Смена типа облака при превышении порога (туманность→астероид→формация)
+    if(isCloud(absorber)) {
+      const res = typeFromMass(totalMass);
+      if(res.type !== absorber.type) {
+        absorber.type = res.type;
+        if(res.type === TYPE.FORMATION) { absorber.formation_tick = tick; CNT.formationCount++; }
+      }
+    }
+    // Тип может смениться при переходе через порог
+    if(isStar(absorber)) {
+      const newStarType = starTypeFromMass(totalMass);
+      if(newStarType !== absorber.star_type) {
+        const oldType = absorber.star_type;
+        absorber.star_type = newStarType;
+        if(oldType===STAR.RED  && newStarType===STAR.YELLOW) CNT.evRY++;
+        if(oldType===STAR.YELLOW && newStarType===STAR.BLUE)  CNT.evYB++;
+      }
+      // Перегрев после поглощения
+      if(absorber.temp >= CFG.COLLAPSE_LIMIT && !absorber.unstable) {
+        if(isBigEvent(absorber)) {
+          absorber.unstable=true; absorber.unstable_partner=-1;
+          absorber.vx=0; absorber.vy=0;
+        } else {
+          doSupernova(absorber, toAdd, dying);
+        }
+      }
+    }
+    dying.push(absorbed.id);
+    masslossBuffer.delete(absorbed.id);
+    return;
   }
+
+  // Звезда+звезда: взрыв (уже обработано через unstable выше — сюда не доходим)
 }
 
 // supernovaInline удалён — используем doSupernova напрямую
@@ -1091,32 +1091,14 @@ function resolveCollision(a, b, dying, toAdd) {
 // PROCESS UNSTABLE — тик 1: взрыв
 // ============================================================
 function processUnstable() {
+  // Unstable теперь только solo — от перегрева (T≥1000) или накопления массы.
+  // Столкновения звезда+звезда больше не ставят unstable — они сразу создают формацию.
   const dying=[], toAdd=[];
   const unstable=objects.filter(o=>o.unstable && !dying.includes(o.id));
 
   for(const o of unstable) {
     if(dying.includes(o.id)) continue;
-    const partner=objects.find(p=>p.id===o.unstable_partner);
-
-    if(!partner || dying.includes(partner.id)) {
-      // партнёр пропал — взрываем solo
-      doSupernova(o, toAdd, dying);
-      continue;
-    }
-
-    const totalMass=o.mass+partner.mass;
-    const mx=(o.x*o.mass+partner.x*partner.mass)/totalMass;
-    const my=(o.y*o.mass+partner.y*partner.mass)/totalMass;
-
-    // Создаём временный объект с суммарной массой для disperseObject
-    const merged={...o, x:mx, y:my, mass:totalMass, vx:0, vy:0};
-    if(totalMass>=1001) {
-      apply6040(mx,my,0,0,totalMass,toAdd);
-    } else {
-      doSupernova(merged, toAdd, dying);
-    }
-    dying.push(o.id); dying.push(partner.id);
-    masslossBuffer.delete(o.id); masslossBuffer.delete(partner.id);
+    doSupernova(o, toAdd, dying);
   }
 
   const dyingSet=new Set(dying);
@@ -1316,6 +1298,8 @@ function updateDOM(collCount) {
   document.getElementById('ev-born').textContent=CNT.bornFromFormation;
   document.getElementById('ev-form').textContent=(tick>0?(CNT.formationCount/tick).toFixed(2):'0.00');
   document.getElementById('ev-ret').textContent=(tick>0?(CNT.totalReturnMass/tick).toFixed(1):'0.0');
+  document.getElementById('ev-ret-obj').textContent=(tick>0?(CNT.retCount/tick).toFixed(2):'0.00');
+  document.getElementById('ev-ret-avg').textContent=(CNT.retCount>0?(CNT.retMassActual/CNT.retCount).toFixed(1):'0.0');
 
   document.getElementById('col-cc').textContent=CNT.colCC;
   document.getElementById('col-cs').textContent=CNT.colCS;
@@ -1570,14 +1554,13 @@ function applyGalaxy(galaxy) {
       vr:0, omega, L:r*baseOmega(r),
       temp, age:0,
       formation_tick:0, unstable:false, unstable_partner:-1,
-      bh_drift_vx:0, bh_drift_vy:0,
       prevX:x, prevY:y, prevX2:x, prevY2:y, prevX3:x, prevY3:y,
     };
   });
 
   // П5: фиксируем целевую массу
   targetMass=objects.reduce((s,o)=>s+o.mass,0);
-  for(const o of objects) { if(isBH(o)) setBHDrift(o); }
+
 
   document.getElementById('tick-count').textContent=0;
   document.getElementById('st-mergers').textContent=0;

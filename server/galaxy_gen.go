@@ -153,13 +153,10 @@ func velocity(x, y, rotDir, centerX, centerY float64) (vx, vy float64) {
 	if r < 0.5 {
 		return
 	}
-	// П3: скорость для устойчивой орбиты вокруг центрального аттрактора
-	// v = sqrt(G * M_center / r), G=0.005, M_center=2000
-	const G = 0.005
-	const M = 2000.0
-	v := math.Sqrt(G * M / r)
-	vx = -rotDir * v * math.Sin(theta)
-	vy = rotDir * v * math.Cos(theta)
+	// Плоская кривая вращения: V_FLAT = 2*pi*80/360 = 1.3963 (T=360 при r=80)
+	const VFlat = 1.3963
+	vx = -rotDir * VFlat * math.Sin(theta)
+	vy = rotDir * VFlat * math.Cos(theta)
 	return
 }
 
@@ -297,7 +294,7 @@ func generateGalaxy(seed int64, cfg *Config) Galaxy {
 		return placed
 	}
 
-	placedBH  := placeN(cfg.Generation.NumBlackHoles,     TypeBlackHole,     cfg.Generation.MassBHMin, cfg.Generation.MassBHMax)
+	placedBH  := placeN(cfg.Generation.NumBlackHoles,     TypeBlackHole,     cfg.Generation.MassBHMin, cfg.Generation.MassBHMax) // max без верхнего предела — задаётся конфигом
 	placedNeb := placeN(cfg.Generation.NumNebulae,         TypeNebula,        cfg.Generation.MassNebMin, cfg.Generation.MassNebMax)
 	placedAst := placeN(cfg.Generation.NumAsteroidFields,  TypeAsteroidField, cfg.Generation.MassAstMin, cfg.Generation.MassAstMax)
 
