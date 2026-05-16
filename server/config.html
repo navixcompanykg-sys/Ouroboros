@@ -64,7 +64,7 @@
     <div class="field"><label>Number of Black Holes</label><input type="number" data-path="generation.num_black_holes" min="0"><div class="default">default: 20</div></div>
     <div class="field"><label>Number of Nebulae</label><input type="number" data-path="generation.num_nebulae" min="0"><div class="default">default: 200</div></div>
     <div class="field"><label>Number of Asteroid Fields</label><input type="number" data-path="generation.num_asteroid_fields" min="0"><div class="default">default: 800</div></div>
-    <div class="field"><label>Galaxy Radius (u)</label><input type="number" data-path="generation.galaxy_radius" step="1"><div class="default">default: 80</div></div>
+    <div class="field"><label>Galaxy Radius (u)</label><input type="number" data-path="generation.galaxy_radius" step="1"><div class="default">default: 120</div></div>
     <div class="field"><label>Chaos Zone Radius (u)</label><input type="number" data-path="generation.chaos_radius" step="0.1"><div class="default">default: 2</div></div>
     <div class="field"><label>Min Distance Between Objects (u)</label><input type="number" data-path="generation.min_dist" step="0.01"><div class="default">default: 0.9</div></div>
   </div>
@@ -109,25 +109,26 @@
     <div class="field"><label>Collapse Limit (T >= this: supernova)</label><input type="number" data-path="temperature.collapse_limit"><div class="default">default: 1000</div></div>
     <div class="field"><label>Death Limit (T <= this: star dies)</label><input type="number" data-path="temperature.death_limit"><div class="default">default: 10</div></div>
     <div class="field"><label>Start T — Red Dwarf</label><input type="number" data-path="temperature.start_temp_red_dwarf"><div class="default">default: 100</div></div>
-    <div class="field"><label>dT/tick — Red Dwarf</label><input type="number" data-path="temperature.dt_red_dwarf" step="0.01"><div class="default">default: -0.14</div></div>
+    <div class="field"><label>dT/tick — Red Dwarf</label><input type="number" data-path="temperature.dt_red_dwarf" step="0.01"><div class="default">default: -0.5</div></div>
     <div class="field"><label>Start T — Yellow Dwarf</label><input type="number" data-path="temperature.start_temp_yellow_dwarf"><div class="default">default: 250</div></div>
-    <div class="field"><label>dT/tick — Yellow Dwarf</label><input type="number" data-path="temperature.dt_yellow_dwarf" step="0.01"><div class="default">default: -0.67</div></div>
+    <div class="field"><label>dT/tick — Yellow Dwarf</label><input type="number" data-path="temperature.dt_yellow_dwarf" step="0.01"><div class="default">default: -2.0</div></div>
     <div class="field"><label>Start T — Blue Giant</label><input type="number" data-path="temperature.start_temp_blue_giant"><div class="default">default: 150</div></div>
     <div class="field"><label>dT/tick — Blue Giant</label><input type="number" data-path="temperature.dt_blue_giant" step="0.1"><div class="default">default: +4.7</div></div>
     <div class="field"><label>Start T — Neutron Star</label><input type="number" data-path="temperature.start_temp_neutron_star"><div class="default">default: 500</div></div>
     <div class="field"><label>dT/tick — Neutron Star</label><input type="number" data-path="temperature.dt_neutron_star" step="0.01"><div class="default">default: -0.34</div></div>
     <div class="field"><label>Start T — White Dwarf</label><input type="number" data-path="temperature.start_temp_white_dwarf"><div class="default">default: 50</div></div>
     <div class="field"><label>dT/tick — White Dwarf</label><input type="number" data-path="temperature.dt_white_dwarf" step="0.01"><div class="default">default: -0.05</div></div>
-    <div class="field"><label>Nebula T per unit mass</label><input type="number" data-path="temperature.nebula_temp_per_mass"><div class="default">default: 15</div></div>
-    <div class="field"><label>Asteroid T per unit mass</label><input type="number" data-path="temperature.asteroid_temp_per_mass"><div class="default">default: 3</div></div>
+    <div class="field"><label>Nebula T per unit mass (display only)</label><input type="number" data-path="temperature.nebula_temp_per_mass"><div class="default">default: 3</div></div>
+    <div class="field"><label>Nebula cooling per unit mass (when absorbed)</label><input type="number" data-path="temperature.nebula_cooling_per_mass"><div class="default">default: 3</div></div>
+    <div class="field"><label>Asteroid T per unit mass</label><input type="number" data-path="temperature.asteroid_temp_per_mass"><div class="default">default: 1</div></div>
   </div>
 </div>
 
 <div class="section">
   <div class="section-title">Black Holes</div>
   <div class="fields">
-    <div class="field"><label>Mass Loss per Tick — base (Hawking)</label><input type="number" data-path="black_holes.mass_loss_per_tick"><div class="hint">Fixed loss each tick. If remaining mass is less than this — BH disperses via 60/40.</div><div class="default">default: 100</div></div>
-    <div class="field"><label>Mass Loss % per Tick</label><input type="number" data-path="black_holes.mass_loss_pct" step="0.01" min="0" max="1"><div class="hint">Total loss = ceil(base + mass x pct). Set 0 for fixed-only.</div><div class="default">default: 0.0</div></div>
+    <div class="field"><label>Mass Loss per Tick — base (Hawking)</label><input type="number" data-path="black_holes.mass_loss_per_tick"><div class="hint">Fixed loss each tick. If remaining mass is less than this — BH disperses via 60/40.</div><div class="default">default: 10</div></div>
+    <div class="field"><label>Mass Loss % per Tick</label><input type="number" data-path="black_holes.mass_loss_pct" step="0.01" min="0" max="1"><div class="hint">Total loss = ceil(base + mass x pct). Set 0 for fixed-only.</div><div class="default">default: 0.1</div></div>
     <div class="field"><label>Radiation Heat Radius (u)</label><input type="number" data-path="black_holes.radiation_radius" step="0.5"><div class="default">default: 10</div></div>
     <div class="field"><label>Max Heat at Distance 0 (T/tick)</label><input type="number" data-path="black_holes.heat_max" step="0.01"><div class="hint">Linear falloff to 0 at radiation_radius.</div><div class="default">default: 0.14</div></div>
   </div>
@@ -231,7 +232,7 @@ function getDefaults() {
   return {
     generation: {
       seed:42, num_stars:2000, num_black_holes:20, num_nebulae:200, num_asteroid_fields:800,
-      galaxy_radius:80, chaos_radius:2, min_dist:0.9, num_rays:40,
+      galaxy_radius:120, chaos_radius:2, min_dist:0.9, num_rays:40,
       stars_on_ray:[1,2,3,4,5,7,9,8,6,5],
       star_type_probs:[[0,0.1,0.85,0.05],[0.15,0.25,0.55,0.05],[0.05,0.35,0.55,0.05],[0,0.2,0.75,0.05],[0,0.1,0.85,0.05]],
       mass_blue_giant_min:601,   mass_blue_giant_max:800,
@@ -249,12 +250,12 @@ function getDefaults() {
     },
     temperature: {
       collapse_limit:1000, death_limit:10,
-      start_temp_red_dwarf:100,    dt_red_dwarf:-0.14,
-      start_temp_yellow_dwarf:250, dt_yellow_dwarf:-0.67,
+      start_temp_red_dwarf:100,    dt_red_dwarf:-0.5,
+      start_temp_yellow_dwarf:250, dt_yellow_dwarf:-2.0,
       start_temp_blue_giant:150,   dt_blue_giant:4.7,
       start_temp_neutron_star:500, dt_neutron_star:-0.34,
       start_temp_white_dwarf:50,   dt_white_dwarf:-0.05,
-      nebula_temp_per_mass:15, asteroid_temp_per_mass:3
+      nebula_temp_per_mass:3, nebula_cooling_per_mass:3, asteroid_temp_per_mass:1
     },
     black_holes: {
       mass_loss_per_tick:10, mass_loss_pct:0.1,

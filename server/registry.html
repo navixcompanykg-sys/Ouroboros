@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OUROBOROS · REGISTRY</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --panel-bg: rgba(10, 14, 28, 0.95);
+    --border: rgba(68, 255, 204, 0.12);
+    --border-dim: rgba(100, 130, 160, 0.1);
+    --accent: #44ffcc;
+    --accent2: #2a7fff;
+    --text: #aabbcc;
+    --text-bright: #cce4ff;
+    --text-dim: #667788;
+    --mono: 'Share Tech Mono', monospace;
+    --sans: 'Rajdhani', sans-serif;
+    --red-dwarf: #ff6644;
+    --yellow-dwarf: #ffdd44;
+    --blue-giant: #4499ff;
+    --neutron-star: #cc88ff;
+    --white-dwarf: #aabbcc;
+    --alive-green: #44ff88;
+    --dead-gray: #556677;
+    --header-h: 46px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── HEADER ── */
+  header {
+    height: var(--header-h);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    background: var(--panel-bg);
+    border-bottom: 1px solid var(--border);
+    gap: 14px;
+    z-index: 100;
+  }
+
+  .logo {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 4px;
+    color: var(--accent);
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  .logo span {
+    color: var(--text-dim);
+    letter-spacing: 2px;
+  }
+
+  .header-tick {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text-bright);
+    letter-spacing: 3px;
+    flex: 1;
+    text-align: center;
+  }
+
+  .header-tick em {
+    color: var(--accent);
+    font-style: normal;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  .sync-status {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .sync-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    transition: background 0.3s;
+    flex-shrink: 0;
+  }
+
+  .sync-dot.synced { background: var(--alive-green); box-shadow: 0 0 4px var(--alive-green); }
+  .sync-dot.polling { background: var(--yellow-dwarf); box-shadow: 0 0 4px var(--yellow-dwarf); }
+  .sync-dot.error { background: #ff4444; }
+
+  .btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 1px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn-galaxy {
+    border-color: rgba(68, 255, 204, 0.35);
+    color: var(--accent);
+  }
+
+  .btn-galaxy:hover {
+    background: rgba(68, 255, 204, 0.06);
+  }
+
+  /* ── STATS PANEL ── */
+  .stats-panel {
+    flex-shrink: 0;
+    background: rgba(6, 10, 22, 0.8);
+    border-bottom: 1px solid var(--border-dim);
+    padding: 8px 16px 6px;
+  }
+
+  .stats-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  .stats-row:last-child { margin-bottom: 0; }
+
+  .metric-chip {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-dim);
+    padding: 4px 10px;
+    font-family: var(--mono);
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  .metric-label {
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    font-size: 9px;
+  }
+
+  .metric-value {
+    color: var(--text-bright);
+    font-size: 11px;
+  }
+
+  .metric-value.green { color: var(--alive-green); }
+  .metric-value.accent { color: var(--accent); }
+
+  .live-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--alive-green);
+    box-shadow: 0 0 4px var(--alive-green);
+    flex-shrink: 0;
+  }
+
+  .death-bar {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .death-bar span { color: var(--text); }
+  .death-bar .label { color: var(--text-dim); }
+  .death-bar .sep { color: rgba(100,130,160,0.3); margin: 0 2px; }
+
+  /* ── FILTER BAR ── */
+  .filter-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 16px;
+    background: rgba(6, 10, 22, 0.6);
+    border-bottom: 1px solid var(--border-dim);
+    flex-wrap: wrap;
+  }
+
+  .filter-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .filter-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+
+  .type-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    user-select: none;
+    padding: 2px 6px;
+    border: 1px solid transparent;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    transition: border-color 0.15s, color 0.15s;
+  }
+
+  .type-checkbox input { display: none; }
+
+  .type-checkbox .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .type-checkbox.active {
+    border-color: rgba(100, 130, 160, 0.25);
+    color: var(--text);
+  }
+
+  .filter-sep {
+    width: 1px;
+    height: 16px;
+    background: var(--border-dim);
+    flex-shrink: 0;
+  }
+
+  .filter-select {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--border-dim);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 6px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .filter-select:focus { border-color: var(--accent); }
+
+  .filter-select option { background: #0a0e1c; }
+
+  .search-input {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--border-dim);
+    color: var(--text-bright);
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    width: 90px;
+    outline: none;
+  }
+
+  .search-input:focus { border-color: var(--accent); }
+
+  .search-input::placeholder { color: var(--text-dim); }
+
+  /* ── TABLE AREA ── */
+  .table-wrap {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .table-scroll {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: auto;
+  }
+
+  .table-scroll::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  .table-scroll::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.3); }
+  .table-scroll::-webkit-scrollbar-thumb { background: rgba(68, 255, 204, 0.15); border-radius: 2px; }
+  .table-scroll::-webkit-scrollbar-thumb:hover { background: rgba(68, 255, 204, 0.3); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 11px;
+    min-width: 900px;
+  }
+
+  thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  thead tr {
+    background: rgba(6, 10, 22, 0.98);
+    border-bottom: 1px solid var(--border);
+  }
+
+  th {
+    padding: 7px 8px;
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    font-weight: normal;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    border-right: 1px solid var(--border-dim);
+    transition: color 0.15s;
+  }
+
+  th:last-child { border-right: none; }
+  th:hover { color: var(--text); }
+  th.sorted { color: var(--accent); }
+
+  th .sort-arrow {
+    margin-left: 4px;
+    opacity: 0.6;
+    font-size: 8px;
+  }
+
+  tbody tr {
+    border-bottom: 1px solid rgba(100, 130, 160, 0.06);
+    transition: background 0.15s;
+  }
+
+  tbody tr:hover { background: rgba(68, 255, 204, 0.03); }
+
+  td {
+    padding: 5px 8px;
+    vertical-align: middle;
+    white-space: nowrap;
+    border-right: 1px solid rgba(100, 130, 160, 0.04);
+  }
+
+  td:last-child { border-right: none; }
+
+  /* Column-specific */
+  .col-id { color: var(--text-bright); font-size: 11px; }
+  .col-type { display: flex; align-items: center; gap: 5px; }
+  .col-type-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .col-gen { font-weight: bold; font-size: 11px; }
+  .col-status-alive { color: var(--alive-green); font-size: 12px; }
+  .col-status-dead { color: var(--dead-gray); font-size: 10px; }
+  .col-event { font-size: 10px; color: var(--text-dim); }
+  .col-cause { font-size: 10px; }
+  .col-num { color: var(--text-bright); text-align: right; }
+  .col-dim { color: var(--text-dim); }
+
+  /* Row highlights */
+  @keyframes new-row-fade {
+    0%   { background: rgba(68, 255, 136, 0.18); }
+    100% { background: transparent; }
+  }
+
+  @keyframes dead-row-flash {
+    0%   { background: rgba(255, 60, 60, 0.22); }
+    50%  { background: rgba(255, 60, 60, 0.1); }
+    100% { background: transparent; }
+  }
+
+  tr.new-row { animation: new-row-fade 2s ease-out forwards; }
+  tr.dead-flash { animation: dead-row-flash 1.5s ease-out forwards; }
+
+  /* Empty state */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 2px;
+    gap: 10px;
+  }
+
+  .empty-state .empty-icon {
+    font-size: 28px;
+    opacity: 0.3;
+  }
+
+  /* GEN code color by first digit */
+  .gen-0 { color: var(--red-dwarf); }
+  .gen-1 { color: var(--yellow-dwarf); }
+  .gen-2 { color: var(--blue-giant); }
+  .gen-3 { color: var(--neutron-star); }
+  .gen-4 { color: var(--white-dwarf); }
+  .gen-5 { color: #44ffcc; }
+  .gen-6 { color: #ff88aa; }
+  .gen-7 { color: #ffaa44; }
+  .gen-8 { color: #88ccff; }
+  .gen-9 { color: #cc88ff; }
+
+  /* Row count footer */
+  .table-footer {
+    flex-shrink: 0;
+    padding: 4px 16px;
+    background: rgba(6, 10, 22, 0.8);
+    border-top: 1px solid var(--border-dim);
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    display: flex;
+    gap: 16px;
+  }
+
+  .table-footer span { color: var(--text); }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">OUROBOROS <span>·</span> REGISTRY</div>
+
+  <div class="header-tick">TICK <em id="hdr-tick">—</em></div>
+
+  <div class="header-right">
+    <div class="sync-status">
+      <div class="sync-dot" id="sync-dot"></div>
+      <span id="sync-label">IDLE</span>
+    </div>
+    <button class="btn btn-galaxy" onclick="window.open('/','_blank')">OPEN GALAXY</button>
+  </div>
+</header>
+
+<!-- STATS PANEL -->
+<div class="stats-panel">
+  <div class="stats-row" id="stats-row1">
+    <div class="metric-chip">
+      <span class="metric-label">TOTAL</span>
+      <span class="metric-value accent" id="s-total">—</span>
+    </div>
+    <div class="metric-chip">
+      <div class="live-dot"></div>
+      <span class="metric-label">ALIVE</span>
+      <span class="metric-value green" id="s-alive">—</span>
+    </div>
+    <div class="metric-chip">
+      <span class="metric-label">DEAD</span>
+      <span class="metric-value" id="s-dead">—</span>
+    </div>
+    <div class="metric-chip">
+      <span class="metric-label">AVG PLANETS</span>
+      <span class="metric-value" id="s-avg-planets">—</span>
+    </div>
+  </div>
+  <div class="stats-row">
+    <div class="metric-chip">
+      <span class="metric-label">NO PLANETS</span>
+      <span class="metric-value" id="s-no-planets">—</span>
+    </div>
+    <div class="metric-chip">
+      <span class="metric-label">10–12 PLANETS</span>
+      <span class="metric-value" id="s-hi-planets">—</span>
+    </div>
+    <div class="metric-chip">
+      <span class="metric-label">1 RING</span>
+      <span class="metric-value" id="s-ring1">—</span>
+    </div>
+    <div class="metric-chip">
+      <span class="metric-label">2 RINGS</span>
+      <span class="metric-value" id="s-ring2">—</span>
+    </div>
+  </div>
+  <div class="death-bar" id="death-bar">
+    <span class="label">DEATHS:</span>
+    <span class="label">overheat</span> <span id="d-overheat">0</span>
+    <span class="sep">·</span>
+    <span class="label">overcool</span> <span id="d-overcool">0</span>
+    <span class="sep">·</span>
+    <span class="label">collision</span> <span id="d-collision">0</span>
+    <span class="sep">·</span>
+    <span class="label">mass_limit</span> <span id="d-mass_limit">0</span>
+  </div>
+</div>
+
+<!-- FILTER BAR -->
+<div class="filter-bar">
+  <span class="filter-label">TYPE</span>
+  <div class="filter-group" id="type-filters">
+    <label class="type-checkbox active" id="chk-all">
+      <input type="checkbox" checked> ALL
+    </label>
+    <label class="type-checkbox" id="chk-red_dwarf" style="--dot-color:#ff6644">
+      <input type="checkbox">
+      <div class="dot" style="background:#ff6644"></div> RED
+    </label>
+    <label class="type-checkbox" id="chk-yellow_dwarf">
+      <input type="checkbox">
+      <div class="dot" style="background:#ffdd44"></div> YELLOW
+    </label>
+    <label class="type-checkbox" id="chk-blue_giant">
+      <input type="checkbox">
+      <div class="dot" style="background:#4499ff"></div> BLUE
+    </label>
+    <label class="type-checkbox" id="chk-neutron_star">
+      <input type="checkbox">
+      <div class="dot" style="background:#cc88ff"></div> NEUTRON
+    </label>
+    <label class="type-checkbox" id="chk-white_dwarf">
+      <input type="checkbox">
+      <div class="dot" style="background:#aabbcc"></div> WHITE
+    </label>
+  </div>
+
+  <div class="filter-sep"></div>
+
+  <span class="filter-label">STATUS</span>
+  <select class="filter-select" id="status-filter">
+    <option value="all">ALL</option>
+    <option value="alive">ALIVE</option>
+    <option value="dead">DEAD</option>
+  </select>
+
+  <div class="filter-sep"></div>
+
+  <span class="filter-label">MIN PLANETS</span>
+  <select class="filter-select" id="planets-filter">
+    <option value="0">0+</option>
+    <option value="1">1+</option>
+    <option value="2">2+</option>
+    <option value="3">3+</option>
+    <option value="4">4+</option>
+    <option value="5">5+</option>
+    <option value="6">6+</option>
+    <option value="7">7+</option>
+    <option value="8">8+</option>
+    <option value="9">9+</option>
+    <option value="10">10+</option>
+    <option value="11">11+</option>
+    <option value="12">12</option>
+  </select>
+
+  <div class="filter-sep"></div>
+
+  <span class="filter-label">SEARCH ID</span>
+  <input class="search-input" id="search-input" type="number" min="0" placeholder="star_id…">
+</div>
+
+<!-- TABLE -->
+<div class="table-wrap">
+  <div class="table-scroll">
+    <table id="registry-table">
+      <thead>
+        <tr>
+          <th data-col="star_id">ID <span class="sort-arrow">▼</span></th>
+          <th data-col="birth_star_type">TYPE</th>
+          <th data-col="gen_code">GEN</th>
+          <th data-col="n_planets">PLANETS</th>
+          <th data-col="n_rings">RINGS</th>
+          <th data-col="birth_mass">MASS</th>
+          <th data-col="birth_radius">RADIUS</th>
+          <th data-col="birth_event">EVENT</th>
+          <th data-col="birth_tick">BORN</th>
+          <th data-col="_status">STATUS</th>
+          <th data-col="death_tick">DIED</th>
+          <th data-col="lifespan">LIFESPAN</th>
+          <th data-col="death_cause">CAUSE</th>
+        </tr>
+      </thead>
+      <tbody id="registry-tbody"></tbody>
+    </table>
+    <div class="empty-state" id="empty-state" style="display:none">
+      <div class="empty-icon">◌</div>
+      <div>NO RECORDS MATCH FILTERS</div>
+    </div>
+  </div>
+  <div class="table-footer">
+    SHOWING <span id="footer-shown">0</span> OF <span id="footer-total">0</span> RECORDS
+    &nbsp;·&nbsp;
+    LAST UPDATE <span id="footer-time">—</span>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const TYPE_COLORS = {
+  red_dwarf:    '#ff6644',
+  yellow_dwarf: '#ffdd44',
+  blue_giant:   '#4499ff',
+  neutron_star: '#cc88ff',
+  white_dwarf:  '#aabbcc',
+};
+
+const TYPE_SHORT = {
+  red_dwarf:    'RD',
+  yellow_dwarf: 'YD',
+  blue_giant:   'BG',
+  neutron_star: 'NS',
+  white_dwarf:  'WD',
+};
+
+const EVENT_LABELS = {
+  0: 'inflow',
+  1: 'col★',
+  2: 'col☄',
+  3: 'cloud',
+  4: 'merge',
+};
+
+const CAUSE_DISPLAY = {
+  overheat:   '💀 overheat',
+  overcool:   '❄ overcool',
+  collision:  '💥 collision',
+  mass_limit: '⚠ limit',
+};
+
+// ─── State ───────────────────────────────────────────────────────────────────
+
+let allRecords = [];
+let knownIds   = new Set();
+let deadIds    = new Set();
+let currentTick = null;
+
+let sortCol = 'birth_tick';
+let sortDir = 'desc';
+
+let filterTypes      = new Set();
+let filterStatus     = 'all';
+let filterMinPlanets = 0;
+let filterSearch     = '';
+
+// ─── Sync state ──────────────────────────────────────────────────────────────
+
+function setSyncState(state) {
+  const dot   = document.getElementById('sync-dot');
+  const label = document.getElementById('sync-label');
+  dot.className = 'sync-dot ' + state;
+  label.textContent = state === 'synced' ? 'LIVE' : state === 'polling' ? 'CONN' : state === 'error' ? 'ERR' : 'IDLE';
+}
+
+// ─── Client-side stats ───────────────────────────────────────────────────────
+
+let statsTimer = null;
+
+function scheduleStatsUpdate() {
+  clearTimeout(statsTimer);
+  statsTimer = setTimeout(updateStatsFromRecords, 1500);
+}
+
+function updateStatsFromRecords() {
+  let alive = 0, dead = 0;
+  let planetsSum = 0, planetsCount = 0;
+  let noP = 0, highP = 0, ring1 = 0, ring2 = 0;
+  const byCause = {};
+  for (const rec of allRecords) {
+    const isAlive = rec.death_tick == null;
+    if (isAlive) alive++; else dead++;
+    if (rec.n_planets != null) {
+      planetsSum += rec.n_planets; planetsCount++;
+      if (rec.n_planets === 0) noP++;
+      if (rec.n_planets >= 10) highP++;
+    }
+    if (rec.n_rings === 1) ring1++;
+    if (rec.n_rings === 2) ring2++;
+    if (!isAlive && rec.death_cause) byCause[rec.death_cause] = (byCause[rec.death_cause] || 0) + 1;
+  }
+  updateStats({
+    total_registered: allRecords.length, total_alive: alive, total_dead: dead,
+    avg_planets: planetsCount > 0 ? planetsSum / planetsCount : null,
+    stars_no_planets: noP, stars_10_12_planets: highP,
+    stars_1_ring: ring1, stars_2_rings: ring2, deaths_by_cause: byCause,
+  });
+}
+
+// ─── Footer ──────────────────────────────────────────────────────────────────
+
+function updateFooter() {
+  const shown = document.getElementById('registry-tbody').childElementCount;
+  document.getElementById('footer-shown').textContent = shown.toLocaleString();
+  document.getElementById('footer-total').textContent = allRecords.length.toLocaleString();
+  document.getElementById('footer-time').textContent  = new Date().toLocaleTimeString();
+}
+
+// ─── Single-record filter check ──────────────────────────────────────────────
+
+function passesFilter(rec) {
+  if (filterTypes.size > 0 && !filterTypes.has(rec.birth_star_type)) return false;
+  const alive = rec.death_tick == null;
+  if (filterStatus === 'alive' && !alive) return false;
+  if (filterStatus === 'dead'  &&  alive) return false;
+  const np = rec.n_planets != null ? rec.n_planets : 0;
+  if (np < filterMinPlanets) return false;
+  if (filterSearch !== '' && String(rec.star_id) !== filterSearch) return false;
+  return true;
+}
+
+// ─── Stats panel ─────────────────────────────────────────────────────────────
+
+function updateStats(s) {
+  if (currentTick !== null) document.getElementById('hdr-tick').textContent = currentTick.toLocaleString();
+  setText('s-total',       s.total_registered);
+  setText('s-alive',       s.total_alive);
+  setText('s-dead',        s.total_dead);
+  setText('s-avg-planets', s.avg_planets != null ? s.avg_planets.toFixed(1) : '—');
+  setText('s-no-planets',  s.stars_no_planets);
+  setText('s-hi-planets',  s.stars_10_12_planets);
+  setText('s-ring1',       s.stars_1_ring);
+  setText('s-ring2',       s.stars_2_rings);
+  const dc = s.deaths_by_cause || {};
+  setText('d-overheat',   dc['overheat']   || 0);
+  setText('d-overcool',   dc['overcool']   || 0);
+  setText('d-collision',  dc['collision']  || 0);
+  setText('d-mass_limit', dc['mass_limit'] || 0);
+}
+
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val != null ? val.toLocaleString() : '—';
+}
+
+// ─── Filtering ───────────────────────────────────────────────────────────────
+
+function applyFilters(records) {
+  return records.filter(passesFilter);
+}
+
+// ─── Sorting ─────────────────────────────────────────────────────────────────
+
+function applySort(records) {
+  return [...records].sort((a, b) => {
+    let av, bv;
+
+    if (sortCol === '_status') {
+      av = a.death_tick == null ? 1 : 0;
+      bv = b.death_tick == null ? 1 : 0;
+    } else {
+      av = a[sortCol];
+      bv = b[sortCol];
+    }
+
+    // nulls last
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+
+    if (typeof av === 'string') {
+      const cmp = av.localeCompare(bv);
+      return sortDir === 'asc' ? cmp : -cmp;
+    }
+
+    return sortDir === 'asc' ? av - bv : bv - av;
+  });
+}
+
+// ─── Render ──────────────────────────────────────────────────────────────────
+
+function renderTable(newIds, newlyDeadIds) {
+  newIds        = newIds        || new Set();
+  newlyDeadIds  = newlyDeadIds  || new Set();
+
+  const filtered = applyFilters(allRecords);
+  const sorted   = applySort(filtered);
+
+  const tbody = document.getElementById('registry-tbody');
+  tbody.innerHTML = '';
+
+  const empty = document.getElementById('empty-state');
+  if (sorted.length === 0) {
+    empty.style.display = 'flex';
+  } else {
+    empty.style.display = 'none';
+    const frag = document.createDocumentFragment();
+    for (const rec of sorted) {
+      frag.appendChild(buildRow(rec, newIds, newlyDeadIds));
+    }
+    tbody.appendChild(frag);
+  }
+
+  updateFooter();
+  updateSortHeaders();
+}
+
+function buildRow(rec, newIds, newlyDeadIds) {
+  const tr = document.createElement('tr');
+  tr.dataset.id = rec.star_id;
+
+  const alive = rec.death_tick == null;
+
+  if (newIds.has(rec.star_id))       tr.classList.add('new-row');
+  if (newlyDeadIds.has(rec.star_id)) tr.classList.add('dead-flash');
+
+  // ID
+  td(tr, 'col-id', rec.star_id != null ? rec.star_id.toLocaleString() : '—');
+
+  // Type
+  const typeEl = document.createElement('td');
+  const typeWrap = document.createElement('div');
+  typeWrap.className = 'col-type';
+  const dot = document.createElement('div');
+  dot.className = 'col-type-dot';
+  dot.style.background = TYPE_COLORS[rec.birth_star_type] || '#667788';
+  const typeShort = document.createElement('span');
+  typeShort.style.color = TYPE_COLORS[rec.birth_star_type] || 'var(--text)';
+  typeShort.textContent = TYPE_SHORT[rec.birth_star_type] || '??';
+  typeWrap.appendChild(dot);
+  typeWrap.appendChild(typeShort);
+  typeEl.appendChild(typeWrap);
+  tr.appendChild(typeEl);
+
+  // GEN
+  const genTd = document.createElement('td');
+  const genSpan = document.createElement('span');
+  genSpan.className = 'col-gen';
+  const genStr = rec.gen_code != null ? String(rec.gen_code) : '—';
+  if (genStr !== '—') {
+    const firstDigit = genStr[0];
+    genSpan.classList.add('gen-' + firstDigit);
+  }
+  genSpan.textContent = genStr;
+  genTd.appendChild(genSpan);
+  tr.appendChild(genTd);
+
+  // Planets
+  td(tr, 'col-num', rec.n_planets != null ? rec.n_planets : '—');
+
+  // Rings
+  td(tr, 'col-num', rec.n_rings != null ? rec.n_rings : '—');
+
+  // Mass
+  td(tr, 'col-num', rec.birth_mass != null ? rec.birth_mass.toLocaleString() : '—');
+
+  // Radius
+  td(tr, 'col-dim', rec.birth_radius != null ? rec.birth_radius.toFixed(1) : '—');
+
+  // Event
+  const evCode = rec.birth_event;
+  const evLabel = (evCode != null && EVENT_LABELS[evCode] != null)
+    ? EVENT_LABELS[evCode]
+    : (evCode != null ? '?' : '—');
+  td(tr, 'col-event', evLabel);
+
+  // Born
+  td(tr, 'col-dim', rec.birth_tick != null ? rec.birth_tick.toLocaleString() : '—');
+
+  // Status
+  const statusTd = document.createElement('td');
+  statusTd.dataset.field = 'status';
+  statusTd.textContent = alive ? '●' : '✕';
+  statusTd.className   = alive ? 'col-status-alive' : 'col-status-dead';
+  tr.appendChild(statusTd);
+
+  // Died
+  td(tr, 'col-dim', rec.death_tick != null ? rec.death_tick.toLocaleString() : '—').dataset.field = 'death_tick';
+
+  // Lifespan
+  td(tr, 'col-dim', rec.lifespan != null ? rec.lifespan.toLocaleString() : '—').dataset.field = 'lifespan';
+
+  // Cause
+  const causeTd = document.createElement('td');
+  causeTd.className = 'col-cause';
+  causeTd.dataset.field = 'death_cause';
+  if (rec.death_cause) {
+    causeTd.textContent = CAUSE_DISPLAY[rec.death_cause] || rec.death_cause;
+  } else {
+    causeTd.textContent = '—';
+    causeTd.style.color = 'var(--text-dim)';
+  }
+  tr.appendChild(causeTd);
+
+  return tr;
+}
+
+function td(tr, className, text) {
+  const el = document.createElement('td');
+  el.className = className;
+  el.textContent = text;
+  tr.appendChild(el);
+  return el;
+}
+
+// ─── Sort headers ────────────────────────────────────────────────────────────
+
+function updateSortHeaders() {
+  const ths = document.querySelectorAll('#registry-table th[data-col]');
+  ths.forEach(th => {
+    th.classList.remove('sorted');
+    const arrow = th.querySelector('.sort-arrow');
+    if (th.dataset.col === sortCol) {
+      th.classList.add('sorted');
+      if (arrow) arrow.textContent = sortDir === 'asc' ? '▲' : '▼';
+    } else {
+      if (arrow) arrow.textContent = '';
+    }
+  });
+}
+
+document.querySelectorAll('#registry-table th[data-col]').forEach(th => {
+  th.innerHTML = th.textContent.trim() + ' <span class="sort-arrow"></span>';
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (sortCol === col) {
+      sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortCol = col;
+      sortDir = col === 'birth_tick' ? 'desc' : 'asc';
+    }
+    renderTable();
+  });
+});
+
+// Initialise sort arrow for default column
+updateSortHeaders();
+
+// ─── Type filter checkboxes ──────────────────────────────────────────────────
+
+const chkAll = document.getElementById('chk-all');
+const typeKeys = ['red_dwarf', 'yellow_dwarf', 'blue_giant', 'neutron_star', 'white_dwarf'];
+
+function syncTypeCheckboxUI() {
+  const allActive = filterTypes.size === 0;
+  chkAll.classList.toggle('active', allActive);
+
+  typeKeys.forEach(key => {
+    const el = document.getElementById('chk-' + key);
+    if (el) el.classList.toggle('active', !allActive && filterTypes.has(key));
+  });
+}
+
+chkAll.addEventListener('click', e => {
+  e.preventDefault();
+  filterTypes.clear();
+  syncTypeCheckboxUI();
+  renderTable();
+});
+
+typeKeys.forEach(key => {
+  const el = document.getElementById('chk-' + key);
+  if (!el) return;
+  el.addEventListener('click', e => {
+    e.preventDefault();
+    if (filterTypes.has(key)) {
+      filterTypes.delete(key);
+      if (filterTypes.size === 0) { /* already clear */ }
+    } else {
+      filterTypes.add(key);
+    }
+    // If none selected, treat as all
+    if (filterTypes.size === 0) {
+      // leave empty = show all
+    }
+    syncTypeCheckboxUI();
+    renderTable();
+  });
+});
+
+// ─── Status / planets / search filters ───────────────────────────────────────
+
+document.getElementById('status-filter').addEventListener('change', e => {
+  filterStatus = e.target.value;
+  renderTable();
+});
+
+document.getElementById('planets-filter').addEventListener('change', e => {
+  filterMinPlanets = parseInt(e.target.value, 10) || 0;
+  renderTable();
+});
+
+document.getElementById('search-input').addEventListener('input', e => {
+  filterSearch = e.target.value.trim();
+  renderTable();
+});
+
+// ─── SSE connection ───────────────────────────────────────────────────────────
+
+const evtSource = new EventSource('/registry/stream');
+setSyncState('polling');
+
+evtSource.onopen  = () => setSyncState('synced');
+evtSource.onerror = () => setSyncState('error');
+
+evtSource.addEventListener('init', e => {
+  const records = JSON.parse(e.data);
+  allRecords = records;
+  knownIds.clear(); deadIds.clear();
+  for (const rec of records) {
+    knownIds.add(rec.star_id);
+    if (rec.death_tick != null) deadIds.add(rec.star_id);
+  }
+  renderTable();
+  updateStatsFromRecords();
+});
+
+evtSource.addEventListener('reset', () => {
+  allRecords = []; knownIds.clear(); deadIds.clear(); currentTick = null;
+  document.getElementById('hdr-tick').textContent = '—';
+  document.getElementById('registry-tbody').innerHTML = '';
+  document.getElementById('empty-state').style.display = 'flex';
+  updateFooter();
+  updateStatsFromRecords();
+});
+
+evtSource.addEventListener('birth', e => {
+  const rec = JSON.parse(e.data);
+  allRecords.push(rec);
+  knownIds.add(rec.star_id);
+  if (rec.birth_tick != null && (currentTick === null || rec.birth_tick > currentTick)) {
+    currentTick = rec.birth_tick;
+    document.getElementById('hdr-tick').textContent = currentTick.toLocaleString();
+  }
+  if (passesFilter(rec)) {
+    const tbody = document.getElementById('registry-tbody');
+    tbody.appendChild(buildRow(rec, new Set([rec.star_id]), new Set()));
+    document.getElementById('empty-state').style.display = 'none';
+  }
+  updateFooter();
+  scheduleStatsUpdate();
+});
+
+evtSource.addEventListener('death', e => {
+  const patch = JSON.parse(e.data);
+  const starId = patch.star_id;
+  const recIdx = allRecords.findIndex(r => r.star_id === starId);
+  if (recIdx >= 0) Object.assign(allRecords[recIdx], patch);
+  deadIds.add(starId);
+  if (patch.death_tick != null && (currentTick === null || patch.death_tick > currentTick)) {
+    currentTick = patch.death_tick;
+    document.getElementById('hdr-tick').textContent = currentTick.toLocaleString();
+  }
+  const tr = document.querySelector(`#registry-tbody tr[data-id="${starId}"]`);
+  if (tr) {
+    const rec = recIdx >= 0 ? allRecords[recIdx] : patch;
+    if (!passesFilter(rec)) {
+      tr.remove();
+    } else {
+      tr.classList.add('dead-flash');
+      const s = tr.querySelector('[data-field="status"]');
+      if (s) { s.textContent = '✕'; s.className = 'col-status-dead'; }
+      const d = tr.querySelector('[data-field="death_tick"]');
+      if (d) d.textContent = patch.death_tick != null ? patch.death_tick.toLocaleString() : '—';
+      const l = tr.querySelector('[data-field="lifespan"]');
+      if (l) l.textContent = patch.lifespan != null ? patch.lifespan.toLocaleString() : '—';
+      const c = tr.querySelector('[data-field="death_cause"]');
+      if (c && patch.death_cause) { c.textContent = CAUSE_DISPLAY[patch.death_cause] || patch.death_cause; c.style.color = ''; }
+    }
+  }
+  updateFooter();
+  scheduleStatsUpdate();
+});
+</script>
+</body>
+</html>

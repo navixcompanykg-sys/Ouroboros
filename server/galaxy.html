@@ -92,6 +92,7 @@
     <button class="sim-btn" id="btn-10s">▶ 10s</button>
     <button class="sim-btn stop" id="btn-stop">■ STOP</button>
     <button class="ctrl-btn sim-btn" onclick="exportSnapshot()">💾 Export</button>
+    <button class="sim-btn" onclick="window.open('/registry.html','_blank')">REGISTRY</button>
     <button class="sim-btn cfg" id="btn-cfg" title="Open settings">⚙</button>
   </div>
 </header>
@@ -218,17 +219,17 @@
 // CONFIG
 // ============================================================
 let CFG = {
-  GALAXY_R:80, CHAOS_R:2,
+  GALAXY_R:120, CHAOS_R:2,
   MIN_DIST:0.9,
   MAX_INF_R:20,
   V_FLAT:1.3963,       // единая орбитальная скорость (T=360 при r=80)
   RADIAL_DAMP:0.12,    // затухание радиальной скорости (правка №1)
   DRIFT_K:2.2e-3,      // массовый дрифт к центру: dr = DRIFT_K × mass / r за тик (только звёзды, ЧД, формации)
   MAX_JUMP_TICK:2000,
-  COLLAPSE_LIMIT:1000, DEATH_LIMIT:10,
+  COLLAPSE_LIMIT:1000, DEATH_LIMIT:10, WD_NOVA_MASS:600,
   T_RED:100, T_YELLOW:250, T_BLUE:150, T_NEUTRON:500, T_WHITE:50,
-  DT_RED:-0.14, DT_YELLOW:-0.67, DT_BLUE:4.7, DT_NEUTRON:-0.34, DT_WHITE:-0.05,
-  NEB_TEMP_PER_MASS:15, AST_TEMP_PER_MASS:3,
+  DT_RED:-0.5, DT_YELLOW:-2.0, DT_BLUE:4.7, DT_NEUTRON:-0.34, DT_WHITE:-0.05,
+  NEB_TEMP_PER_MASS:3, NEB_COOLING_PER_MASS:3, AST_TEMP_PER_MASS:1,
   BH_MASS_LOSS:10, BH_LOSS_PCT:0.1, BH_RAD_RADIUS:10, BH_HEAT_MAX:0.14,
   ORBITAL_DRAG:0.05,
   EJECTA_FRACTION:0.6,
@@ -236,8 +237,8 @@ let CFG = {
   FORMATION_TICKS:6, BIG_EVENT_MASS:601,
   NEB_RETURN_MAX:5, AST_RETURN_MAX:30, INFLOW_SPEED:4.0,
   // Вычисляемые из GALAXY_R (не задавать вручную)
-  CENTER:100,   // = GALAXY_R * 1.25
-  FIELD_SIZE:200 // = CENTER * 2
+  CENTER:150,   // = GALAXY_R * 1.25
+  FIELD_SIZE:300 // = CENTER * 2
 };
 
 // Пересчитывает производные параметры из GALAXY_R
@@ -293,8 +294,10 @@ async function loadConfig() {
     CFG.DT_BLUE   = t.dt_blue_giant   ?? CFG.DT_BLUE;
     CFG.DT_NEUTRON= t.dt_neutron_star ?? CFG.DT_NEUTRON;
     CFG.DT_WHITE  = t.dt_white_dwarf  ?? CFG.DT_WHITE;
-    CFG.NEB_TEMP_PER_MASS = t.nebula_temp_per_mass   ?? CFG.NEB_TEMP_PER_MASS;
-    CFG.AST_TEMP_PER_MASS = t.asteroid_temp_per_mass ?? CFG.AST_TEMP_PER_MASS;
+    CFG.NEB_TEMP_PER_MASS    = t.nebula_temp_per_mass    ?? CFG.NEB_TEMP_PER_MASS;
+    CFG.NEB_COOLING_PER_MASS = t.nebula_cooling_per_mass ?? CFG.NEB_COOLING_PER_MASS;
+    CFG.AST_TEMP_PER_MASS    = t.asteroid_temp_per_mass  ?? CFG.AST_TEMP_PER_MASS;
+    CFG.WD_NOVA_MASS         = t.wd_nova_mass            ?? CFG.WD_NOVA_MASS;
 
     // Black holes
     CFG.BH_MASS_LOSS     = bh.mass_loss_per_tick        ?? CFG.BH_MASS_LOSS;
@@ -388,9 +391,10 @@ function baseOmega(r) {
 }
 
 function tempOfObject(o) {
-  if(o.temp !== undefined) return o.temp;
-  if(o.type===TYPE.NEBULA)   return o.mass * CFG.NEB_TEMP_PER_MASS;
-  if(o.type===TYPE.ASTEROID) return o.mass * CFG.AST_TEMP_PER_MASS;
+  if(o.type===TYPE.NEBULA)    return -(o.mass * CFG.NEB_COOLING_PER_MASS);
+  if(o.type===TYPE.FORMATION) return   o.mass * CFG.AST_TEMP_PER_MASS;
+  if(o.temp !== undefined)    return o.temp;
+  if(o.type===TYPE.ASTEROID)  return o.mass * CFG.AST_TEMP_PER_MASS;
   return 0;
 }
 
@@ -726,7 +730,8 @@ function makeByMass(x, y, vx, vy, mass, mode) {
       const fvx=-rotDir*CFG.V_FLAT*Math.sin(theta);
       const fvy= rotDir*CFG.V_FLAT*Math.cos(theta);
       const form=makeObject(x,y,TYPE.FORMATION,'',mass,fvx,fvy,0);
-      form.formation_tick=tick; CNT.formationCount++; return form;
+      form.formation_tick=tick; form.birth_event_type='ejecta'; form.asteroid_absorbed=0;
+      CNT.formationCount++; return form;
     }
     if(mass>=6) return makeObject(x,y,TYPE.ASTEROID,'',mass,vx,vy,mass*CFG.AST_TEMP_PER_MASS);
     { const neb=makeObject(x,y,TYPE.NEBULA,'',mass,vx,vy,mass*CFG.NEB_TEMP_PER_MASS); neb.nebula_color=nebulaMassColor(mass); return neb; }
@@ -740,7 +745,8 @@ function makeByMass(x, y, vx, vy, mass, mode) {
   // V_FLAT не подставляем — это сломало бы разлёт, создавая мгновенные круги.
   {
     const form=makeObject(x,y,TYPE.FORMATION,'',mass,vx,vy,0);
-    form.formation_tick=tick; CNT.formationCount++;
+    form.formation_tick=tick; form.birth_event_type='ejecta'; form.asteroid_absorbed=0;
+    CNT.formationCount++;
     return form;
   }
 }
@@ -842,16 +848,32 @@ function doSupernova(o, toAdd, dying) {
   CNT.supernovae++; CNT.deathHeat++;
   if(o.star_type===STAR.NEUTRON){ CNT.nsDiedHeat++; CNT.nsDeaths++; CNT.nsTotalAge+=o.age; }
   trackStarDeath(o);
+  if(isStar(o)) registerDeath(o, 'overheat', null);
   const remMode=o.star_type===STAR.BLUE?'remnant_nova':'ejecta';
   disperseObject(o, toAdd, dying, 'explode', remMode);
 }
 
-// П6: при остывании 40% → белый карлик если масса 10–15
+// Белый карлик превысил масс-лимит: взрыв (туманности + осколки + формация)
+function doWhiteDwarfNova(o, toAdd, dying) {
+  CNT.deathCool++;
+  trackStarDeath(o);
+  registerDeath(o, 'mass_limit', null);
+  disperseObject(o, toAdd, dying, 'explode', 'remnant_decay');
+}
+
+// П6: красный/жёлтый карлик при остывании → белый карлик на месте; остальные рассыпаются
 function checkStarDeath(o, toAdd, dying) {
   if(o.temp>CFG.DEATH_LIMIT) return false;
   CNT.deathCool++;
   if(o.star_type===STAR.NEUTRON){ CNT.nsDiedCool++; CNT.nsDeaths++; CNT.nsTotalAge+=o.age; }
   trackStarDeath(o);
+  registerDeath(o, 'overcool', null);
+  if(o.star_type===STAR.RED || o.star_type===STAR.YELLOW) {
+    o.star_type = STAR.WHITE;
+    o.temp = CFG.T_WHITE;
+    o.age = 0;
+    return true;
+  }
   disperseObject(o, toAdd, dying, 'decay', 'remnant_decay');
   return true;
 }
@@ -877,8 +899,7 @@ function drainNebulae() {
       neb.mass--;
       drainer.mass++;
       if(isStar(drainer)) {
-        const extra = dtForStarType(drainer.star_type);
-        drainer.temp = Math.max(0, Math.min(CFG.COLLAPSE_LIMIT, drainer.temp + extra));
+        drainer.temp = Math.max(0, drainer.temp - CFG.NEB_COOLING_PER_MASS);
       }
       if(neb.mass <= 0) dyingNeb.add(neb.id);
     }
@@ -892,6 +913,106 @@ function apply6040(x, y, vx, vy, totalMass, toAdd) {
   ejectSixty(x, y, 0, 0, mass60, toAdd);
   const rem=makeByMass(x, y, 0, 0, totalMass-mass60, 'ejecta');
   if(rem) toAdd.push(rem);
+}
+
+// ============================================================
+// STAR REGISTRY
+// ============================================================
+function scanNeighbors(o) {
+  let gravMass=0, nebMass=0, tempSum=0, tempCount=0;
+  for(const nb of objects) {
+    if(nb.id===o.id) continue;
+    const dx=nb.x-o.x, dy=nb.y-o.y, d=Math.sqrt(dx*dx+dy*dy);
+    if(d<=10 && (isBH(nb)||(isStar(nb)&&nb.star_type===STAR.NEUTRON))) gravMass+=nb.mass;
+    if(d<=5)  {
+      if(nb.type===TYPE.NEBULA) nebMass+=nb.mass;
+      if(isStar(nb)) { tempSum+=nb.temp; tempCount++; }
+    }
+  }
+  const starBaseTemp=startTempForStarType(o.star_type);
+  const envTemp=tempCount>0?tempSum/tempCount:0;
+  return {neighbor_gravity_mass:Math.round(gravMass), neighbor_neb_mass:Math.round(nebMass),
+          birth_temp_env:(starBaseTemp+envTemp)/2};
+}
+
+function computeGenCode(r) {
+  const S1=Math.min(Math.floor(r.neighbor_gravity_mass/350),9);
+  const S2=Math.min(Math.floor(r.birth_radius/12),9);
+  const S3=Math.min(Math.floor((r.birth_mass-1)/100),9);
+  const S4=Math.min(Math.floor(r.asteroid_absorbed/30),9);
+  const S5=Math.min(Math.floor(r.neighbor_neb_mass/4),9);
+  const S6=Math.min(Math.floor(r.birth_temp_env/100),9);
+  const evMap={inflow:0,star_collision:1,asteroid_collision:2,star_cloud:3,formation_merge:4,wd_nova:5};
+  const S7=evMap[r.birth_event_type]??5;
+  const S8=r.birth_tick%10;
+  const S9=(S1+S2+S3+S4+S5+S6+S7+S8)%10;
+  return `${S1}${S2}${S3}${S4}${S5}${S6}${S7}${S8}${S9}`;
+}
+
+function computePlanets(S1,S2,S3,S4,S5,S6,S7) {
+  let n=7;
+  // S1: гравитационное давление — без изменений
+  if(S1>=7)n-=3; else if(S1>=4)n-=2; else if(S1>=1)n-=1;
+  // S2: средняя зона оптимальна (+1), крайние зоны штраф (−1); S2=1 нейтрален
+  if(S2>=2&&S2<=5)n+=1; else if(S2===0||S2>=6)n-=1;
+  // S3: маломассивные звёзды больше не штрафуются (красные карлики — хорошие хозяева)
+  if(S3===9)n-=4; else if(S3>=6)n-=2; else if(S3>=3&&S3<=5)n+=1;
+  // S4: только бонус за астероидное богатство; нулевые астероиды не штрафуются
+  if(S4>=4)n+=1; if(S4>=7)n+=1;
+  // S5: газовая насыщенность — без изменений
+  if(S5<=2)n-=1; else if(S5>=6)n+=1;
+  // S6: тепловой фон — без изменений
+  if(S6<=2)n-=1; else if(S6>=6)n-=1;
+  // S7: тип события — без изменений
+  if(S7===0)n+=1; else if(S7===1)n-=1; else if(S7===2)n+=1; else if(S7===4)n+=1;
+  return Math.max(0,Math.min(12,n));
+}
+
+function computeRings(S2,S4,S7) {
+  let r=0;
+  if(S2>=6)r++; if(S4>=6)r++; if(S7===2)r++;
+  return Math.min(2,r);
+}
+
+function registerBirth(star, neighbors) {
+  const birth_radius=Math.sqrt((star.x-CFG.CENTER)**2+(star.y-CFG.CENTER)**2);
+  const evMap={inflow:0,star_collision:1,asteroid_collision:2,star_cloud:3,formation_merge:4,wd_nova:5};
+  const r={neighbor_gravity_mass:neighbors.neighbor_gravity_mass,
+            neighbor_neb_mass:neighbors.neighbor_neb_mass,
+            birth_temp_env:neighbors.birth_temp_env,
+            birth_radius, birth_mass:star.mass, birth_tick:tick,
+            birth_event_type:star.birth_event_type||'unknown',
+            asteroid_absorbed:star.asteroid_absorbed||0};
+  const genCode=computeGenCode(r);
+  const S1=Math.min(Math.floor(r.neighbor_gravity_mass/350),9);
+  const S2=Math.min(Math.floor(r.birth_radius/12),9);
+  const S3=Math.min(Math.floor((r.birth_mass-1)/100),9);
+  const S4=Math.min(Math.floor(r.asteroid_absorbed/30),9);
+  const S5=Math.min(Math.floor(r.neighbor_neb_mass/4),9);
+  const S6=Math.min(Math.floor(r.birth_temp_env/100),9);
+  const S7=evMap[r.birth_event_type]??5;
+  star.birth_tick_registered=tick;
+  fetch('/registry/birth',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({star_id:star.id,birth_tick:tick,birth_radius:+birth_radius.toFixed(2),
+      birth_star_type:star.star_type,birth_mass:star.mass,birth_event:S7,
+      neighbor_gravity_mass:r.neighbor_gravity_mass,neighbor_neb_mass:r.neighbor_neb_mass,
+      asteroid_absorbed:r.asteroid_absorbed,birth_temp_env:+r.birth_temp_env.toFixed(1),
+      gen_code:genCode,n_planets:computePlanets(S1,S2,S3,S4,S5,S6,S7),
+      n_rings:computeRings(S2,S4,S7),
+      death_tick:null,lifespan:null,death_cause:null,
+      collision_partner:null,death_radius:null,mass_at_death:null,temp_at_death:null})
+  }).catch(()=>{});
+}
+
+function registerDeath(star, cause, partnerType) {
+  if(!star.birth_tick_registered && star.birth_tick_registered!==0) return;
+  const dr=Math.sqrt((star.x-CFG.CENTER)**2+(star.y-CFG.CENTER)**2);
+  fetch('/registry/death',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({star_id:star.id,death_tick:tick,
+      lifespan:tick-star.birth_tick_registered,death_cause:cause,
+      collision_partner:partnerType||null,death_radius:+dr.toFixed(2),
+      mass_at_death:star.mass,temp_at_death:+(star.temp||0).toFixed(1)})
+  }).catch(()=>{});
 }
 
 // ============================================================
@@ -929,6 +1050,9 @@ function checkFormationBirth(o, toAdd, dying) {
   const vx = -rotDir * CFG.V_FLAT * Math.sin(theta);
   const vy =  rotDir * CFG.V_FLAT * Math.cos(theta);
   const star = makeObject(o.x, o.y, TYPE.STAR, newSt, o.mass, vx, vy, startTempForStarType(newSt));
+  star.birth_event_type = o.birth_event_type || 'unknown';
+  star.asteroid_absorbed = o.asteroid_absorbed || 0;
+  registerBirth(star, scanNeighbors(star));
   toAdd.push(star);
   dying.push(o.id);
 }
@@ -1037,7 +1161,7 @@ function resolveCollision(a, b, dying, toAdd) {
     if(isStar(other) && other.star_type===STAR.NEUTRON) {
       CNT.nsDiedCool++; CNT.nsDeaths++; CNT.nsTotalAge+=other.age;
     }
-    if(isStar(other)) trackStarDeath(other);
+    if(isStar(other)) { trackStarDeath(other); registerDeath(other, 'collision', 'black_hole'); }
     dying.push(other.id); masslossBuffer.delete(other.id);
     return;
   }
@@ -1083,12 +1207,18 @@ function resolveCollision(a, b, dying, toAdd) {
     ast.mass  -= transfer;
     star.mass += transfer;
     star.temp = Math.min(CFG.COLLAPSE_LIMIT, (star.temp||0) + transfer * CFG.AST_TEMP_PER_MASS);
-    const newST = starTypeFromMass(star.mass);
-    if(newST !== star.star_type) {
-      const old = star.star_type;
-      star.star_type = newST;
-      if(old===STAR.RED    && newST===STAR.YELLOW) CNT.evRY++;
-      if(old===STAR.YELLOW && newST===STAR.BLUE)   CNT.evYB++;
+    if(star.star_type !== STAR.WHITE) {
+      const newST = starTypeFromMass(star.mass);
+      if(newST !== star.star_type) {
+        const old = star.star_type;
+        star.star_type = newST;
+        if(old===STAR.RED    && newST===STAR.YELLOW) CNT.evRY++;
+        if(old===STAR.YELLOW && newST===STAR.BLUE)   CNT.evYB++;
+      }
+    } else if(star.mass >= CFG.WD_NOVA_MASS) {
+      doWhiteDwarfNova(star, toAdd, dying);
+      if(ast.mass <= 0) { dying.push(ast.id); masslossBuffer.delete(ast.id); }
+      return;
     }
     if(star.temp >= CFG.COLLAPSE_LIMIT && !star.unstable) {
       if(isBigEvent(star)) { star.unstable=true; star.unstable_partner=-1; star.vx=0; star.vy=0; }
@@ -1135,8 +1265,12 @@ function resolveCollision(a, b, dying, toAdd) {
     const fvy =  rotDir * CFG.V_FLAT * Math.cos(theta);
     const form = makeObject(mx, my, TYPE.FORMATION, '', mass60, fvx, fvy, 0);
     form.formation_tick = tick;
+    form.birth_event_type = 'star_collision';
+    form.asteroid_absorbed = 0;
     CNT.formationCount++;
     toAdd.push(form);
+    registerDeath(a, 'collision', b.star_type);
+    registerDeath(b, 'collision', a.star_type);
     dying.push(a.id); dying.push(b.id);
     masslossBuffer.delete(a.id); masslossBuffer.delete(b.id);
     return;
@@ -1152,24 +1286,44 @@ function resolveCollision(a, b, dying, toAdd) {
     absorber.mass = totalMass;
     // Температура: звезда + облако
     if(isStar(absorber)) {
-      absorber.temp = Math.min(CFG.COLLAPSE_LIMIT, (absorber.temp||0) + tempOfObject(absorbed));
+      absorber.temp = Math.max(0, Math.min(CFG.COLLAPSE_LIMIT, (absorber.temp||0) + tempOfObject(absorbed)));
     }
     // Смена типа облака при превышении порога (туманность→астероид→формация)
     if(isCloud(absorber)) {
       const res = typeFromMass(totalMass);
       if(res.type !== absorber.type) {
         absorber.type = res.type;
-        if(res.type === TYPE.FORMATION) { absorber.formation_tick = tick; CNT.formationCount++; }
+        if(res.type === TYPE.FORMATION) {
+          absorber.formation_tick = tick; CNT.formationCount++;
+          absorber.birth_event_type = 'star_cloud';
+          absorber.asteroid_absorbed = absorber.asteroid_absorbed || 0;
+        }
       }
     }
-    // Тип может смениться при переходе через порог
+    // Формация поглощает астероид — учитываем в asteroid_absorbed
+    if(absorber.type===TYPE.FORMATION && absorbed.type===TYPE.ASTEROID) {
+      absorber.asteroid_absorbed = (absorber.asteroid_absorbed||0) + absorbed.mass;
+    }
+    // Слияние двух формаций
+    if(absorber.type===TYPE.FORMATION && absorbed.type===TYPE.FORMATION) {
+      absorber.birth_event_type = 'formation_merge';
+      absorber.asteroid_absorbed = (absorber.asteroid_absorbed||0) + (absorbed.asteroid_absorbed||0);
+    }
+    // Тип может смениться при переходе через порог (белый карлик не рекласифицируется)
     if(isStar(absorber)) {
-      const newStarType = starTypeFromMass(totalMass);
-      if(newStarType !== absorber.star_type) {
-        const oldType = absorber.star_type;
-        absorber.star_type = newStarType;
-        if(oldType===STAR.RED  && newStarType===STAR.YELLOW) CNT.evRY++;
-        if(oldType===STAR.YELLOW && newStarType===STAR.BLUE)  CNT.evYB++;
+      if(absorber.star_type !== STAR.WHITE) {
+        const newStarType = starTypeFromMass(totalMass);
+        if(newStarType !== absorber.star_type) {
+          const oldType = absorber.star_type;
+          absorber.star_type = newStarType;
+          if(oldType===STAR.RED  && newStarType===STAR.YELLOW) CNT.evRY++;
+          if(oldType===STAR.YELLOW && newStarType===STAR.BLUE)  CNT.evYB++;
+        }
+      } else if(absorber.mass >= CFG.WD_NOVA_MASS) {
+        doWhiteDwarfNova(absorber, toAdd, dying);
+        dying.push(absorbed.id);
+        masslossBuffer.delete(absorbed.id);
+        return;
       }
       // Перегрев после поглощения
       if(absorber.temp >= CFG.COLLAPSE_LIMIT && !absorber.unstable) {
@@ -1233,10 +1387,17 @@ function processStarLifecycle() {
     if(!isStar(o)) continue;
     if(dying.includes(o.id)) continue;
 
-    // НЗ рассыпается при mass >= 101 — полный распад, нет остатка
+    // НЗ рассыпается при mass >= 1001 — полный распад, нет остатка
     if(o.star_type===STAR.NEUTRON && o.mass>=1001) {
+      registerDeath(o, 'mass_limit', null);
       disperseObject(o, toAdd, dying, 'decay', 'ejecta');
       CNT.deathCool++; CNT.nsDiedMass++; CNT.nsDeaths++; CNT.nsTotalAge+=o.age;
+      continue;
+    }
+
+    // БК взрывается при mass >= WD_NOVA_MASS — туманности + осколки + формация
+    if(o.star_type===STAR.WHITE && o.mass>=CFG.WD_NOVA_MASS) {
+      doWhiteDwarfNova(o, toAdd, dying);
       continue;
     }
 
@@ -1345,6 +1506,7 @@ function fastTick() {
 // ============================================================
 function updateDOM(collCount) {
   document.getElementById('tick-count').textContent=tick;
+  localStorage.setItem('ouroboros_tick', String(tick));
   document.getElementById('st-pool').textContent=Math.floor(returnPool);
 
   // Collisions
@@ -1683,6 +1845,14 @@ function applyGalaxy(galaxy) {
   // П5: фиксируем целевую массу
   targetMass=objects.reduce((s,o)=>s+o.mass,0);
 
+  // Регистрируем начальные звёзды (tick=0, birth_event=unknown)
+  for(const o of objects) {
+    if(isStar(o)) {
+      o.birth_event_type='unknown'; o.asteroid_absorbed=0;
+      registerBirth(o, scanNeighbors(o));
+    }
+  }
+
 
   document.getElementById('tick-count').textContent=0;
   document.getElementById('st-mergers').textContent=0;
@@ -1701,6 +1871,7 @@ async function generateGalaxy(seed) {
   loading.style.display='flex';
   loading.innerHTML='<div>GENERATING GALAXY</div><div class="loading-bar"></div>';
   try {
+    await fetch('/registry/reset',{method:'POST'}).catch(()=>{});
     const url=seed!==null?`/generate?seed=${seed}`:'/generate';
     const resp=await fetch(url,{method:'POST'});
     if(!resp.ok) throw new Error(await resp.text()||'generation failed');
