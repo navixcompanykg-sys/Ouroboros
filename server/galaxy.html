@@ -755,24 +755,23 @@ function ejectRng(seed) {
 function ejectSixty(x, y, srcVx, srcVy, mass60, toAdd) {
   if(mass60<=0) return;
   const dirs=CFG.EJECTA_DIRS;
-  const perDir=mass60/dirs;
-  // Сид: тик + грубая позиция, чтоб два взрыва в одном тике давали разные узоры
+  const perDir=mass60/(dirs*2); // 24 осколка: 2 на каждое из 12 направлений
   const rng = ejectRng((tick * 73856093) ^ (Math.round(x) * 19349663) ^ (Math.round(y) * 83492791));
   for(let i=0;i<dirs;i++) {
     const angle=(2*Math.PI/dirs)*i;
-    const r      = 1.0 + rng() * 1.0;          // случайное смещение 1–2 у.е.
-    const imp    = CFG.IMPULSE_MIN * (1.0 + rng() * 0.5); // импульс 1.0–1.5× от IMPULSE_MIN
-    const nx=x+Math.cos(angle)*r;
-    const ny=y+Math.sin(angle)*r;
-    const evx=Math.cos(angle)*imp;
-    const evy=Math.sin(angle)*imp;
-    let m=Math.round(perDir); if(m<1) m=1;
-    const obj=makeByMass(nx, ny, evx, evy, m, 'ejecta');
-    if(obj) {
-      obj.debris=true;
-      obj.debris_ticks=5;
-      toAdd.push(obj);
-    }
+    const ca=Math.cos(angle), sa=Math.sin(angle);
+    // Первый осколок: 0.5–1 у.е. разлёт, 1–2 у.е./тик скорость
+    const r1   = 0.5 + rng() * 0.5;
+    const imp1 = 1.0 + rng() * 1.0;
+    let m1=Math.round(perDir); if(m1<1) m1=1;
+    const o1=makeByMass(x+ca*r1, y+sa*r1, ca*imp1, sa*imp1, m1, 'ejecta');
+    if(o1) { o1.debris=true; o1.debris_ticks=5; toAdd.push(o1); }
+    // Второй осколок: 1.1–1.5 у.е. разлёт, 2–3 у.е./тик скорость (та же ось)
+    const r2   = 1.1 + rng() * 0.4;
+    const imp2 = 2.0 + rng() * 1.0;
+    let m2=Math.round(perDir); if(m2<1) m2=1;
+    const o2=makeByMass(x+ca*r2, y+sa*r2, ca*imp2, sa*imp2, m2, 'ejecta');
+    if(o2) { o2.debris=true; o2.debris_ticks=5; toAdd.push(o2); }
   }
 }
 
@@ -902,22 +901,8 @@ function apply6040(x, y, vx, vy, totalMass, toAdd) {
 function checkFormationBirth(o, toAdd, dying) {
   if(o.type!==TYPE.FORMATION) return;
 
-  // Аккреция каждый тик — поглощаем ближайшие облака в радиусе 5 у.е.
-  // Не ограничиваем по массе — формация копит всё время жизни (FORMATION_TICKS тиков)
-  const nearby = objects.filter(p =>
-    p!==o && !dying.includes(p.id) &&
-    p.type===TYPE.ASTEROID &&
-    Math.sqrt((p.x-o.x)**2+(p.y-o.y)**2) <= 5.0
-  ).sort((a,b) => {
-    const da=(a.x-o.x)**2+(a.y-o.y)**2;
-    const db=(b.x-o.x)**2+(b.y-o.y)**2;
-    return da-db;
-  });
-  for(const nb of nearby) {
-    o.mass += nb.mass;
-    dying.push(nb.id);
-    masslossBuffer.delete(nb.id);
-  }
+  // Аккреция только через прямые столкновения (resolveCollision, 0.9 у.е.)
+  // Радиусная охота на астероиды отключена — формация набирает массу естественным путём
 
   // Ждём полные FORMATION_TICKS тиков независимо от накопленной массы
   if(tick - o.formation_tick < CFG.FORMATION_TICKS) return;
@@ -1072,6 +1057,44 @@ function resolveCollision(a, b, dying, toAdd) {
       dying.push(abn.id); masslossBuffer.delete(abn.id);
     }
     // nebula + anything else (star, asteroid, formation, debris) → пропуск
+    return;
+  }
+
+  // Астероид + астероид: постепенная передача 10 ед./тик от меньшего к большему
+  if(a.type===TYPE.ASTEROID && b.type===TYPE.ASTEROID) {
+    const [abs, abn] = a.mass >= b.mass ? [a,b] : [b,a];
+    const transfer = Math.min(10, abn.mass);
+    abs.mass += transfer;
+    abn.mass -= transfer;
+    const res = typeFromMass(abs.mass);
+    if(res.type !== abs.type) {
+      abs.type = res.type;
+      if(res.type === TYPE.FORMATION) { abs.formation_tick = tick; CNT.formationCount++; }
+    }
+    if(abn.mass <= 0) { dying.push(abn.id); masslossBuffer.delete(abn.id); }
+    return;
+  }
+
+  // Астероид + звезда: 5 ед./тик от астероида к звезде, астероид продолжает движение
+  if((aStar && b.type===TYPE.ASTEROID) || (bStar && a.type===TYPE.ASTEROID)) {
+    const star = aStar ? a : b;
+    const ast  = aStar ? b : a;
+    const transfer = Math.min(5, ast.mass);
+    ast.mass  -= transfer;
+    star.mass += transfer;
+    star.temp = Math.min(CFG.COLLAPSE_LIMIT, (star.temp||0) + transfer * CFG.AST_TEMP_PER_MASS);
+    const newST = starTypeFromMass(star.mass);
+    if(newST !== star.star_type) {
+      const old = star.star_type;
+      star.star_type = newST;
+      if(old===STAR.RED    && newST===STAR.YELLOW) CNT.evRY++;
+      if(old===STAR.YELLOW && newST===STAR.BLUE)   CNT.evYB++;
+    }
+    if(star.temp >= CFG.COLLAPSE_LIMIT && !star.unstable) {
+      if(isBigEvent(star)) { star.unstable=true; star.unstable_partner=-1; star.vx=0; star.vy=0; }
+      else doSupernova(star, toAdd, dying);
+    }
+    if(ast.mass <= 0) { dying.push(ast.id); masslossBuffer.delete(ast.id); }
     return;
   }
 
