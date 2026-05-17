@@ -201,6 +201,7 @@
       <div class="stat-row"><span class="stat-label">Died cooled</span><span class="stat-value" id="ns-cool">0</span></div>
       <div class="stat-row"><span class="stat-label">Died overheated</span><span class="stat-value" id="ns-heat">0</span></div>
       <div class="stat-row"><span class="stat-label">Died mass≥1001</span><span class="stat-value" id="ns-mass">0</span></div>
+      <div class="stat-row"><span class="stat-label">Died collision</span><span class="stat-value" id="ns-coll">0</span></div>
       <div class="stat-row"><span class="stat-label">Avg lifespan</span><span class="stat-value" id="ns-age">—</span></div>
     </div>
     <!-- П11: Black Holes -->
@@ -345,7 +346,7 @@ const CNT = {
   totalReturnMass:0,
   retCount:0, retMassActual:0,  // число и фактическая масса влетевших объектов
   bhBorn:0,
-  nsBorn:0, nsDiedCool:0, nsDiedHeat:0, nsDiedMass:0,
+  nsBorn:0, nsDiedCool:0, nsDiedHeat:0, nsDiedMass:0, nsDiedCollision:0,
   nsTotalAge:0, nsDeaths:0,
   // Среднее время жизни по типам звёзд
   lifeRD:0, deathRD:0,
@@ -1158,10 +1159,10 @@ function resolveCollision(a, b, dying, toAdd) {
   if(aBH||bBH) {
     const bh=aBH?a:b, other=aBH?b:a;
     bh.mass+=other.mass;
-    if(isStar(other) && other.star_type===STAR.NEUTRON) {
-      CNT.nsDiedCool++; CNT.nsDeaths++; CNT.nsTotalAge+=other.age;
+    if(isStar(other)) {
+      if(other.star_type===STAR.NEUTRON) { CNT.nsDiedCollision++; CNT.nsDeaths++; CNT.nsTotalAge+=other.age; }
+      trackStarDeath(other); registerDeath(other, 'collision', 'black_hole');
     }
-    if(isStar(other)) { trackStarDeath(other); registerDeath(other, 'collision', 'black_hole'); }
     dying.push(other.id); masslossBuffer.delete(other.id);
     return;
   }
@@ -1247,6 +1248,10 @@ function resolveCollision(a, b, dying, toAdd) {
       // Создаём временный объект синего гиганта с суммарной массой
       const merged = {...blue, x:mx, y:my, mass:totalMass, vx:0, vy:0};
       doSupernova(merged, toAdd, dying);
+      // Учитываем гибель второй звезды (не синего гиганта)
+      if(other.star_type===STAR.NEUTRON) { CNT.nsDiedCollision++; CNT.nsDeaths++; CNT.nsTotalAge+=other.age; }
+      trackStarDeath(other);
+      registerDeath(other, 'collision', blue.star_type);
       if(!dying.includes(a.id)) dying.push(a.id);
       if(!dying.includes(b.id)) dying.push(b.id);
       masslossBuffer.delete(a.id); masslossBuffer.delete(b.id);
@@ -1269,6 +1274,9 @@ function resolveCollision(a, b, dying, toAdd) {
     form.asteroid_absorbed = 0;
     CNT.formationCount++;
     toAdd.push(form);
+    if(a.star_type===STAR.NEUTRON) { CNT.nsDiedCollision++; CNT.nsDeaths++; CNT.nsTotalAge+=a.age; }
+    if(b.star_type===STAR.NEUTRON) { CNT.nsDiedCollision++; CNT.nsDeaths++; CNT.nsTotalAge+=b.age; }
+    trackStarDeath(a); trackStarDeath(b);
     registerDeath(a, 'collision', b.star_type);
     registerDeath(b, 'collision', a.star_type);
     dying.push(a.id); dying.push(b.id);
@@ -1599,6 +1607,7 @@ function updateDOM(collCount) {
     document.getElementById('ns-cool').textContent=CNT.nsDiedCool;
     document.getElementById('ns-heat').textContent=CNT.nsDiedHeat;
     document.getElementById('ns-mass').textContent=CNT.nsDiedMass;
+    document.getElementById('ns-coll').textContent=CNT.nsDiedCollision;
     document.getElementById('ns-age').textContent=CNT.nsDeaths>0?Math.round(CNT.nsTotalAge/CNT.nsDeaths):'—';
   }
   // Velocity Stats
