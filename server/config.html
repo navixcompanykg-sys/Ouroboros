@@ -113,11 +113,11 @@
     <div class="field"><label>Start T — Yellow Dwarf</label><input type="number" data-path="temperature.start_temp_yellow_dwarf"><div class="default">default: 250</div></div>
     <div class="field"><label>dT/tick — Yellow Dwarf</label><input type="number" data-path="temperature.dt_yellow_dwarf" step="0.01"><div class="default">default: -1.5</div></div>
     <div class="field"><label>Start T — Blue Giant</label><input type="number" data-path="temperature.start_temp_blue_giant"><div class="default">default: 150</div></div>
-    <div class="field"><label>dT/tick — Blue Giant</label><input type="number" data-path="temperature.dt_blue_giant" step="0.1"><div class="default">default: +4.7</div></div>
+    <div class="field"><label>dT/tick — Blue Giant</label><input type="number" data-path="temperature.dt_blue_giant" step="0.1"><div class="default">default: +1.0</div></div>
     <div class="field"><label>Start T — Neutron Star</label><input type="number" data-path="temperature.start_temp_neutron_star"><div class="default">default: 500</div></div>
-    <div class="field"><label>dT/tick — Neutron Star</label><input type="number" data-path="temperature.dt_neutron_star" step="0.01"><div class="default">default: -0.34</div></div>
+    <div class="field"><label>dT/tick — Neutron Star</label><input type="number" data-path="temperature.dt_neutron_star" step="0.01"><div class="default">default: -0.2</div></div>
     <div class="field"><label>Start T — White Dwarf</label><input type="number" data-path="temperature.start_temp_white_dwarf"><div class="default">default: 50</div></div>
-    <div class="field"><label>dT/tick — White Dwarf</label><input type="number" data-path="temperature.dt_white_dwarf" step="0.01"><div class="default">default: -0.05</div></div>
+    <div class="field"><label>dT/tick — White Dwarf</label><input type="number" data-path="temperature.dt_white_dwarf" step="0.01"><div class="default">default: -0.1</div></div>
     <div class="field"><label>Nebula T per unit mass (display only)</label><input type="number" data-path="temperature.nebula_temp_per_mass"><div class="default">default: 3</div></div>
     <div class="field"><label>Nebula cooling per unit mass (when absorbed)</label><input type="number" data-path="temperature.nebula_cooling_per_mass"><div class="default">default: 3</div></div>
     <div class="field"><label>Asteroid T per unit mass</label><input type="number" data-path="temperature.asteroid_temp_per_mass"><div class="default">default: 1</div></div>
@@ -252,9 +252,9 @@ function getDefaults() {
       collapse_limit:1000, death_limit:10,
       start_temp_red_dwarf:100,    dt_red_dwarf:-0.3,
       start_temp_yellow_dwarf:250, dt_yellow_dwarf:-1.5,
-      start_temp_blue_giant:150,   dt_blue_giant:4.7,
-      start_temp_neutron_star:500, dt_neutron_star:-0.34,
-      start_temp_white_dwarf:50,   dt_white_dwarf:-0.05,
+      start_temp_blue_giant:150,   dt_blue_giant:1.0,
+      start_temp_neutron_star:500, dt_neutron_star:-0.2,
+      start_temp_white_dwarf:50,   dt_white_dwarf:-0.1,
       nebula_temp_per_mass:3, nebula_cooling_per_mass:3, asteroid_temp_per_mass:1
     },
     black_holes: {
