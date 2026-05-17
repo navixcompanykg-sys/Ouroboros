@@ -156,6 +156,16 @@
 </div>
 
 <div class="section">
+  <div class="section-title">Blue Giant Injector</div>
+  <div class="fields">
+    <div class="field"><label>Inject threshold (BG count)</label><input type="number" data-path="blue_giant_inject.bg_threshold" min="1"><div class="hint">While blue giants &lt; this value, core ejects 1 nebula/tick.</div><div class="default">default: 20</div></div>
+    <div class="field"><label>Ejection speed (u/tick)</label><input type="number" data-path="blue_giant_inject.speed" step="1"><div class="hint">Radial speed from galaxy center outward.</div><div class="default">default: 43.0</div></div>
+    <div class="field"><label>Nebula mass (u)</label><input type="number" data-path="blue_giant_inject.nebula_mass" min="1"><div class="default">default: 5</div></div>
+    <div class="field"><label>Grace ticks (no gravity)</label><input type="number" data-path="blue_giant_inject.grace_ticks" min="0"><div class="hint">Ticks before gravity applies to the ejected nebula.</div><div class="default">default: 3</div></div>
+  </div>
+</div>
+
+<div class="section">
   <div class="section-title">Simulation</div>
   <div class="fields">
     <div class="field"><label>Max Jump-to-Tick value</label><input type="number" data-path="simulation.max_jump_tick" min="1"><div class="default">default: 2000</div></div>
@@ -266,6 +276,7 @@ function getDefaults() {
       impulse_min:1.5, directions:12, big_event_mass_threshold:601
     },
     mass_return: { nebula_return_max:5, asteroid_return_max:30, inflow_speed:4.0 },
+    blue_giant_inject: { bg_threshold:20, speed:43.0, nebula_mass:5, grace_ticks:3 },
     simulation: { max_jump_tick:2000 }
   };
 }

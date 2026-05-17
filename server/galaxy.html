@@ -158,6 +158,7 @@
       <div class="stat-row"><span class="stat-label">Avg return mass/tick</span><span class="stat-value" id="ev-ret">0.0</span></div>
       <div class="stat-row"><span class="stat-label">Avg return obj/tick</span><span class="stat-value" id="ev-ret-obj">0.00</span></div>
       <div class="stat-row"><span class="stat-label">Avg mass per return</span><span class="stat-value" id="ev-ret-avg">0.0</span></div>
+      <div class="stat-row"><span class="stat-label">Core injected (BG&lt;20)</span><span class="stat-value" id="ev-core">0</span></div>
     </div>
     <!-- Collisions by type -->
     <div class="panel">
@@ -237,6 +238,8 @@ let CFG = {
   IMPULSE_MIN:1.5, EJECTA_DIRS:12,
   FORMATION_TICKS:6, BIG_EVENT_MASS:601,
   NEB_RETURN_MAX:5, AST_RETURN_MAX:30, INFLOW_SPEED:4.0,
+  // Регулятор синих гигантов: инжекция туманностей из ядра
+  BG_INJECT_BELOW:20, CORE_NEB_SPEED:43.0, CORE_NEB_MASS:5, CORE_GRACE_TICKS:3,
   // Вычисляемые из GALAXY_R (не задавать вручную)
   CENTER:150,   // = GALAXY_R * 1.25
   FIELD_SIZE:300 // = CENTER * 2
@@ -318,6 +321,13 @@ async function loadConfig() {
     CFG.AST_RETURN_MAX    = mr.asteroid_return_max ?? CFG.AST_RETURN_MAX;
     CFG.INFLOW_SPEED      = mr.inflow_speed        ?? CFG.INFLOW_SPEED;
 
+    // Blue giant injector
+    const ci = c.blue_giant_inject || {};
+    CFG.BG_INJECT_BELOW  = ci.bg_threshold  ?? CFG.BG_INJECT_BELOW;
+    CFG.CORE_NEB_SPEED   = ci.speed         ?? CFG.CORE_NEB_SPEED;
+    CFG.CORE_NEB_MASS    = ci.nebula_mass   ?? CFG.CORE_NEB_MASS;
+    CFG.CORE_GRACE_TICKS = ci.grace_ticks   ?? CFG.CORE_GRACE_TICKS;
+
     document.getElementById('jump-input').max = CFG.MAX_JUMP_TICK;
   } catch(e) { console.warn('Config load failed, using defaults', e); }
 }
@@ -335,6 +345,7 @@ let targetMass=0;
 let hoveredId=-1;
 // П9: детерминированные точки влёта
 let inflowPoints=[], inflowIdx=0;
+let coreEjectSeed=0;
 
 const masslossBuffer = new Map();
 
@@ -348,6 +359,7 @@ const CNT = {
   bhBorn:0,
   nsBorn:0, nsDiedCool:0, nsDiedHeat:0, nsDiedMass:0, nsDiedCollision:0,
   nsTotalAge:0, nsDeaths:0,
+  coreEjectCount:0,
   // Среднее время жизни по типам звёзд
   lifeRD:0, deathRD:0,
   lifeYD:0, deathYD:0,
@@ -1106,6 +1118,25 @@ function processReturnPool(toAdd) {
   }
 }
 
+// Ядро галактики выбрасывает туманность наружу, пока синих гигантов меньше BG_INJECT_BELOW.
+// Направление — псевдорандомное (LCG от сида), скорость CORE_NEB_SPEED у.е./тик,
+// первые CORE_GRACE_TICKS тиков гравитация не действует (debris-флаг).
+function processCoreEjection(toAdd) {
+  const nBG = objects.reduce((n,o) => n + (isStar(o) && o.star_type===STAR.BLUE ? 1 : 0), 0);
+  if(nBG >= CFG.BG_INJECT_BELOW) return;
+  coreEjectSeed = (Math.imul(coreEjectSeed, 1664525) + 1013904223) | 0;
+  const angle = ((coreEjectSeed >>> 0) / 0xffffffff) * Math.PI * 2;
+  const mass = CFG.CORE_NEB_MASS;
+  const vx = Math.cos(angle) * CFG.CORE_NEB_SPEED;
+  const vy = Math.sin(angle) * CFG.CORE_NEB_SPEED;
+  const neb = makeObject(CFG.CENTER, CFG.CENTER, TYPE.NEBULA, '', mass, vx, vy, mass * CFG.NEB_TEMP_PER_MASS);
+  neb.nebula_color = nebulaMassColor(mass);
+  neb.debris = true;
+  neb.debris_ticks = CFG.CORE_GRACE_TICKS;
+  CNT.coreEjectCount++;
+  toAdd.push(neb);
+}
+
 function detectAndResolve() {
   const cs=CFG.MIN_DIST;
   const grid=new Map();
@@ -1459,6 +1490,8 @@ function runTick() {
 
   // 1. Return pool → новые объекты (П5)
   processReturnPool(toAdd);
+  // Инжекция ядра: туманность из центра если синих гигантов < BG_INJECT_BELOW
+  processCoreEjection(toAdd);
   objects.push(...toAdd);
 
   // 2. Physics (П2: чистый Leapfrog)
@@ -1500,7 +1533,9 @@ function runTick() {
 function fastTick() {
   tick++;
   const toAdd=[];
-  processReturnPool(toAdd); objects.push(...toAdd);
+  processReturnPool(toAdd);
+  processCoreEjection(toAdd);
+  objects.push(...toAdd);
   leapfrogStep();
   checkBoundaries();
   const nebAdd=[]; applyTemperature(nebAdd); objects.push(...nebAdd);
@@ -1580,6 +1615,7 @@ function updateDOM(collCount) {
   document.getElementById('ev-ret').textContent=(tick>0?(CNT.totalReturnMass/tick).toFixed(1):'0.0');
   document.getElementById('ev-ret-obj').textContent=(tick>0?(CNT.retCount/tick).toFixed(2):'0.00');
   document.getElementById('ev-ret-avg').textContent=(CNT.retCount>0?(CNT.retMassActual/CNT.retCount).toFixed(1):'0.0');
+  document.getElementById('ev-core').textContent=CNT.coreEjectCount;
 
   document.getElementById('col-cc').textContent=CNT.colCC;
   document.getElementById('col-cs').textContent=CNT.colCS;
@@ -1817,6 +1853,8 @@ function applyGalaxy(galaxy) {
   // П9: генерируем детерминированные точки влёта по сиду галактики
   inflowPoints=generateInflowPoints(galaxy.seed||42, 800);
   inflowIdx=0;
+  coreEjectSeed=((galaxy.seed||42)*2654435761)|0;
+  if(coreEjectSeed===0) coreEjectSeed=12345678;
 
   // Определяем старый центр по среднему координат ЗВЁЗД (они симметричны по спирали)
   // Туманности и астероиды размещены случайно и смещают среднее

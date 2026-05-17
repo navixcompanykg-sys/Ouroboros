@@ -1,4 +1,10 @@
 {
+  "blue_giant_inject": {
+    "bg_threshold": 20,
+    "grace_ticks": 3,
+    "nebula_mass": 5,
+    "speed": 43.0
+  },
   "black_holes": {
     "heat_max": 0.14,
     "mass_loss_pct": 0.1,
