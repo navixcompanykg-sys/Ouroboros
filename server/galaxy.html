@@ -1287,10 +1287,13 @@ function resolveCollision(a, b, dying, toAdd) {
   const totalMass=a.mass+b.mass;
 
   // Правка №6: обычные столкновения (не звезда+звезда, не ЧД) — больший поглощает меньшего
+  // Исключение: звезда всегда поглощает не-звезду (формацию/облако), независимо от массы
   // Позиция и скорость поглотителя не меняются
   if(!aStar || !bStar) {
-    // Определяем поглотителя (больший объект)
-    const [absorber, absorbed] = a.mass >= b.mass ? [a, b] : [b, a];
+    // Звезда всегда absorber; если обоих нет/оба не-звёзды — по массе
+    const [absorber, absorbed] = (aStar && !bStar) ? [a, b]
+                               : (!aStar && bStar)  ? [b, a]
+                               : a.mass >= b.mass   ? [a, b] : [b, a];
     absorber.mass = totalMass;
     // Температура: звезда + облако
     if(isStar(absorber)) {
