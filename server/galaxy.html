@@ -711,9 +711,9 @@ function makeByMass(x, y, vx, vy, mass, mode) {
   if(mass<=0) return null;
 
   if(mode==='remnant_nova') {
-    // Соотношение ЧД:НЗ = 1:2 детерминированно по порядку сверхновых:
-    // 1→НЗ, 2→НЗ, 3→ЧД, 4→НЗ, 5→НЗ, 6→ЧД ...
-    const isBHturn = (CNT.supernovae % 3 === 0);
+    // Соотношение ЧД:НЗ = 1:1 детерминированно по порядку сверхновых:
+    // 1→НЗ, 2→ЧД, 3→НЗ, 4→ЧД ...
+    const isBHturn = (CNT.supernovae % 2 === 0);
     if(isBHturn) {
       const bh=makeObject(x,y,TYPE.BH,'',mass,vx,vy,0);
       CNT.bhBorn++;
