@@ -139,7 +139,7 @@
   <div class="fields">
     <div class="field"><label>Ejecta Fraction (Mode 1 — dispersal)</label><input type="number" data-path="dispersal.ejecta_fraction" step="0.05" min="0" max="1"><div class="hint">Fraction to shrapnel in overheat/overcool. Rest goes to remnant.</div><div class="default">default: 0.6</div></div>
     <div class="field"><label>Formation Ticks (nursery lifetime)</label><input type="number" data-path="dispersal.formation_ticks" min="1"><div class="hint">Ticks before formation births a star. Accretes clouds every tick.</div><div class="default">default: 6</div></div>
-    <div class="field"><label>Debris Ticks (no gravity after spawn)</label><input type="number" data-path="dispersal.debris_ticks" min="0"><div class="hint">Also applies to inflow objects.</div><div class="default">default: 5</div></div>
+    <div class="field"><label>Debris Ticks (no gravity after spawn)</label><input type="number" data-path="dispersal.debris_ticks" min="0"><div class="hint">Also applies to inflow objects.</div><div class="default">default: 10</div></div>
     <div class="field"><label>Ejecta Impulse (u/tick)</label><input type="number" data-path="dispersal.impulse_min" step="0.1"><div class="default">default: 1.5</div></div>
     <div class="field"><label>Number of Ejecta Directions</label><input type="number" data-path="dispersal.directions" min="4" max="24"><div class="hint">12 = every 30 degrees.</div><div class="default">default: 12</div></div>
     <div class="field"><label>Big Event Mass Threshold (u)</label><input type="number" data-path="dispersal.big_event_mass_threshold"><div class="hint">Solo objects above this mass get unstable visual pulse before exploding.</div><div class="default">default: 601</div></div>
@@ -156,12 +156,16 @@
 </div>
 
 <div class="section">
-  <div class="section-title">Blue Giant Injector</div>
+  <div class="section-title">Plasma Jet Injector (Blue Giants)</div>
   <div class="fields">
-    <div class="field"><label>Inject threshold (BG count)</label><input type="number" data-path="blue_giant_inject.bg_threshold" min="1"><div class="hint">While blue giants &lt; this value, core ejects 1 nebula/tick.</div><div class="default">default: 20</div></div>
-    <div class="field"><label>Ejection speed (u/tick)</label><input type="number" data-path="blue_giant_inject.speed" step="1"><div class="hint">Radial speed from galaxy center outward.</div><div class="default">default: 43.0</div></div>
-    <div class="field"><label>Nebula mass (u)</label><input type="number" data-path="blue_giant_inject.nebula_mass" min="1"><div class="default">default: 5</div></div>
-    <div class="field"><label>Grace ticks (no gravity)</label><input type="number" data-path="blue_giant_inject.grace_ticks" min="0"><div class="hint">Ticks before gravity applies to the ejected nebula.</div><div class="default">default: 3</div></div>
+    <div class="field"><label>BG threshold (inject jets)</label><input type="number" data-path="blue_giant_inject.bg_threshold" min="1"><div class="hint">Inject jets while blue giants below this count.</div><div class="default">default: 20</div></div>
+    <div class="field"><label>BG threshold (grow mass)</label><input type="number" data-path="blue_giant_inject.mass_grow_threshold" min="1"><div class="hint">targetMass increases per injected nebula only below this count (critical shortage).</div><div class="default">default: 10</div></div>
+    <div class="field"><label>Deficit step (BG/jet)</label><input type="number" data-path="blue_giant_inject.jet_deficit_step" min="1"><div class="hint">1 jet per this many missing blue giants.</div><div class="default">default: 2</div></div>
+    <div class="field"><label>Nebula mass per jet neb (u)</label><input type="number" data-path="blue_giant_inject.nebula_mass" min="1"><div class="default">default: 5</div></div>
+    <div class="field"><label>Start temperature</label><input type="number" data-path="blue_giant_inject.start_temp" min="1"><div class="hint">Hot nebula starting temp. Each heat transfer costs 50T; cools in flight at 8T/tick.</div><div class="default">default: 400</div></div>
+    <div class="field"><label>Heat per mass drained (T)</label><input type="number" data-path="blue_giant_inject.heat_per_mass"><div class="hint">Temp given to absorbing star per unit of hot nebula mass.</div><div class="default">default: 50</div></div>
+    <div class="field"><label>Drain every N ticks</label><input type="number" data-path="blue_giant_inject.drain_every" min="1"><div class="hint">How often (ticks) 1 mass unit is absorbed from a hot nebula.</div><div class="default">default: 20</div></div>
+    <div class="field"><label>Cooling per tick (flight)</label><input type="number" data-path="blue_giant_inject.cooling_per_tick" min="1"><div class="hint">Temp lost per tick while flying. At 8/tick nebula cools ~23 ticks (~midpoint of galaxy).</div><div class="default">default: 8</div></div>
   </div>
 </div>
 
@@ -272,11 +276,11 @@ function getDefaults() {
       radiation_radius:10, heat_max:0.14
     },
     dispersal: {
-      ejecta_fraction:0.6, formation_ticks:6, debris_ticks:5,
+      ejecta_fraction:0.6, formation_ticks:6, debris_ticks:10,
       impulse_min:1.5, directions:12, big_event_mass_threshold:601
     },
     mass_return: { nebula_return_max:5, asteroid_return_max:30, inflow_speed:4.0 },
-    blue_giant_inject: { bg_threshold:20, speed:43.0, nebula_mass:5, grace_ticks:3 },
+    blue_giant_inject: { bg_threshold:20, mass_grow_threshold:10, jet_deficit_step:2, nebula_mass:5, start_temp:400, heat_per_mass:50, drain_every:20, cooling_per_tick:8 },
     simulation: { max_jump_tick:2000 }
   };
 }

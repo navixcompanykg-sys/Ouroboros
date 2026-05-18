@@ -236,10 +236,12 @@ let CFG = {
   ORBITAL_DRAG:0.05,
   EJECTA_FRACTION:0.6,
   IMPULSE_MIN:1.5, EJECTA_DIRS:12,
-  FORMATION_TICKS:6, BIG_EVENT_MASS:601,
+  FORMATION_TICKS:6, DEBRIS_TICKS:10, BIG_EVENT_MASS:601,
   NEB_RETURN_MAX:5, AST_RETURN_MAX:30, INFLOW_SPEED:4.0,
-  // Регулятор синих гигантов: инжекция туманностей из ядра
-  BG_INJECT_BELOW:20, CORE_NEB_SPEED:43.0, CORE_NEB_MASS:5, CORE_GRACE_TICKS:3,
+  // Регулятор синих гигантов: плазменные выбросы из ядра
+  BG_INJECT_BELOW:20, BG_MASS_GROW_BELOW:10, CORE_JET_DEFICIT_STEP:2,
+  CORE_NEB_MASS:5, CORE_NEB_START_TEMP:400,
+  CORE_NEB_HEAT_PER_MASS:50, CORE_NEB_DRAIN_EVERY:20, CORE_NEB_COOLING:8,
   // Вычисляемые из GALAXY_R (не задавать вручную)
   CENTER:150,   // = GALAXY_R * 1.25
   FIELD_SIZE:300 // = CENTER * 2
@@ -314,6 +316,7 @@ async function loadConfig() {
     CFG.IMPULSE_MIN        = di.impulse_min              ?? CFG.IMPULSE_MIN;
     CFG.EJECTA_DIRS        = di.directions               ?? CFG.EJECTA_DIRS;
     CFG.FORMATION_TICKS    = di.formation_ticks          ?? CFG.FORMATION_TICKS;
+    CFG.DEBRIS_TICKS       = di.debris_ticks             ?? CFG.DEBRIS_TICKS;
     CFG.BIG_EVENT_MASS     = di.big_event_mass_threshold ?? CFG.BIG_EVENT_MASS;
 
     // Mass return
@@ -323,10 +326,14 @@ async function loadConfig() {
 
     // Blue giant injector
     const ci = c.blue_giant_inject || {};
-    CFG.BG_INJECT_BELOW  = ci.bg_threshold  ?? CFG.BG_INJECT_BELOW;
-    CFG.CORE_NEB_SPEED   = ci.speed         ?? CFG.CORE_NEB_SPEED;
-    CFG.CORE_NEB_MASS    = ci.nebula_mass   ?? CFG.CORE_NEB_MASS;
-    CFG.CORE_GRACE_TICKS = ci.grace_ticks   ?? CFG.CORE_GRACE_TICKS;
+    CFG.BG_INJECT_BELOW       = ci.bg_threshold       ?? CFG.BG_INJECT_BELOW;
+    CFG.BG_MASS_GROW_BELOW    = ci.mass_grow_threshold ?? CFG.BG_MASS_GROW_BELOW;
+    CFG.CORE_JET_DEFICIT_STEP = ci.jet_deficit_step   ?? CFG.CORE_JET_DEFICIT_STEP;
+    CFG.CORE_NEB_MASS         = ci.nebula_mass        ?? CFG.CORE_NEB_MASS;
+    CFG.CORE_NEB_START_TEMP   = ci.start_temp         ?? CFG.CORE_NEB_START_TEMP;
+    CFG.CORE_NEB_HEAT_PER_MASS= ci.heat_per_mass      ?? CFG.CORE_NEB_HEAT_PER_MASS;
+    CFG.CORE_NEB_DRAIN_EVERY  = ci.drain_every        ?? CFG.CORE_NEB_DRAIN_EVERY;
+    CFG.CORE_NEB_COOLING      = ci.cooling_per_tick   ?? CFG.CORE_NEB_COOLING;
 
     document.getElementById('jump-input').max = CFG.MAX_JUMP_TICK;
   } catch(e) { console.warn('Config load failed, using defaults', e); }
@@ -346,6 +353,8 @@ let hoveredId=-1;
 // П9: детерминированные точки влёта
 let inflowPoints=[], inflowIdx=0;
 let coreEjectSeed=0;
+// Буфер поглощений центром: {angle} за прошлый тик → струи в начале следующего
+let centerJetBuffer=[];
 
 const masslossBuffer = new Map();
 
@@ -404,7 +413,10 @@ function baseOmega(r) {
 }
 
 function tempOfObject(o) {
-  if(o.type===TYPE.NEBULA)    return -(o.mass * CFG.NEB_COOLING_PER_MASS);
+  if(o.type===TYPE.NEBULA) {
+    if(o.hot_neb) return o.mass * CFG.CORE_NEB_HEAT_PER_MASS;
+    return -(o.mass * CFG.NEB_COOLING_PER_MASS);
+  }
   if(o.type===TYPE.FORMATION) return   o.mass * CFG.AST_TEMP_PER_MASS;
   if(o.temp !== undefined)    return o.temp;
   if(o.type===TYPE.ASTEROID)  return o.mass * CFG.AST_TEMP_PER_MASS;
@@ -488,12 +500,27 @@ const COLORS = {
 
 function objColor(o) {
   if(o.type===TYPE.STAR) return COLORS[o.star_type]||[255,255,255];
-  if(o.type===TYPE.NEBULA) return o.nebula_color||nebulaMassColor(o.mass);
+  if(o.type===TYPE.NEBULA) {
+    if(o.hot_neb && o.temp > 0) {
+      const t = Math.min(1, o.temp / CFG.CORE_NEB_START_TEMP);
+      const base = o.nebula_color || nebulaMassColor(o.mass);
+      // Горячая: интерполяция от normal → [60, 160, 255] (ярко-синий)
+      return [
+        Math.round(base[0] + ( 60 - base[0]) * t),
+        Math.round(base[1] + (160 - base[1]) * t),
+        Math.round(base[2] + (255 - base[2]) * t),
+      ];
+    }
+    return o.nebula_color||nebulaMassColor(o.mass);
+  }
   return COLORS[o.type]||[255,255,255];
 }
 
 function massAlpha(o) {
-  if(o.type===TYPE.NEBULA) return 0.2+0.35*Math.min(1,Math.max(0,(o.mass-1)/4));
+  if(o.type===TYPE.NEBULA) {
+    if(o.hot_neb) return Math.min(0.75, 0.35 + 0.4 * Math.min(1, o.temp / CFG.CORE_NEB_START_TEMP));
+    return 0.2+0.35*Math.min(1,Math.max(0,(o.mass-1)/4));
+  }
   const ranges={star:[10,100],black_hole:[101,200],asteroid_field:[6,30],formation:[10,19]};
   const [lo,hi]=ranges[o.type]||[1,100];
   return 0.35+0.65*Math.min(1,Math.max(0,(o.mass-lo)/(hi-lo)));
@@ -670,6 +697,11 @@ const DM_STAR={
 
 function applyTemperature(toAdd) {
   for(const o of objects) {
+    // Горячие туманности остывают самостоятельно
+    if(o.type===TYPE.NEBULA && o.hot_neb) {
+      o.temp = Math.max(o.mass * CFG.NEB_TEMP_PER_MASS, o.temp - CFG.CORE_NEB_COOLING);
+      if(o.temp <= o.mass * CFG.NEB_TEMP_PER_MASS) o.hot_neb = false;
+    }
     if(!isStar(o)) continue;
     o.temp += dtForStarType(o.star_type);
     o.temp = Math.max(0, Math.min(CFG.COLLAPSE_LIMIT, o.temp));
@@ -784,13 +816,13 @@ function ejectSixty(x, y, srcVx, srcVy, mass60, toAdd) {
     const imp1 = 1.0 + rng() * 1.0;
     let m1=Math.round(perDir); if(m1<1) m1=1;
     const o1=makeByMass(x+ca*r1, y+sa*r1, ca*imp1, sa*imp1, m1, 'ejecta');
-    if(o1) { o1.debris=true; o1.debris_ticks=5; toAdd.push(o1); }
+    if(o1) { o1.debris=true; o1.debris_ticks=CFG.DEBRIS_TICKS; toAdd.push(o1); }
     // Второй осколок: 1.1–1.5 у.е. разлёт, 2–3 у.е./тик скорость (та же ось)
     const r2   = 1.1 + rng() * 0.4;
     const imp2 = 2.0 + rng() * 1.0;
     let m2=Math.round(perDir); if(m2<1) m2=1;
     const o2=makeByMass(x+ca*r2, y+sa*r2, ca*imp2, sa*imp2, m2, 'ejecta');
-    if(o2) { o2.debris=true; o2.debris_ticks=5; toAdd.push(o2); }
+    if(o2) { o2.debris=true; o2.debris_ticks=CFG.DEBRIS_TICKS; toAdd.push(o2); }
   }
 }
 
@@ -813,7 +845,7 @@ function createExplosionNebulae(x, y, availMass) {
     neb.nebula_color = nebulaMassColor(mass);
     neb.half_orbit = true;
     neb.debris = true;
-    neb.debris_ticks = 5;
+    neb.debris_ticks = CFG.DEBRIS_TICKS;
     usedMass += mass;
     result.push(neb);
   }
@@ -896,8 +928,10 @@ function ejectMass(x, y, vx, vy, totalMass, toAdd) {
   ejectSixty(x, y, vx, vy, totalMass, toAdd);
 }
 
-// Постепенное поглощение туманностей звёздами и ЧД: 1 у.е./тик, ×2 dT для звезды.
-// Осколки (debris=true) не поглощаются. Только звёзды и ЧД поглощают.
+// Постепенное поглощение туманностей звёздами и ЧД.
+// Обычная: 1 у.е./тик, охлаждает звезду на NEB_COOLING_PER_MASS.
+// Горячая: 1 у.е. каждые CORE_NEB_DRAIN_EVERY тиков, нагревает звезду на CORE_NEB_HEAT_PER_MASS.
+// Осколки (debris=true) не поглощаются.
 function drainNebulae() {
   const nebulae = objects.filter(o => o.type===TYPE.NEBULA && !o.debris);
   if(!nebulae.length) return;
@@ -909,10 +943,19 @@ function drainNebulae() {
       if(dyingNeb.has(neb.id)) continue;
       const dx=drainer.x-neb.x, dy=drainer.y-neb.y;
       if(dx*dx+dy*dy >= md2) continue;
-      neb.mass--;
-      drainer.mass++;
-      if(isStar(drainer)) {
-        drainer.temp = Math.max(0, drainer.temp - CFG.NEB_COOLING_PER_MASS);
+      if(neb.hot_neb) {
+        // Медленное поглощение горячей туманности: 1 ед. каждые CORE_NEB_DRAIN_EVERY тиков
+        if(tick - (neb.hot_drain_tick||0) < CFG.CORE_NEB_DRAIN_EVERY) continue;
+        neb.hot_drain_tick = tick;
+        neb.mass--;
+        drainer.mass++;
+        if(isStar(drainer)) drainer.temp = Math.min(CFG.COLLAPSE_LIMIT, drainer.temp + CFG.CORE_NEB_HEAT_PER_MASS);
+        neb.temp = Math.max(neb.mass * CFG.NEB_TEMP_PER_MASS, neb.temp - CFG.CORE_NEB_HEAT_PER_MASS);
+        if(neb.temp <= neb.mass * CFG.NEB_TEMP_PER_MASS) neb.hot_neb = false;
+      } else {
+        neb.mass--;
+        drainer.mass++;
+        if(isStar(drainer)) drainer.temp = Math.max(0, drainer.temp - CFG.NEB_COOLING_PER_MASS);
       }
       if(neb.mass <= 0) dyingNeb.add(neb.id);
     }
@@ -1110,7 +1153,7 @@ function processReturnPool(toAdd) {
       actual*(type===TYPE.NEBULA?CFG.NEB_TEMP_PER_MASS:CFG.AST_TEMP_PER_MASS));
     if(type===TYPE.NEBULA) obj.nebula_color=nebulaMassColor(actual);
     obj.debris=true;
-    obj.debris_ticks=5;
+    obj.debris_ticks=CFG.DEBRIS_TICKS;
     CNT.retCount++;
     CNT.retMassActual+=actual;
     toAdd.push(obj);
@@ -1118,23 +1161,44 @@ function processReturnPool(toAdd) {
   }
 }
 
-// Ядро галактики выбрасывает туманность наружу, пока синих гигантов меньше BG_INJECT_BELOW.
-// Направление — псевдорандомное (LCG от сида), скорость CORE_NEB_SPEED у.е./тик,
-// первые CORE_GRACE_TICKS тиков гравитация не действует (debris-флаг).
+// Плазменные выбросы из ядра галактики: пока BG < BG_INJECT_BELOW,
+// каждые 2 недостающих гиганта → 1 струя в тик.
+// Струя — 4 горячих туманности в одном направлении:
+//   r = 2.5/3.5/4.5/5.5 у.е. от центра, v = 1/2/3/4 у.е./тик.
+// 3 тика grace (debris): нет гравитации, чтобы покинуть хаотичную зону.
+// Каждая туманность добавляет массу в targetMass (норма галактики растёт).
 function processCoreEjection(toAdd) {
   const nBG = objects.reduce((n,o) => n + (isStar(o) && o.star_type===STAR.BLUE ? 1 : 0), 0);
-  if(nBG >= CFG.BG_INJECT_BELOW) return;
-  coreEjectSeed = (Math.imul(coreEjectSeed, 1664525) + 1013904223) | 0;
-  const angle = ((coreEjectSeed >>> 0) / 0xffffffff) * Math.PI * 2;
-  const mass = CFG.CORE_NEB_MASS;
-  const vx = Math.cos(angle) * CFG.CORE_NEB_SPEED;
-  const vy = Math.sin(angle) * CFG.CORE_NEB_SPEED;
-  const neb = makeObject(CFG.CENTER, CFG.CENTER, TYPE.NEBULA, '', mass, vx, vy, mass * CFG.NEB_TEMP_PER_MASS);
-  neb.nebula_color = nebulaMassColor(mass);
-  neb.debris = true;
-  neb.debris_ticks = CFG.CORE_GRACE_TICKS;
-  CNT.coreEjectCount++;
-  toAdd.push(neb);
+  const deficit = CFG.BG_INJECT_BELOW - nBG;
+  if(deficit <= 0) return;
+  // Жёсткий дефицит (BG < 10): струй по deficit/step, targetMass растёт.
+  // Мягкий дефицит (10 ≤ BG < 20): ровно 1 струя как фоновый возврат массы.
+  const hardDeficit = nBG < CFG.BG_MASS_GROW_BELOW;
+  const numJets = hardDeficit
+    ? Math.max(1, Math.floor(deficit / CFG.CORE_JET_DEFICIT_STEP))
+    : 1;
+  for(let j = 0; j < numJets; j++) {
+    coreEjectSeed = (Math.imul(coreEjectSeed, 1664525) + 1013904223) | 0;
+    // Одна из 12 дискретных осей (шаг 30°) + смещение 5°/тик
+    const axisIdx = (coreEjectSeed >>> 0) % 12;
+    const angle = axisIdx * (Math.PI / 6) + tick * (5 * Math.PI / 180);
+    const cosA = Math.cos(angle), sinA = Math.sin(angle);
+    for(let i = 0; i < 4; i++) {
+      const r     = 2.5 + i;
+      const speed = 1   + i;
+      const neb = makeObject(CFG.CENTER + cosA * r, CFG.CENTER + sinA * r,
+                             TYPE.NEBULA, '', CFG.CORE_NEB_MASS,
+                             cosA * speed, sinA * speed, CFG.CORE_NEB_START_TEMP);
+      neb.nebula_color   = nebulaMassColor(CFG.CORE_NEB_MASS);
+      neb.hot_neb        = true;
+      neb.hot_drain_tick = tick;
+      neb.debris         = true;
+      neb.debris_ticks   = CFG.DEBRIS_TICKS;
+      if(hardDeficit) targetMass += CFG.CORE_NEB_MASS;
+      CNT.coreEjectCount++;
+      toAdd.push(neb);
+    }
+  }
 }
 
 function detectAndResolve() {
@@ -1198,8 +1262,7 @@ function resolveCollision(a, b, dying, toAdd) {
     return;
   }
 
-  // Туманности: сливаются друг с другом (RGB-блендинг); все остальные взаимодействия — пропуск.
-  // Звёзды поглощают туманности через drainNebulae (1/тик), не через resolveCollision.
+  // Туманности: сливаются друг с другом (RGB-блендинг); горячие поглощаются звёздами сразу.
   const aNeb = a.type===TYPE.NEBULA, bNeb = b.type===TYPE.NEBULA;
   if(aNeb || bNeb) {
     if(aNeb && bNeb) {
@@ -1211,8 +1274,17 @@ function resolveCollision(a, b, dying, toAdd) {
       abs.mass = total;
       if(abs.mass >= 6) { abs.type=TYPE.ASTEROID; abs.nebula_color=undefined; }
       dying.push(abn.id); masslossBuffer.delete(abn.id);
+    } else {
+      // горячая туманность + звезда: мгновенное поглощение с передачей массы и тепла
+      const neb  = aNeb ? a : b;
+      const star = aNeb ? b : a;
+      if(neb.hot_neb && isStar(star)) {
+        star.temp = Math.min(CFG.COLLAPSE_LIMIT, (star.temp||0) + neb.mass * CFG.CORE_NEB_HEAT_PER_MASS);
+        star.mass += neb.mass;
+        dying.push(neb.id); masslossBuffer.delete(neb.id);
+      }
+      // холодная туманность + звезда/астероид/формация → пропуск
     }
-    // nebula + anything else (star, asteroid, formation, debris) → пропуск
     return;
   }
 
@@ -1412,11 +1484,37 @@ function processUnstable() {
 function checkBoundaries() {
   const surviving=[];
   for(const o of objects) {
-    if(o.r < CFG.CHAOS_R) { returnPool+=o.mass; continue; }
+    if(o.r < CFG.CHAOS_R) {
+      returnPool+=o.mass;
+      // Запоминаем угол падения → струя в следующем тике
+      centerJetBuffer.push(Math.atan2(o.y-CFG.CENTER, o.x-CFG.CENTER));
+      continue;
+    }
     if(o.x < -2 || o.x > CFG.FIELD_SIZE+2 || o.y < -2 || o.y > CFG.FIELD_SIZE+2) { returnPool+=o.mass; continue; }
     surviving.push(o);
   }
   objects=surviving;
+}
+
+// Один тик после поглощения объекта центром — в направлении падения выбрасывается струя.
+function processCenterJets(toAdd) {
+  if(!centerJetBuffer.length) return;
+  const angles=centerJetBuffer;
+  centerJetBuffer=[];
+  for(const angle of angles) {
+    const cosA=Math.cos(angle), sinA=Math.sin(angle);
+    for(let i=0;i<4;i++) {
+      const r=2.5+i, speed=1+i;
+      const neb=makeObject(CFG.CENTER+cosA*r, CFG.CENTER+sinA*r,
+                           TYPE.NEBULA,'',CFG.CORE_NEB_MASS,
+                           cosA*speed, sinA*speed, CFG.CORE_NEB_START_TEMP);
+      neb.nebula_color=nebulaMassColor(CFG.CORE_NEB_MASS);
+      neb.hot_neb=true; neb.hot_drain_tick=tick;
+      neb.debris=true;  neb.debris_ticks=CFG.DEBRIS_TICKS;
+      CNT.coreEjectCount++;
+      toAdd.push(neb);
+    }
+  }
 }
 
 // ============================================================
@@ -1488,9 +1586,11 @@ function runTick() {
   tick++;
   const toAdd=[];
 
+  // 0. Струи от прошлого тика (объекты упавшие в центр)
+  processCenterJets(toAdd);
   // 1. Return pool → новые объекты (П5)
   processReturnPool(toAdd);
-  // Инжекция ядра: туманность из центра если синих гигантов < BG_INJECT_BELOW
+  // Инжекция ядра: плазменные выбросы при дефиците синих гигантов
   processCoreEjection(toAdd);
   objects.push(...toAdd);
 
@@ -1533,6 +1633,7 @@ function runTick() {
 function fastTick() {
   tick++;
   const toAdd=[];
+  processCenterJets(toAdd);
   processReturnPool(toAdd);
   processCoreEjection(toAdd);
   objects.push(...toAdd);
@@ -1855,6 +1956,7 @@ function applyGalaxy(galaxy) {
   inflowIdx=0;
   coreEjectSeed=((galaxy.seed||42)*2654435761)|0;
   if(coreEjectSeed===0) coreEjectSeed=12345678;
+  centerJetBuffer=[];
 
   // Определяем старый центр по среднему координат ЗВЁЗД (они симметричны по спирали)
   // Туманности и астероиды размещены случайно и смещают среднее

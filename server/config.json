@@ -1,9 +1,13 @@
 {
   "blue_giant_inject": {
     "bg_threshold": 20,
-    "grace_ticks": 3,
+    "mass_grow_threshold": 10,
+    "jet_deficit_step": 2,
     "nebula_mass": 5,
-    "speed": 43.0
+    "start_temp": 400,
+    "heat_per_mass": 50,
+    "drain_every": 20,
+    "cooling_per_tick": 8
   },
   "black_holes": {
     "heat_max": 0.14,
@@ -13,7 +17,7 @@
   },
   "dispersal": {
     "big_event_mass_threshold": 601,
-    "debris_ticks": 5,
+    "debris_ticks": 10,
     "directions": 12,
     "ejecta_fraction": 0.6,
     "formation_ticks": 6,
