@@ -8,12 +8,36 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 )
 
 const port = ":8080"
 const registryFile = "star_registry.json"
+const maxDeadRecords = 1000
+
+// trimDeadRecords keeps all alive stars + the newest maxDeadRecords dead ones.
+func trimDeadRecords(records []map[string]interface{}) []map[string]interface{} {
+	var alive, dead []map[string]interface{}
+	for _, rec := range records {
+		if rec["death_tick"] == nil {
+			alive = append(alive, rec)
+		} else {
+			dead = append(dead, rec)
+		}
+	}
+	if len(dead) <= maxDeadRecords {
+		return records
+	}
+	sort.Slice(dead, func(i, j int) bool {
+		ti, _ := dead[i]["death_tick"].(float64)
+		tj, _ := dead[j]["death_tick"].(float64)
+		return ti > tj
+	})
+	return append(alive, dead[:maxDeadRecords]...)
+}
 
 var registryMu sync.Mutex
 
@@ -228,6 +252,36 @@ func handleRegistryBirth(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, `{"ok":true}`)
 }
 
+func handleRegistryBirthBatch(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		return
+	}
+	var newRecs []map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&newRecs); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	registryMu.Lock()
+	defer registryMu.Unlock()
+	var records []map[string]interface{}
+	if data, err := os.ReadFile(registryFile); err == nil {
+		json.Unmarshal(data, &records)
+	}
+	records = append(records, newRecs...)
+	out, _ := json.Marshal(records)
+	os.WriteFile(registryFile, out, 0644)
+	for _, rec := range newRecs {
+		if b, err := json.Marshal(rec); err == nil {
+			hub.broadcast("event: birth\ndata: " + string(b) + "\n\n")
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"ok":true,"count":%d}`, len(newRecs))
+}
+
 func handleRegistryDeath(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if r.Method == http.MethodOptions {
@@ -255,6 +309,7 @@ func handleRegistryDeath(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+	records = trimDeadRecords(records)
 	out, _ := json.Marshal(records)
 	os.WriteFile(registryFile, out, 0644)
 	if b, err := json.Marshal(patch); err == nil {
@@ -397,11 +452,165 @@ func handleRegistryStream(w http.ResponseWriter, r *http.Request) {
 }
 
 // ============================================================
+// SYSTEM VIEW
+// ============================================================
+
+var orbitPeriods = []int{
+	7200, 9000, 11200, 14000, 17400, 21700, 27000, 33600, 41800, 52000, 64700, 80600,
+	100400, 125000, 155600, 193700, 241200, 300300, 373900, 465700, 579800, 721900, 898700, 1118900,
+	1393000, 1734300, 2159200, 2688200, 3346800, 4166800, 5187700, 6458700, 8041100, 10011200, 12464000, 15517700,
+}
+
+type PlanetInfo struct {
+	Slot       int    `json:"slot"`
+	OrbitIndex int    `json:"orbit_index"`
+	Type       string `json:"type"`
+	VisualType string `json:"visual_type"`
+	PeriodSec  int    `json:"period_sec"`
+}
+
+type RingInfo struct {
+	RingIndex int `json:"ring_index"`
+	OrbitGrid int `json:"orbit_grid"`
+}
+
+func genCodeToSeed(code string) int64 {
+	n := int64(0)
+	for _, c := range code {
+		if c >= '0' && c <= '9' {
+			n = n*10 + int64(c-'0')
+		}
+	}
+	return n
+}
+
+func planetTypeFromSlot(slot int) string {
+	switch {
+	case slot <= 8:
+		return "lava"
+	case slot <= 17:
+		return "rocky"
+	case slot <= 26:
+		return "ice"
+	default:
+		return "gas_giant"
+	}
+}
+
+func assignPlanetOrbits(nPlanets int, seed int64) []int {
+	if nPlanets <= 0 {
+		return nil
+	}
+	slots := make([]int, 36)
+	for i := range slots {
+		slots[i] = i
+	}
+	// Fisher-Yates shuffle via LCG
+	for i := 35; i > 0; i-- {
+		seed = (seed*1664525 + 1013904223) & 0x7fffffff
+		j := int(seed % int64(i+1))
+		slots[i], slots[j] = slots[j], slots[i]
+	}
+	// Greedy pick: no two adjacent orbits
+	taken := make(map[int]bool)
+	result := make([]int, 0, nPlanets)
+	for _, s := range slots {
+		if len(result) >= nPlanets {
+			break
+		}
+		if !taken[s-1] && !taken[s+1] {
+			taken[s] = true
+			result = append(result, s)
+		}
+	}
+	sort.Ints(result)
+	return result
+}
+
+func handleSystemGet(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+
+	idStr := strings.TrimPrefix(r.URL.Path, "/system/")
+	starID, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "invalid star id", http.StatusBadRequest)
+		return
+	}
+
+	registryMu.Lock()
+	data, _ := os.ReadFile(registryFile)
+	registryMu.Unlock()
+
+	var records []map[string]interface{}
+	json.Unmarshal(data, &records)
+
+	var rec map[string]interface{}
+	for _, candidate := range records {
+		if fmt.Sprintf("%v", candidate["star_id"]) == strconv.Itoa(starID) {
+			rec = candidate
+			break
+		}
+	}
+	if rec == nil {
+		http.Error(w, `{"error":"star not found"}`, http.StatusNotFound)
+		return
+	}
+
+	genCode, _ := rec["gen_code"].(string)
+	nPlanets := int(rec["n_planets"].(float64))
+	nRings := int(rec["n_rings"].(float64))
+	starType, _ := rec["birth_star_type"].(string)
+	mass := int(rec["birth_mass"].(float64))
+
+	seed := int64(starID)*1000003 + genCodeToSeed(genCode)
+	slots := assignPlanetOrbits(nPlanets, seed)
+
+	planets := make([]PlanetInfo, len(slots))
+	for i, slot := range slots {
+		pt := planetTypeFromSlot(slot)
+		planets[i] = PlanetInfo{
+			Slot:       slot + 1,
+			OrbitIndex: slot,
+			Type:       pt,
+			VisualType: pt,
+			PeriodSec:  orbitPeriods[slot],
+		}
+	}
+
+	ringGridOrbits := []int{38, 42}
+	rings := make([]RingInfo, 0, nRings)
+	for i := 0; i < nRings && i < 2; i++ {
+		rings = append(rings, RingInfo{RingIndex: i + 1, OrbitGrid: ringGridOrbits[i]})
+	}
+
+	result := map[string]interface{}{
+		"star_id":   starID,
+		"star_type": starType,
+		"mass":      mass,
+		"gen_code":  genCode,
+		"n_planets": nPlanets,
+		"n_rings":   nRings,
+		"planets":   planets,
+		"rings":     rings,
+	}
+	json.NewEncoder(w).Encode(result)
+}
+
+// ============================================================
 // MAIN
 // ============================================================
 
 func main() {
 	// Registry API
+	http.HandleFunc("/registry/birth/batch", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost, http.MethodOptions:
+			handleRegistryBirthBatch(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
 	http.HandleFunc("/registry/birth", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost, http.MethodOptions:
@@ -433,6 +642,9 @@ func main() {
 	http.HandleFunc("/registry", func(w http.ResponseWriter, r *http.Request) {
 		handleRegistryGet(w, r)
 	})
+
+	// System view
+	http.HandleFunc("/system/", handleSystemGet)
 
 	// Static files
 	http.HandleFunc("/", handleStatic)

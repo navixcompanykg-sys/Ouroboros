@@ -69,6 +69,37 @@
   /* Temp bar in sidebar */
   .temp-bar-wrap{height:3px;background:rgba(255,255,255,0.06);margin-top:3px;border-radius:1px;overflow:hidden;}
   .temp-bar{height:100%;border-radius:1px;transition:width 0.3s;}
+  /* ── System View overlay ─────────────────────────────────── */
+  #sys-overlay{position:fixed;inset:0;z-index:500;background:#06080f;display:none;flex-direction:column;}
+  #sys-overlay.open{display:flex;}
+  #sys-header{display:flex;align-items:center;gap:20px;padding:10px 18px;background:rgba(6,10,24,0.98);border-bottom:1px solid var(--border);flex-shrink:0;}
+  #sys-back{background:transparent;border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:10px;padding:5px 12px;cursor:pointer;letter-spacing:1px;transition:all 0.15s;}
+  #sys-back:hover{border-color:var(--accent2);color:var(--accent2);}
+  #sys-star-name{font-family:var(--mono);font-size:13px;color:var(--text-bright);letter-spacing:1px;}
+  #sys-star-gen{font-family:var(--mono);font-size:10px;color:var(--text);opacity:0.6;margin-top:2px;}
+  #sys-hint{margin-left:auto;font-family:var(--mono);font-size:9px;color:var(--text);opacity:0.3;}
+  #sys-zoom-label{font-family:var(--mono);font-size:10px;color:var(--text);opacity:0.5;flex-shrink:0;}
+  #sys-canvas{flex:1;display:block;width:100%;cursor:grab;}
+  #sys-canvas:active{cursor:grabbing;}
+  .sys-controls{display:flex;align-items:center;gap:4px;flex-shrink:0;}
+  .sys-sim-btn{background:transparent;border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;letter-spacing:1px;transition:all 0.15s;}
+  .sys-sim-btn:hover{border-color:var(--accent);color:var(--accent2);}
+  .sys-sim-btn.active{border-color:var(--accent2);color:var(--accent2);background:rgba(0,229,255,0.06);}
+  .sys-sim-btn.stop-btn{border-color:rgba(255,80,60,0.4);color:rgba(255,120,100,0.8);}
+  .sys-sim-btn.stop-btn:hover{border-color:#ff5040;color:#ff8070;}
+  .sys-grid-btn{background:transparent;border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;letter-spacing:1px;transition:all 0.15s;}
+  .sys-grid-btn:hover{border-color:var(--accent);}
+  .sys-grid-btn.on{border-color:var(--accent);color:var(--accent2);}
+  #sys-stats{position:absolute;bottom:20px;left:20px;background:var(--panel-bg);border:1px solid var(--border);padding:10px 14px;backdrop-filter:blur(8px);min-width:180px;}
+  .sys-env-title{font-family:var(--mono);font-size:9px;letter-spacing:3px;color:var(--accent);opacity:0.8;margin-bottom:8px;}
+  .sys-env-row{margin-bottom:7px;}
+  .sys-env-row:last-child{margin-bottom:0;}
+  .sys-env-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;}
+  .sys-env-label{font-family:var(--mono);font-size:9px;color:var(--text);opacity:0.65;letter-spacing:1px;}
+  .sys-env-val{font-family:var(--mono);font-size:10px;color:var(--text-bright);}
+  .sys-env-max{font-family:var(--mono);font-size:9px;color:var(--text);opacity:0.35;}
+  .sys-env-bar-wrap{height:2px;background:rgba(255,255,255,0.06);border-radius:1px;overflow:hidden;}
+  .sys-env-bar{height:100%;border-radius:1px;transition:width 0.4s,background 0.4s;}
 </style>
 </head>
 <body>
@@ -213,6 +244,51 @@
   </div>
 </div>
 <div id="tooltip"></div>
+
+<!-- ── System View overlay ─────────────────────────────── -->
+<div id="sys-overlay">
+  <div id="sys-header">
+    <button id="sys-back">← Galaxy</button>
+    <div>
+      <div id="sys-star-name">—</div>
+      <div id="sys-star-gen">—</div>
+    </div>
+    <div class="sys-controls">
+      <button class="sys-sim-btn stop-btn" id="sysb-stop">■ STOP</button>
+      <button class="sys-sim-btn" id="sysb-slow">MIN/S</button>
+      <button class="sys-sim-btn active" id="sysb-normal">HR/S</button>
+      <button class="sys-sim-btn" id="sysb-fast">DAY/S</button>
+      <button class="sys-grid-btn" id="sysb-grid">GRID</button>
+    </div>
+    <div id="sys-hint">ESC / ← &nbsp;·&nbsp; scroll zoom &nbsp;·&nbsp; drag pan &nbsp;·&nbsp; dblclick reset view</div>
+    <span id="sys-zoom-label">1.0×</span>
+  </div>
+  <canvas id="sys-canvas"></canvas>
+  <div id="sys-stats">
+    <div class="sys-env-title">ENVIRONMENT</div>
+    <div class="sys-env-row">
+      <div class="sys-env-head">
+        <span class="sys-env-label">TEMP</span>
+        <span><span class="sys-env-val" id="ss-temp-val">0</span><span class="sys-env-max"> / 1000</span></span>
+      </div>
+      <div class="sys-env-bar-wrap"><div class="sys-env-bar" id="ss-temp-bar" style="width:0%"></div></div>
+    </div>
+    <div class="sys-env-row">
+      <div class="sys-env-head">
+        <span class="sys-env-label">RADIATION</span>
+        <span><span class="sys-env-val" id="ss-rad-val">0</span><span class="sys-env-max"> / 100</span></span>
+      </div>
+      <div class="sys-env-bar-wrap"><div class="sys-env-bar" id="ss-rad-bar" style="width:0%;background:#2a7fff"></div></div>
+    </div>
+    <div class="sys-env-row">
+      <div class="sys-env-head">
+        <span class="sys-env-label">METEOR</span>
+        <span><span class="sys-env-val" id="ss-met-val">0</span><span class="sys-env-max"> / 100</span></span>
+      </div>
+      <div class="sys-env-bar-wrap"><div class="sys-env-bar" id="ss-met-bar" style="width:0%;background:#7a6040"></div></div>
+    </div>
+  </div>
+</div>
 
 <script>
 'use strict';
@@ -1021,7 +1097,7 @@ function computePlanets(S1,S2,S3,S4,S5,S6,S7) {
   if(S6<=2)n-=1; else if(S6>=6)n-=1;
   // S7: тип события — без изменений
   if(S7===0)n+=1; else if(S7===1)n-=1; else if(S7===2)n+=1; else if(S7===4)n+=1;
-  return Math.max(0,Math.min(12,n));
+  return Math.max(0,Math.min(16,n));
 }
 
 function computeRings(S2,S4,S7) {
@@ -1030,7 +1106,7 @@ function computeRings(S2,S4,S7) {
   return Math.min(2,r);
 }
 
-function registerBirth(star, neighbors) {
+function buildBirthRecord(star, neighbors) {
   const birth_radius=Math.sqrt((star.x-CFG.CENTER)**2+(star.y-CFG.CENTER)**2);
   const evMap={inflow:0,star_collision:1,asteroid_collision:2,star_cloud:3,formation_merge:4,wd_nova:5};
   const r={neighbor_gravity_mass:neighbors.neighbor_gravity_mass,
@@ -1048,19 +1124,34 @@ function registerBirth(star, neighbors) {
   const S6=Math.min(Math.floor(r.birth_temp_env/100),9);
   const S7=evMap[r.birth_event_type]??5;
   star.birth_tick_registered=tick;
+  return {star_id:star.id,birth_tick:tick,birth_radius:+birth_radius.toFixed(2),
+    birth_star_type:star.star_type,birth_mass:star.mass,birth_event:S7,
+    neighbor_gravity_mass:r.neighbor_gravity_mass,neighbor_neb_mass:r.neighbor_neb_mass,
+    asteroid_absorbed:r.asteroid_absorbed,birth_temp_env:+r.birth_temp_env.toFixed(1),
+    gen_code:genCode,n_planets:computePlanets(S1,S2,S3,S4,S5,S6,S7),
+    n_rings:computeRings(S2,S4,S7),
+    death_tick:null,lifespan:null,death_cause:null,
+    collision_partner:null,death_radius:null,mass_at_death:null,temp_at_death:null};
+}
+
+function registerBirth(star, neighbors) {
   fetch('/registry/birth',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({star_id:star.id,birth_tick:tick,birth_radius:+birth_radius.toFixed(2),
-      birth_star_type:star.star_type,birth_mass:star.mass,birth_event:S7,
-      neighbor_gravity_mass:r.neighbor_gravity_mass,neighbor_neb_mass:r.neighbor_neb_mass,
-      asteroid_absorbed:r.asteroid_absorbed,birth_temp_env:+r.birth_temp_env.toFixed(1),
-      gen_code:genCode,n_planets:computePlanets(S1,S2,S3,S4,S5,S6,S7),
-      n_rings:computeRings(S2,S4,S7),
-      death_tick:null,lifespan:null,death_cause:null,
-      collision_partner:null,death_radius:null,mass_at_death:null,temp_at_death:null})
+    body:JSON.stringify(buildBirthRecord(star,neighbors))
   }).catch(()=>{});
 }
 
+function notifySysStarDeath(starId, cause) {
+  if(!sysData || sysData.star_id!==starId || sysDeathAnimating) return;
+  sysDeathAnimating=true;
+  sysDeathStartTime=performance.now();
+  sysSimRunning=false;
+  const colors={overheat:'#ffcc44',mass_limit:'#44ffee',overcool:'#3366cc',collision:'#ff4433'};
+  sysDeathColor=colors[cause]||'#ffffff';
+  setTimeout(closeSystemView,2800);
+}
+
 function registerDeath(star, cause, partnerType) {
+  notifySysStarDeath(star.id, cause);
   if(!star.birth_tick_registered && star.birth_tick_registered!==0) return;
   const dr=Math.sqrt((star.x-CFG.CENTER)**2+(star.y-CFG.CENTER)**2);
   fetch('/registry/death',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -1997,12 +2088,17 @@ function applyGalaxy(galaxy) {
   // П5: фиксируем целевую массу
   targetMass=objects.reduce((s,o)=>s+o.mass,0);
 
-  // Регистрируем начальные звёзды (tick=0, birth_event=unknown)
+  // Регистрируем начальные звёзды одним пакетным запросом (вместо 2000 одиночных)
+  const batchRecords=[];
   for(const o of objects) {
     if(isStar(o)) {
       o.birth_event_type='unknown'; o.asteroid_absorbed=0;
-      registerBirth(o, scanNeighbors(o));
+      batchRecords.push(buildBirthRecord(o, scanNeighbors(o)));
     }
+  }
+  if(batchRecords.length>0){
+    fetch('/registry/birth/batch',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(batchRecords)}).catch(()=>{});
   }
 
 
@@ -2160,6 +2256,326 @@ window.addEventListener('mousemove',e=>{
   else{const rect=canvas.getBoundingClientRect();const o=findNearest(e.clientX-rect.left,e.clientY-rect.top);if(o){hoveredId=o.id;showTip(o,e.clientX,e.clientY);canvas.style.cursor='pointer';}else{hoveredId=-1;tooltip.style.display='none';canvas.style.cursor='crosshair';}}
 });
 window.addEventListener('mouseup',()=>{isDragging=false;canvas.style.cursor='crosshair';});
+
+// ============================================================
+// SYSTEM VIEW
+// ============================================================
+const ORBIT_PERIODS=[
+  7200,9000,11200,14000,17400,21700,27000,33600,41800,52000,64700,80600,
+  100400,125000,155600,193700,241200,300300,373900,465700,579800,721900,898700,1118900,
+  1393000,1734300,2159200,2688200,3346800,4166800,5187700,6458700,8041100,10011200,12464000,15517700,
+];
+const PLANET_VISUALS={
+  lava:      {color:'#dd4411',r:7},
+  rocky:     {color:'#7a8870',r:7},
+  ice:       {color:'#99bbdd',r:6},
+  gas_giant: {color:'#ddaa55',r:11},
+};
+const STAR_VISUALS={
+  red_dwarf:    {color:'#ff5533',r:18},
+  yellow_dwarf: {color:'#ffcc22',r:22},
+  blue_giant:   {color:'#55aaff',r:30},
+  white_dwarf:  {color:'#ddeeff',r:13},
+  neutron_star: {color:'#aaffcc',r:10},
+};
+
+let sysData=null, sysRafId=null;
+let sysZoom=1, sysPanX=0, sysPanY=0;
+let sysDragging=false, sysDragStart={x:0,y:0}, sysPanStart={x:0,y:0};
+let sysSimTime=0, sysSimSpeed=3600, sysSimRunning=true, sysSimLastReal=0;
+let sysShowGrid=false;
+let sysDeathAnimating=false, sysDeathColor='#ffcc44', sysDeathStartTime=0;
+const sysOverlay=document.getElementById('sys-overlay');
+const sysCanvas=document.getElementById('sys-canvas');
+const sysCtx=sysCanvas.getContext('2d');
+
+function sysOrbitRadius(orbitIndex,size){
+  // 100×100 coordinate space: inner orbit at 6 units, outer at 42 units
+  return size*(0.06+0.36*orbitIndex/35);
+}
+
+function planetAngleDeg(orbitIndex,genCode,starId,nowSec,period){
+  const S8=parseInt(genCode[7])||0;
+  const phase=(S8*36+orbitIndex*30+(starId*7)%360)%360;
+  const p=period||ORBIT_PERIODS[orbitIndex]||86400;
+  return (phase+(nowSec%p)/p*360)%360;
+}
+
+function drawSystem(nowSec){
+  const W=sysCanvas.width, H=sysCanvas.height;
+  const cx=W/2, cy=H/2, size=Math.min(W,H);
+  const sc=sysCtx;
+  sc.clearRect(0,0,W,H);
+  sc.fillStyle='#06080f'; sc.fillRect(0,0,W,H);
+
+  const d=sysData;
+  const lw=1/sysZoom;
+
+  // Трансформ: зум вокруг центра + пан; центр системы → (0,0)
+  sc.save();
+  sc.translate(cx+sysPanX, cy+sysPanY);
+  sc.scale(sysZoom,sysZoom);
+
+  // ── Сетка (100×100, шаг 10 у.е.) ────────────────────────────
+  if(sysShowGrid){
+    const unit=size*0.01; // 1 у.е. = 1% size
+    const step=unit*10;
+    const reach=Math.ceil((Math.max(W,H)*0.6/sysZoom)/step+1)*step;
+    sc.strokeStyle='rgba(60,100,160,0.13)'; sc.lineWidth=lw;
+    for(let p=-reach;p<=reach;p+=step){
+      sc.beginPath(); sc.moveTo(p,-reach); sc.lineTo(p,reach); sc.stroke();
+      sc.beginPath(); sc.moveTo(-reach,p); sc.lineTo(reach,p); sc.stroke();
+    }
+    // Оси
+    sc.strokeStyle='rgba(60,130,200,0.25)'; sc.lineWidth=lw*1.5;
+    sc.beginPath(); sc.moveTo(0,-reach); sc.lineTo(0,reach); sc.stroke();
+    sc.beginPath(); sc.moveTo(-reach,0); sc.lineTo(reach,0); sc.stroke();
+    // Метки
+    sc.fillStyle='rgba(100,150,200,0.3)';
+    const fs=Math.max(7,9/sysZoom);
+    sc.font=`${fs}px Share Tech Mono,monospace`;
+    sc.textAlign='center';
+    for(let i=-5;i<=5;i++){
+      if(i===0) continue;
+      const pos=i*step;
+      sc.fillText((i*10).toString(),pos,fs*1.2);
+    }
+    sc.textAlign='right';
+    for(let i=-5;i<=5;i++){
+      if(i===0) continue;
+      const pos=i*step;
+      sc.fillText((i*10).toString(),-fs*0.4,pos+fs*0.4);
+    }
+  }
+
+  // ── Орбитальные кольца планет ────────────────────────────────
+  sc.strokeStyle='rgba(255,255,255,0.06)'; sc.lineWidth=lw;
+  for(const p of d.planets){
+    const orb=sysOrbitRadius(p.orbit_index,size);
+    sc.beginPath(); sc.arc(0,0,orb,0,Math.PI*2); sc.stroke();
+  }
+
+  // ── Астероидные кольца (orbit_grid за орбитой 35) ───────────
+  sc.lineWidth=6*lw;
+  sc.strokeStyle='rgba(160,140,100,0.28)';
+  sc.setLineDash([5*lw,12*lw]);
+  for(const ring of d.rings){
+    const orb=sysOrbitRadius(ring.orbit_grid,size);
+    sc.beginPath(); sc.arc(0,0,orb,0,Math.PI*2); sc.stroke();
+  }
+  sc.setLineDash([]);
+
+  // ── Звезда — свечение + ядро ─────────────────────────────────
+  const sv=STAR_VISUALS[d.star_type]||{color:'#ffffff',r:18};
+  const glow=sc.createRadialGradient(0,0,0,0,0,sv.r*3);
+  glow.addColorStop(0,sv.color+'88'); glow.addColorStop(0.4,sv.color+'33'); glow.addColorStop(1,sv.color+'00');
+  sc.beginPath(); sc.arc(0,0,sv.r*3,0,Math.PI*2); sc.fillStyle=glow; sc.fill();
+  sc.beginPath(); sc.arc(0,0,sv.r,0,Math.PI*2); sc.fillStyle=sv.color; sc.fill();
+
+  // ── Планеты ──────────────────────────────────────────────────
+  for(const p of d.planets){
+    const ang=planetAngleDeg(p.orbit_index,d.gen_code,d.star_id,nowSec,p.period_sec)*Math.PI/180;
+    const orb=sysOrbitRadius(p.orbit_index,size);
+    const px=orb*Math.cos(ang), py=orb*Math.sin(ang);
+    const pv=PLANET_VISUALS[p.visual_type]||{color:'#888888',r:6};
+    const pg=sc.createRadialGradient(px,py,0,px,py,pv.r*2.2);
+    pg.addColorStop(0,pv.color+'55'); pg.addColorStop(1,pv.color+'00');
+    sc.beginPath(); sc.arc(px,py,pv.r*2.2,0,Math.PI*2); sc.fillStyle=pg; sc.fill();
+    sc.beginPath(); sc.arc(px,py,pv.r,0,Math.PI*2); sc.fillStyle=pv.color; sc.fill();
+  }
+
+  // ── Взрыв звезды (внутри трансформа) ─────────────────────────
+  if(sysDeathAnimating){
+    const t=Math.min((performance.now()-sysDeathStartTime)/2500,1);
+    const r=size*0.9*Math.sqrt(t);
+    const a=t<0.25?t/0.25:Math.max(0,(1-t)/0.75);
+    const fl=sc.createRadialGradient(0,0,0,0,0,r);
+    fl.addColorStop(0,sysDeathColor+'ff');
+    fl.addColorStop(0.15,sysDeathColor+'cc');
+    fl.addColorStop(0.5,sysDeathColor+'44');
+    fl.addColorStop(1,sysDeathColor+'00');
+    sc.globalAlpha=a;
+    sc.beginPath(); sc.arc(0,0,r,0,Math.PI*2); sc.fillStyle=fl; sc.fill();
+    sc.globalAlpha=1;
+  }
+
+  sc.restore();
+
+  // ── Текст взрыва (в экранных координатах) ────────────────────
+  if(sysDeathAnimating){
+    const t=Math.min((performance.now()-sysDeathStartTime)/2500,1);
+    if(t>0.2){
+      const ta=Math.min((t-0.2)/0.25,1);
+      sc.save();
+      sc.globalAlpha=ta;
+      sc.textAlign='center';
+      sc.font=`bold ${Math.round(size*0.028)}px Share Tech Mono,monospace`;
+      sc.fillStyle=sysDeathColor;
+      sc.fillText('SYSTEM COLLAPSE',cx,cy-size*0.08);
+      sc.font=`${Math.round(size*0.014)}px Share Tech Mono,monospace`;
+      sc.fillStyle='rgba(200,210,230,0.85)';
+      sc.fillText('returning to galaxy view...',cx,cy-size*0.04);
+      sc.restore();
+    }
+  }
+}
+
+function tempBarColor(t,max){
+  const r=t/max;
+  if(r<0.3) return '#4488ff';
+  if(r<0.65) return '#ffcc44';
+  return '#ff5533';
+}
+
+let _sysStatFrame=0;
+function updateSysStats(){
+  if(!sysData) return;
+  const star=objects.find(o=>o.id===sysData.star_id);
+  const temp=star?Math.round(star.temp||0):0;
+  const tempPct=Math.min(100,temp/1000*100).toFixed(1);
+  document.getElementById('ss-temp-val').textContent=temp;
+  const tb=document.getElementById('ss-temp-bar');
+  tb.style.width=tempPct+'%';
+  tb.style.background=tempBarColor(temp,1000);
+  // Radiation и Meteor: зарезервированы, пока 0
+}
+
+function renderSysLoop(){
+  if(!sysData) return;
+  const now=performance.now();
+  if(sysSimRunning && sysSimLastReal>0)
+    sysSimTime+=(now-sysSimLastReal)*0.001*sysSimSpeed;
+  sysSimLastReal=now;
+  drawSystem(sysSimTime);
+  if(++_sysStatFrame%8===0) updateSysStats();
+  sysRafId=requestAnimationFrame(renderSysLoop);
+}
+
+function resizeSysCanvas(){
+  sysCanvas.width=sysCanvas.offsetWidth;
+  sysCanvas.height=sysCanvas.offsetHeight;
+}
+
+function resetSysView(){
+  sysZoom=1; sysPanX=0; sysPanY=0;
+  document.getElementById('sys-zoom-label').textContent='1.0×';
+}
+
+function setSysSpeed(speed){
+  sysSimSpeed=speed;
+  sysSimRunning=(speed>0);
+  ['sysb-stop','sysb-slow','sysb-normal','sysb-fast'].forEach(id=>{
+    document.getElementById(id).classList.remove('active');
+  });
+  const map={0:'sysb-stop',60:'sysb-slow',3600:'sysb-normal',86400:'sysb-fast'};
+  const btn=document.getElementById(map[speed]);
+  if(btn) btn.classList.add('active');
+}
+
+async function openSystemView(star){
+  let data;
+  try{
+    const resp=await fetch(`/system/${star.id}`);
+    if(!resp.ok){console.warn('system not in registry:',star.id);return;}
+    data=await resp.json();
+  }catch(e){console.warn('system fetch failed',e);return;}
+  sysData=data;
+  // Сброс состояния
+  resetSysView();
+  sysSimTime=0; sysSimLastReal=0;
+  sysDeathAnimating=false;
+  setSysSpeed(3600); // HR/S по умолчанию
+  tooltip.style.display='none';
+  sysOverlay.classList.add('open');
+  resizeSysCanvas();
+  document.getElementById('sys-star-name').textContent=
+    `Star #${data.star_id} · ${data.star_type.replace(/_/g,' ')} · mass ${data.mass}`;
+  document.getElementById('sys-star-gen').textContent=
+    `GEN: ${data.gen_code} · Planets: ${data.n_planets} · Rings: ${data.n_rings}`;
+  if(sysRafId) cancelAnimationFrame(sysRafId);
+  sysRafId=requestAnimationFrame(renderSysLoop);
+}
+
+function closeSystemView(){
+  sysOverlay.classList.remove('open');
+  sysData=null;
+  sysDragging=false;
+  sysDeathAnimating=false;
+  sysSimRunning=false;
+  if(sysRafId){cancelAnimationFrame(sysRafId);sysRafId=null;}
+}
+
+wrap.addEventListener('dblclick',e=>{
+  if(sysData) return;
+  const rect=canvas.getBoundingClientRect();
+  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+  // Сначала ищем звезду в радиусе 28px — приоритет перед другими объектами
+  let bestStar=null, bestStarD=28;
+  let bestAny=null,  bestAnyD=16;
+  for(const o of objects){
+    const [sx,sy]=toScreen(o.x,o.y);
+    const d=Math.hypot(sx-mx,sy-my);
+    if(isStar(o) && d<bestStarD){bestStarD=d;bestStar=o;}
+    if(d<bestAnyD){bestAnyD=d;bestAny=o;}
+  }
+  const hit=bestStar||bestAny;
+  console.log('[dblclick] hit:',hit?`${hit.type}/${hit.star_type||''} id=${hit.id} d=${bestStar?bestStarD.toFixed(1):bestAnyD.toFixed(1)}px`:'nothing');
+  if(bestStar) openSystemView(bestStar);
+  else if(hit) console.log('[dblclick] found non-star:',hit.type,'— double-click a star to open system view');
+});
+document.getElementById('sys-back').addEventListener('click',closeSystemView);
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&sysData) closeSystemView();});
+window.addEventListener('resize',()=>{if(sysData) resizeSysCanvas();});
+
+// Зум колесом мыши (к курсору)
+sysCanvas.addEventListener('wheel',e=>{
+  if(!sysData) return;
+  e.preventDefault();
+  const rect=sysCanvas.getBoundingClientRect();
+  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+  const cx=sysCanvas.width/2, cy=sysCanvas.height/2;
+  const f=e.deltaY<0?1.15:1/1.15;
+  const prev=sysZoom;
+  sysZoom=Math.min(15,Math.max(0.15,sysZoom*f));
+  const ratio=sysZoom/prev;
+  sysPanX=(mx-cx)*(1-ratio)+sysPanX*ratio;
+  sysPanY=(my-cy)*(1-ratio)+sysPanY*ratio;
+  document.getElementById('sys-zoom-label').textContent=sysZoom.toFixed(1)+'×';
+},{passive:false});
+
+// Пан перетаскиванием
+sysCanvas.addEventListener('mousedown',e=>{
+  if(!sysData) return;
+  sysDragging=true;
+  sysDragStart={x:e.clientX,y:e.clientY};
+  sysPanStart={x:sysPanX,y:sysPanY};
+  sysCanvas.style.cursor='grabbing';
+});
+window.addEventListener('mousemove',e=>{
+  if(!sysDragging) return;
+  sysPanX=sysPanStart.x+(e.clientX-sysDragStart.x);
+  sysPanY=sysPanStart.y+(e.clientY-sysDragStart.y);
+});
+window.addEventListener('mouseup',()=>{
+  if(sysDragging){sysDragging=false; if(sysData) sysCanvas.style.cursor='grab';}
+});
+
+// Двойной клик на канвасе системы — сброс вида
+sysCanvas.addEventListener('dblclick',()=>{
+  if(sysData) resetSysView();
+});
+
+// Кнопки скорости симуляции системы
+document.getElementById('sysb-stop').addEventListener('click',()=>setSysSpeed(0));
+document.getElementById('sysb-slow').addEventListener('click',()=>setSysSpeed(60));
+document.getElementById('sysb-normal').addEventListener('click',()=>setSysSpeed(3600));
+document.getElementById('sysb-fast').addEventListener('click',()=>setSysSpeed(86400));
+
+// Переключатель сетки системы
+document.getElementById('sysb-grid').addEventListener('click',()=>{
+  sysShowGrid=!sysShowGrid;
+  document.getElementById('sysb-grid').classList.toggle('on',sysShowGrid);
+});
 
 // ============================================================
 // RESIZE & INIT

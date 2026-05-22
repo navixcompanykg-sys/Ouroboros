@@ -1,11 +1,11 @@
 # ТЗ: Реестр звёздных систем OUROBOROS
-### Модуль: `star_registry.json` + `registry.html`
+### Модуль: `star_registry.json` + `registry.html` + System View
 
 ---
 
 ## 1. НАЗНАЧЕНИЕ
 
-Реестр — постоянный файл `star_registry.json`, который ведётся параллельно с симуляцией в `galaxy.html`. Каждая звезда при рождении получает уникальную запись с кодом генерации её планетной системы (GEN-код). При смерти запись дополняется. Просмотр — через отдельную страницу `registry.html`.
+Реестр — постоянный файл `star_registry.json`, который ведётся параллельно с симуляцией в `galaxy.html`. Каждая звезда при рождении получает уникальную запись с кодом генерации её планетной системы (GEN-код). При смерти запись дополняется. Просмотр реестра — через `registry.html`. Просмотр системы — через System View (двойной клик по звезде в `galaxy.html`).
 
 ---
 
@@ -14,24 +14,23 @@
 ```
 server/
 ├── galaxy.html          # Симуляция — пишет события в реестр через POST /registry
-├── registry.html        # Таблица реестра — читает через GET /registry, обновляется в онлайн
-├── star_registry.json   # Постоянный файл реестра (создаётся при первой звезде)
-├── main.go              # Добавить два новых эндпоинта: GET /registry, POST /registry
+├── registry.html        # Таблица реестра — читает через GET /registry, SSE-обновление
+├── star_registry.json   # Постоянный файл реестра
+├── main.go              # HTTP-сервер, все эндпоинты
 ```
 
-### Новые эндпоинты в `main.go`
+### Эндпоинты в `main.go`
 
 | Метод | Путь | Описание |
 |---|---|---|
 | `GET /registry` | — | Возвращает `star_registry.json` целиком |
 | `GET /registry/stream` | — | SSE-поток событий: `init / birth / death / reset` |
 | `GET /registry/stats` | — | Статистика реестра (O(n), один проход) |
-| `POST /registry/birth` | тело: JSON записи рождения | Добавляет новую запись в реестр |
+| `POST /registry/birth` | тело: JSON записи рождения | Добавляет новую запись |
+| `POST /registry/birth/batch` | тело: JSON-массив записей | Пакетное добавление (при старте галактики) |
 | `POST /registry/death` | тело: `{id, death_tick, ...}` | Дополняет существующую запись |
-| `POST /registry/reset` | — | Очищает реестр (при перегенерации галактики) |
-
-**Формат файла:** массив JSON-объектов, каждый = одна звезда.  
-**Запись:** при `POST /registry/birth` — append нового объекта. При `POST /registry/death` — patch по `star_id`.
+| `POST /registry/reset` | — | Очищает реестр (при перегенерации) |
+| `GET /system/:id` | — | Возвращает данные планетной системы звезды |
 
 ---
 
@@ -42,175 +41,117 @@ server/
 | Поле | Тип | Описание |
 |---|---|---|
 | `star_id` | int | ID объекта из движка (`o.id`) |
-| `birth_tick` | int | Тик рождения (`tick` в момент `checkFormationBirth`) |
-| `birth_radius` | float | `o.r` — расстояние от центра галактики (у.е.) |
-| `birth_star_type` | string | `red_dwarf` / `yellow_dwarf` / `blue_giant` / `neutron_star` *(белые карлики не регистрируются — они образуются трансформацией существующей звезды, минуя формацию)* |
+| `birth_tick` | int | Тик рождения |
+| `birth_radius` | float | Расстояние от центра галактики (у.е.) |
+| `birth_star_type` | string | `red_dwarf` / `yellow_dwarf` / `blue_giant` / `neutron_star` |
 | `birth_mass` | int | Масса звезды в момент рождения |
-| `birth_event` | int (0–4) | Тип события рождения (см. раздел 4.7) |
+| `birth_event` | int (0–5) | Тип события рождения (см. раздел 4.7) |
 | `neighbor_gravity_mass` | int | Сумма масс ЧД + НЗ в радиусе 10 у.е. при рождении |
 | `neighbor_neb_mass` | int | Сумма масс туманностей в радиусе 5 у.е. при рождении |
 | `asteroid_absorbed` | int | Масса астероидов, поглощённых формацией до рождения |
-| `birth_temp_env` | float | Средняя температура соседних звёзд в радиусе 5 у.е. + стартовая T самой звезды / 2 |
+| `birth_temp_env` | float | (T_соседей + T_звезды) / 2 |
 | `gen_code` | string(9) | GEN-код: `S1S2S3S4S5S6S7S8S9` |
-| `n_planets` | int (0–12) | Расчётное число планет |
+| `n_planets` | int (0–16) | Расчётное число планет |
 | `n_rings` | int (0–2) | Расчётное число астероидных колец |
 
-### 3.2 Блок смерти (заполняется при гибели звезды, null до смерти)
+### 3.2 Блок смерти (заполняется при гибели, null до смерти)
 
 | Поле | Тип | Описание |
 |---|---|---|
-| `death_tick` | int\|null | Тик смерти. null = звезда жива |
+| `death_tick` | int\|null | Тик смерти |
 | `lifespan` | int\|null | `death_tick - birth_tick` |
 | `death_cause` | string\|null | `overheat` / `overcool` / `collision` / `mass_limit` |
-| `collision_partner` | string\|null | Тип объекта при столкновении: тип звезды, `black_hole`, `asteroid_field`, `nebula`, `formation` |
-| `death_radius` | float\|null | Радиус от центра галактики в момент смерти |
-| `mass_at_death` | int\|null | Масса звезды в момент смерти |
+| `collision_partner` | string\|null | Тип объекта при столкновении |
+| `death_radius` | float\|null | Радиус от центра в момент смерти |
+| `mass_at_death` | int\|null | Масса в момент смерти |
 | `temp_at_death` | float\|null | Температура в момент смерти |
-
-### Пример записи (живая звезда)
-
-```json
-{
-  "star_id": 1847,
-  "birth_tick": 312,
-  "birth_radius": 54.3,
-  "birth_star_type": "yellow_dwarf",
-  "birth_mass": 420,
-  "birth_event": 0,
-  "neighbor_gravity_mass": 310,
-  "neighbor_neb_mass": 8,
-  "asteroid_absorbed": 72,
-  "birth_temp_env": 285.0,
-  "gen_code": "134131073",
-  "n_planets": 8,
-  "n_rings": 0,
-  "death_tick": null,
-  "lifespan": null,
-  "death_cause": null,
-  "collision_partner": null,
-  "death_radius": null,
-  "mass_at_death": null,
-  "temp_at_death": null
-}
-```
 
 ---
 
 ## 4. GEN-КОД: 9 цифр S1–S9
 
-GEN-код — строка из 9 цифр (0–9). Вычисляется один раз при рождении. Используется при загрузке планетной системы игроком.
+GEN-код — строка из 9 цифр (0–9). Вычисляется один раз при рождении.
 
 ### 4.1 S1 — Гравитационное давление соседей
 
-**Что:** сумма масс всех ЧД + НЗ в радиусе 10 у.е. в момент рождения  
-**Диапазон входа:** 0–3500  
 **Формула:** `S1 = min(floor(neighbor_gravity_mass / 350), 9)`
 
-| S1 | Масса соседей | Влияние на систему |
+| S1 | Масса соседей | Влияние |
 |---|---|---|
-| 0 | 0 | Норма, нет возмущений |
-| 1–3 | 1–1050 | −1 планета (дальние орбиты нестабильны) |
+| 0 | 0 | Норма |
+| 1–3 | 1–1050 | −1 планета |
 | 4–6 | 1051–2100 | −2 планеты |
 | 7–9 | 2101–3500 | −3 планеты |
 
 ### 4.2 S2 — Радиус орбиты
 
-**Что:** `o.r` в момент рождения  
-**Диапазон входа:** 0–120 у.е.  
 **Формула:** `S2 = min(floor(birth_radius / 12), 9)`
 
 | S2 | Радиус | Влияние |
 |---|---|---|
-| 0 | 0–12 у.е. | −1 планета (жёсткое гравитационное давление центра) |
+| 0 | 0–12 у.е. | −1 планета |
 | 1 | 12–24 у.е. | Нейтрально |
-| 2–5 | 24–72 у.е. | +1 планета (оптимальная зона формирования) |
+| 2–5 | 24–72 у.е. | +1 планета |
 | 6–9 | 72–120 у.е. | −1 планета, +1 к вероятности кольца |
 
 ### 4.3 S3 — Масса звезды при рождении
 
-**Что:** `birth_mass`, предел 1000  
-**Диапазон входа:** 51–1000  
 **Формула:** `S3 = min(floor((birth_mass - 1) / 100), 9)`
 
 | S3 | Масса | Тип | Влияние |
 |---|---|---|---|
-| 0–2 | 1–300 | Красный карлик | Нейтрально (красные карлики — стабильные хозяева планет) |
-| 3–5 | 301–600 | Жёлтый карлик | +1 планета, оптимальная зона |
-| 6–8 | 601–900 | Синий гигант | −2 планеты, мощный звёздный ветер |
-| 9 | 901–1000 | Предельная масса | −4 планеты, 0–3 максимум |
-
-> **Правило предела:** если формация набирает > 1000 — звезда не рождается. Формация мгновенно взрывается (supernova) без записи в реестр.
+| 0–2 | 1–300 | Красный карлик | Нейтрально |
+| 3–5 | 301–600 | Жёлтый карлик | +1 планета |
+| 6–8 | 601–900 | Синий гигант | −2 планеты |
+| 9 | 901–1000 | Предельная масса | −4 планеты |
 
 ### 4.4 S4 — Астероидная насыщенность
 
-**Что:** масса астероидных полей, поглощённых формацией за 6 тиков до рождения  
-**Диапазон входа:** 0–300  
 **Формула:** `S4 = min(floor(asteroid_absorbed / 30), 9)`
 
 | S4 | Масса | Влияние |
 |---|---|---|
 | 0–3 | 0–120 | Нейтрально |
-| 4–6 | 121–210 | +1 планета каменистого типа |
+| 4–6 | 121–210 | +1 планета |
 | 7–9 | 211–300 | +2 планеты, +1 к кольцам |
 
 ### 4.5 S5 — Газовая насыщенность среды
 
-**Что:** сумма масс туманностей в радиусе 5 у.е. в момент рождения  
-**Диапазон входа:** 0–40 (туманности 1–5 единиц каждая)  
 **Формула:** `S5 = min(floor(neighbor_neb_mass / 4), 9)`
 
 | S5 | Масса | Влияние |
 |---|---|---|
-| 0–2 | 0–8 | −1 планета, редкие газовые гиганты |
+| 0–2 | 0–8 | −1 планета |
 | 3–5 | 9–20 | Норма |
-| 6–9 | 21–40 | +1 газовая планета |
+| 6–9 | 21–40 | +1 планета |
 
 ### 4.6 S6 — Тепловой фон среды
-
-**Что:** средняя T соседних звёзд в радиусе 5 у.е. + стартовая T самой звезды, делённая на 2  
-**Стартовые T по типу:**
-
-| Тип | Стартовая T |
-|---|---|
-| Красный карлик | 100 |
-| Жёлтый карлик | 300 |
-| Синий гигант | 700 |
-| Нейтронная звезда | 900 |
-
-**Если соседей нет:** `T_среда = 0`, `T_итог = birth_star_T / 2`
 
 **Формула:** `S6 = min(floor(birth_temp_env / 100), 9)`
 
 | S6 | T_итог | Влияние |
 |---|---|---|
-| 0–2 | 0–200 | Холодная среда: −1 планета в дальней зоне, ледяные тела |
+| 0–2 | 0–200 | −1 планета |
 | 3–5 | 201–500 | Норма |
-| 6–9 | 501–900 | Горячая среда: −1 планета из внешней зоны |
+| 6–9 | 501–900 | −1 планета |
 
 ### 4.7 S7 — Тип события рождения
 
-Определяется в момент `checkFormationBirth` по истории формации:
-
-| S7 | Событие | Как определить | Влияние |
+| S7 | Событие | `birth_event_type` | Влияние |
 |---|---|---|---|
-| 0 | Формация влетела с края галактики | `birth_event_type = 'inflow'` — формация создана через `returnMass` | +1 планета, высокий угловой момент |
-| 1 | Формация из столкновения звёзд | `birth_event_type = 'star_collision'` — формация создана в `handleCollision` между двумя звёздами | −1 планета, богато тяжёлыми элементами |
-| 2 | Формация из столкновения астероидных масс | `birth_event_type = 'asteroid_collision'` — источник оба объекта asteroid_field | +1 планета каменистого класса, +1 кольцо |
-| 3 | Формация из столкновения звезда + астероид/туманность | `birth_event_type = 'star_cloud'` | Норма |
-| 4 | Слияние двух формаций | `birth_event_type = 'formation_merge'` — оба объекта TYPE.FORMATION | +1 планета, увеличен разброс орбит |
-| 5 | Формация из взрыва белого карлика | `birth_event_type = 'wd_nova'` — белый карлик превысил `WD_NOVA_MASS` (600 у.е.) | Нейтрально |
-| 6–9 | Резерв | — | — |
-
-**Реализация:** при создании формации в `galaxy.html` добавить поле `o.birth_event_type` на объект формации. При рождении звезды это поле копируется в запись реестра и кодируется в S7.
+| 0 | Влёт с края галактики | `inflow` | +1 планета |
+| 1 | Столкновение звёзд | `star_collision` | −1 планета |
+| 2 | Столкновение астероидов | `asteroid_collision` | +1 планета, +1 кольцо |
+| 3 | Звезда + облако/астероид | `star_cloud` | Норма |
+| 4 | Слияние двух формаций | `formation_merge` | +1 планета |
+| 5 | Взрыв белого карлика | `wd_nova` | Нейтрально |
 
 ### 4.8 S8 — Фазовый сдвиг орбит
 
-**Что:** последняя цифра тика рождения  
 **Формула:** `S8 = birth_tick % 10`
 
-Используется при расчёте начального положения планет:  
-`θ_планеты(t) = θ₀ + S8 × 36° + ω × (t - birth_tick × 5)`  
-*(где 5 сек = длительность тика планетной системы)*
+Используется для расчёта начального угла каждой планеты:
+`θ(orbit, t) = (S8×36 + orbit×30 + starId×7) % 360 + (t % period) / period × 360`
 
 ### 4.9 S9 — Контрольная сумма
 
@@ -223,10 +164,10 @@ GEN-код — строка из 9 цифр (0–9). Вычисляется од
 ### Формула
 
 ```
-N_planets = clamp(7 + ΔS1 + ΔS2 + ΔS3 + ΔS4 + ΔS5 + ΔS6 + ΔS7, 0, 12)
+N_planets = clamp(7 + ΔS1 + ΔS2 + ΔS3 + ΔS4 + ΔS5 + ΔS6 + ΔS7, 0, 16)
 ```
 
-Среднее при нейтральных параметрах = **7**.
+Среднее при нейтральных параметрах = **7**. Максимум без cap = 13.
 
 ### Таблица корректировок ΔN
 
@@ -264,133 +205,228 @@ N_planets = clamp(7 + ΔS1 + ΔS2 + ΔS3 + ΔS4 + ΔS5 + ΔS6 + ΔS7, 0, 12)
 
 ```
 N_rings = clamp(ring_score, 0, 2)
-
-ring_score = 0
-  + (S2 >= 6 ? 1 : 0)     // периферия: рассеянный диск → кольца
-  + (S4 >= 6 ? 1 : 0)     // много астероидов → кольца
-  + (S7 == 2 ? 1 : 0)     // рождение из астероидного столкновения
+ring_score = (S2 >= 6 ? 1 : 0) + (S4 >= 6 ? 1 : 0) + (S7 == 2 ? 1 : 0)
 ```
 
 ---
 
-## 6. ПРЕДЕЛЬНЫЕ ПРИМЕРЫ
+## 6. ОРБИТАЛЬНАЯ СИСТЕМА (36 ОРБИТ)
 
-### 🟢 Минимум — «Выжженная зона»
-*Синий гигант, центр галактики, рядом ЧД+НЗ, горячая среда*
+### 6.1 Сетка орбит
 
-| Параметр | Значение | Цифра |
+System View использует сетку **100×100 у.е.** (аналогично галактике 200×200).  
+Центр — звезда на (50, 50). Орбиты занимают диапазон **6–42 у.е.** от центра.
+
+Всего **36 орбитальных слотов** (индексы 0–35). Любой слот может содержать планету.  
+Астероидные кольца размещаются за слотом 35 — на слотах **38** и **42**, с видимым зазором.
+
+### 6.2 Правила размещения планет
+
+- Планеты выбираются псевдослучайно из 36 слотов (Fisher-Yates shuffle по seed из `gen_code` и `star_id`)
+- **Запрет на соседние орбиты**: между любыми двумя планетами должен быть хотя бы один пустой слот
+- Максимально возможное число планет при no-adjacent: 18 (каждая вторая орбита)
+- Фактический максимум из GEN-формулы: **16**
+
+### 6.3 Типы планет по орбитальному слоту
+
+| Слот | Тип | Визуальный цвет |
 |---|---|---|
-| neighbor_gravity_mass = 2800 | | S1 = 8 |
-| birth_radius = 6 у.е. | | S2 = 0 |
-| birth_mass = 870 (BG) | | S3 = 8 |
-| asteroid_absorbed = 20 | | S4 = 0 |
-| neighbor_neb_mass = 3 | | S5 = 0 |
-| birth_temp_env = 680 | | S6 = 6 |
-| birth_event = collision BG+BG | | S7 = 1 |
-| birth_tick = 431 | | S8 = 1 |
-| контрольная сумма | (8+0+8+0+0+6+1+1)=24 | S9 = 4 |
+| 0–8 | `lava` | #dd4411 |
+| 9–17 | `rocky` | #7a8870 |
+| 18–26 | `ice` | #99bbdd |
+| 27–35 | `gas_giant` | #ddaa55 |
 
-**GEN-код: `808000614`**  
-**ΔN:** −3 −1 −2  0 −1 −1 −1 = **−9** → N = clamp(7−9, 0, 12) = **0 планет**  
-**Кольца:** S4=0, S7=1 → **0 колец**
+### 6.4 Орбитальные периоды (секунды реального времени)
+
+| Слот | Период | Слот | Период |
+|---|---|---|---|
+| 0 | 7 200 (2ч) | 18 | 373 900 |
+| 1 | 9 000 | 19 | 465 700 |
+| 2 | 11 200 | 20 | 579 800 |
+| 3 | 14 000 | 21 | 721 900 |
+| 4 | 17 400 | 22 | 898 700 |
+| 5 | 21 700 | 23 | 1 118 900 |
+| 6 | 27 000 | 24 | 1 393 000 |
+| 7 | 33 600 | 25 | 1 734 300 |
+| 8 | 41 800 | 26 | 2 159 200 |
+| 9 | 52 000 | 27 | 2 688 200 |
+| 10 | 64 700 | 28 | 3 346 800 |
+| 11 | 80 600 | 29 | 4 166 800 |
+| 12 | 100 400 | 30 | 5 187 700 |
+| 13 | 125 000 | 31 | 6 458 700 |
+| 14 | 155 600 | 32 | 8 041 100 |
+| 15 | 193 700 | 33 | 10 011 200 |
+| 16 | 241 200 | 34 | 12 464 000 |
+| 17 | 300 300 | 35 | 15 517 700 (~180 дней) |
+
+Геометрическая прогрессия с коэффициентом ≈ 1.245.
 
 ---
 
-### 🟡 Норма — «Жёлтый карлик средней зоны»
-*Жёлтый карлик, средняя зона, влетел с края*
+## 7. SYSTEM VIEW — ПРОСМОТР ПЛАНЕТНОЙ СИСТЕМЫ
 
-| Параметр | Значение | Цифра |
-|---|---|---|
-| neighbor_gravity_mass = 0 | | S1 = 0 |
-| birth_radius = 52 у.е. | | S2 = 4 |
-| birth_mass = 420 (YD) | | S3 = 4 |
-| asteroid_absorbed = 72 | | S4 = 2 |
-| neighbor_neb_mass = 8 | | S5 = 2 |
-| birth_temp_env = 195 | | S6 = 1 |
-| birth_event = inflow | | S7 = 0 |
-| birth_tick = 312 | | S8 = 2 |
-| контрольная сумма | (0+4+4+2+2+1+0+2)=15 | S9 = 5 |
+### 7.1 Открытие
 
-**GEN-код: `044221025`**  
-**ΔN:** 0 +1 +1  0 −1 −1 +1 = **+1** → N = **8 планет**  
-**Кольца:** 0
+Двойной клик по звезде в `galaxy.html` → GET `/system/:id` → открывается полноэкранный оверлей.
 
----
+### 7.2 Эндпоинт GET /system/:id
 
-### 🔴 Максимум — «Богатая система»
-*Жёлтый карлик, средняя зона, слияние формаций, богатый диск*
-
-| Параметр | Значение | Цифра |
-|---|---|---|
-| neighbor_gravity_mass = 0 | | S1 = 0 |
-| birth_radius = 45 у.е. | | S2 = 3 |
-| birth_mass = 500 (YD) | | S3 = 4 |
-| asteroid_absorbed = 240 | | S4 = 8 |
-| neighbor_neb_mass = 32 | | S5 = 8 |
-| birth_temp_env = 310 | | S6 = 3 |
-| birth_event = formation merge | | S7 = 4 |
-| birth_tick = 180 | | S8 = 0 |
-| контрольная сумма | (0+3+4+8+8+3+4+0)=30 | S9 = 0 |
-
-**GEN-код: `034883400`**  
-**ΔN:** 0 +1 +1 +2 +1 +0 +1 = **+6** → N = clamp(13, 0, 12) = **12 планет**  
-**Кольца:** S4=8 ≥ 6 → +1 → **1 кольцо**
-
----
-
-## 7. ИНТЕГРАЦИЯ В `galaxy.html`
-
-### 7.1 Что добавить на объект формации
-
-При создании формации (функции `returnMass`, `handleCollision`) добавить поле:
-
-```javascript
-form.birth_event_type = 'inflow';          // влёт с края
-form.birth_event_type = 'star_collision';  // столкновение двух звёзд
-form.birth_event_type = 'asteroid_collision'; // столкновение астероидов
-form.birth_event_type = 'star_cloud';      // звезда + облако/астероид
-form.birth_event_type = 'formation_merge'; // слияние двух формаций
-
-// Счётчик поглощённой массы астероидов (обновляется при каждом поглощении)
-form.asteroid_absorbed = 0;
-```
-
-### 7.2 Сканирование соседей при рождении
-
-В `checkFormationBirth`, прямо перед записью в реестр — **один проход по массиву objects**:
-
-```javascript
-function scanNeighbors(o, radius_gravity=10, radius_neb=5) {
-  let grav_mass = 0, neb_mass = 0, temp_sum = 0, temp_count = 0;
-  for (const nb of objects) {
-    if (nb.id === o.id) continue;
-    const d = dist2(o.x, o.y, nb.x, nb.y);
-    if (d <= radius_gravity) {
-      if (nb.type === TYPE.BLACK_HOLE) grav_mass += nb.mass;
-      if (nb.star_type === STAR.NEUTRON) grav_mass += nb.mass;
-    }
-    if (d <= radius_neb) {
-      if (nb.type === TYPE.NEBULA) neb_mass += nb.mass;
-      if (nb.type === TYPE.STAR) { temp_sum += nb.temp; temp_count++; }
-    }
-  }
-  const star_base_temp = startTempForStarType(o.star_type);
-  const env_temp = temp_count > 0 ? temp_sum / temp_count : 0;
-  return {
-    neighbor_gravity_mass: grav_mass,
-    neighbor_neb_mass: neb_mass,
-    birth_temp_env: (star_base_temp + env_temp) / 2
-  };
+Возвращает:
+```json
+{
+  "star_id": 1847,
+  "star_type": "yellow_dwarf",
+  "mass": 420,
+  "gen_code": "044221025",
+  "n_planets": 8,
+  "n_rings": 1,
+  "planets": [
+    {"slot": 3, "orbit_index": 2, "type": "lava", "visual_type": "lava", "period_sec": 11200},
+    ...
+  ],
+  "rings": [
+    {"ring_index": 1, "orbit_grid": 38}
+  ]
 }
 ```
 
-Сканирование делается **один раз при рождении**. Результат сохраняется в реестр. Повторных вычислений нет.
+Планеты назначаются функцией `assignPlanetOrbits(n, seed)` — псевдослучайный shuffle 36 слотов с гарантией no-adjacent.
 
-### 7.3 Функция вычисления GEN-кода
+### 7.3 Управление System View
+
+**Навигация:**
+
+| Действие | Результат |
+|---|---|
+| Колесо мыши | Зум (0.15× — 15×) к позиции курсора |
+| Перетаскивание | Пан (смещение вида) |
+| Двойной клик на канвасе | Сброс зума и пана (1.0×, центр) |
+| ESC / кнопка ← Galaxy | Закрыть System View |
+
+**Кнопки на панели System View:**
+
+| Кнопка | Действие |
+|---|---|
+| `■ STOP` | Пауза симуляции планет |
+| `MIN/S` | Скорость 60× (1 мин симуляции за 1 сек) |
+| `HR/S` | Скорость 3600× (1 ч/сек) — **по умолчанию** |
+| `DAY/S` | Скорость 86 400× (1 день/сек) |
+| `GRID` | Включить/выключить сетку координат |
+
+### 7.4 Симулированное время и анимация планет
+
+Планеты вращаются в собственном симулированном времени System View, независимом от реального времени и тиков галактики.
+
+```
+sysSimTime  — накопленное симулированное время (секунды)
+sysSimSpeed — множитель: 0 / 60 / 3600 / 86400
+```
+
+На каждом кадре рендера:
+```
+sysSimTime += Δt_real × sysSimSpeed
+```
+
+Угол планеты на орбите:
+```
+θ(orbit, t) = (S8×36 + orbit×30 + starId×7) % 360  +  (sysSimTime % period) / period × 360
+```
+
+При открытии System View `sysSimTime` сбрасывается в 0, скорость устанавливается в **HR/S**.
+
+**Ориентиры по скоростям при HR/S (3600×):**
+
+| Орбита | Период | Время одного оборота (HR/S) |
+|---|---|---|
+| 0 | 7 200 с | ~2 сек |
+| 5 | 21 700 с | ~6 сек |
+| 17 | 300 300 с | ~83 сек |
+| 35 | 15 517 700 с | ~4 310 сек (~72 мин) |
+
+### 7.5 Панель окружения (ENVIRONMENT)
+
+Постоянная панель в левом нижнем углу System View. Отображает три параметра наблюдаемой звёздной системы с числовым значением и цветным баром.
+
+| Параметр | ID элемента | Диапазон | Источник | Цвет бара |
+|---|---|---|---|---|
+| `TEMP` | `ss-temp-val` / `ss-temp-bar` | 0–1000 | `star.temp` из живого объекта в `objects[]` | Синий → Жёлтый → Красный |
+| `RADIATION` | `ss-rad-val` / `ss-rad-bar` | 0–100 | Зарезервировано, **пока 0** | `#2a7fff` |
+| `METEOR` | `ss-met-val` / `ss-met-bar` | 0–100 | Зарезервировано, **пока 0** | `#7a6040` |
+
+**Температура** читается напрямую из живого массива `objects` по `star.id`:
+```javascript
+const star = objects.find(o => o.id === sysData.star_id);
+const temp = star ? Math.round(star.temp || 0) : 0;
+```
+Если звезда уже удалена из симуляции (погибла) — показывается 0.
+
+**Цвет бара температуры** (`tempBarColor(t, max)`):
+- `t/max < 0.30` → `#4488ff` (холодная)
+- `t/max < 0.65` → `#ffcc44` (средняя)
+- `t/max ≥ 0.65` → `#ff5533` (горячая)
+
+Панель обновляется каждые 8 кадров (~7–8 Гц при 60 fps) через счётчик `_sysStatFrame`.
+
+**Будущие параметры** (Radiation, Meteor) будут вычисляться из симуляции галактики:
+- Radiation — функция от типа звезды и её температуры (синие гиганты и нейтронные звёзды = высокий уровень)
+- Meteor — функция от числа и массы астероидных полей в радиусе ≈10 у.е. от звезды
+
+### 7.6 Сетка координат
+
+При включении кнопки `GRID` поверх системы рисуется координатная сетка:
+
+- Пространство **100×100 у.е.**, центр = звезда (0, 0)
+- Линии сетки через каждые **10 у.е.**
+- Основные оси (x=0, y=0) — ярче остальных
+- Числовые метки по осям
+- Сетка следует за зумом и паном (рисуется в трансформированном контексте)
+- Толщина линий инвертируется относительно zoomа: `lineWidth = 1/sysZoom` px (стабильна на экране)
+
+### 7.6 Фоновая работа галактики
+
+Симуляция галактики (`tickLoop` + `drawLoop`) работает непрерывно пока открыт System View. System View — полноэкранный оверлей (`position:fixed`, `z-index:500`) поверх галактического канваса, но не останавливает его.
+
+### 7.7 Гибель наблюдаемой звезды
+
+Если звезда, чья система открыта в System View, погибает в галактической симуляции:
+
+1. `registerDeath(star, cause, ...)` вызывает `notifySysStarDeath(star.id, cause)`
+2. Если `sysData.star_id === star.id` — запускается анимация взрыва
+3. Симуляция планет останавливается (`sysSimRunning = false`)
+4. На канвасе рисуется расширяющаяся вспышка + текст `SYSTEM COLLAPSE`
+5. Через **2.8 секунды** вызывается `closeSystemView()` — автоматический возврат в галактику
+
+**Цвета вспышки по причине гибели:**
+
+| Причина | Цвет | Описание |
+|---|---|---|
+| `overheat` | `#ffcc44` | Золото — сверхновая |
+| `mass_limit` | `#44ffee` | Голубой — взрыв белого карлика |
+| `overcool` | `#3366cc` | Синий — угасание |
+| `collision` | `#ff4433` | Красный — столкновение |
+
+```javascript
+function notifySysStarDeath(starId, cause) {
+  if(!sysData || sysData.star_id !== starId || sysDeathAnimating) return;
+  sysDeathAnimating = true;
+  sysDeathStartTime = performance.now();
+  sysSimRunning = false;
+  sysDeathColor = { overheat:'#ffcc44', mass_limit:'#44ffee',
+                    overcool:'#3366cc', collision:'#ff4433' }[cause] || '#ffffff';
+  setTimeout(closeSystemView, 2800);
+}
+```
+
+Хук встроен в `registerDeath` — срабатывает для всех причин смерти (сверхновая, переохлаждение, столкновение, превышение массы).
+
+---
+
+## 8. ИНТЕГРАЦИЯ В `galaxy.html`
+
+### 8.1 Расчёт GEN-кода
 
 ```javascript
 function computeGenCode(r) {
-  // r = объект с полями рождения
   const S1 = Math.min(Math.floor(r.neighbor_gravity_mass / 350), 9);
   const S2 = Math.min(Math.floor(r.birth_radius / 12), 9);
   const S3 = Math.min(Math.floor((r.birth_mass - 1) / 100), 9);
@@ -405,428 +441,89 @@ function computeGenCode(r) {
 }
 ```
 
-### 7.4 Расчёт числа планет
+### 8.2 Расчёт числа планет и колец
 
 ```javascript
 function computePlanets(S1, S2, S3, S4, S5, S6, S7) {
   let n = 7;
-  // S1: гравитационное давление соседей — без изменений
-  if      (S1 >= 7) n -= 3;
-  else if (S1 >= 4) n -= 2;
-  else if (S1 >= 1) n -= 1;
-
-  // S2: средняя зона оптимальна (+1), крайние зоны штраф (−1); S2=1 нейтрален
-  if      (S2 >= 2 && S2 <= 5) n += 1;
-  else if (S2 === 0 || S2 >= 6) n -= 1;
-
-  // S3: маломассивные звёзды больше не штрафуются (красные карлики — стабильные хозяева)
-  if      (S3 === 9)           n -= 4;
-  else if (S3 >= 6)            n -= 2;
-  else if (S3 >= 3 && S3 <= 5) n += 1;
-
-  // S4: только бонус за астероидное богатство; нулевые астероиды не штрафуются; бонусы накапливаются
-  if (S4 >= 4) n += 1;
-  if (S4 >= 7) n += 1;
-
-  // S5: газовая насыщенность — без изменений
-  if      (S5 <= 2) n -= 1;
-  else if (S5 >= 6) n += 1;
-
-  // S6: тепловой фон — без изменений
-  if      (S6 <= 2) n -= 1;
-  else if (S6 >= 6) n -= 1;
-
-  // S7: тип события
-  if      (S7 === 0) n += 1;
-  else if (S7 === 1) n -= 1;
-  else if (S7 === 2) n += 1;
-  else if (S7 === 4) n += 1;
-  // S7 === 5 (wd_nova): нейтрально, без изменений
-
-  return Math.max(0, Math.min(12, n));
+  if      (S1 >= 7) n -= 3; else if (S1 >= 4) n -= 2; else if (S1 >= 1) n -= 1;
+  if      (S2 >= 2 && S2 <= 5) n += 1; else if (S2 === 0 || S2 >= 6) n -= 1;
+  if      (S3 === 9) n -= 4; else if (S3 >= 6) n -= 2; else if (S3 >= 3 && S3 <= 5) n += 1;
+  if (S4 >= 4) n += 1; if (S4 >= 7) n += 1;
+  if      (S5 <= 2) n -= 1; else if (S5 >= 6) n += 1;
+  if      (S6 <= 2) n -= 1; else if (S6 >= 6) n -= 1;
+  if      (S7 === 0) n += 1; else if (S7 === 1) n -= 1;
+  else if (S7 === 2) n += 1; else if (S7 === 4) n += 1;
+  return Math.max(0, Math.min(16, n));
 }
 
 function computeRings(S2, S4, S7) {
   let r = 0;
-  if (S2 >= 6) r++;
-  if (S4 >= 6) r++;
-  if (S7 === 2) r++;
+  if (S2 >= 6) r++; if (S4 >= 6) r++; if (S7 === 2) r++;
   return Math.min(2, r);
 }
 ```
 
-### 7.5 Жизненный цикл белых карликов
+### 8.3 Пакетная регистрация начальных звёзд
 
-Белые карлики **не проходят через формацию** — они образуются трансформацией существующей звезды и не получают записи в реестре при «рождении».
-
-**Образование:** когда красный или жёлтый карлик остывает ниже `DEATH_LIMIT` (10), `checkStarDeath` меняет тип на месте:
-```javascript
-o.star_type = STAR.WHITE;
-o.temp = CFG.T_WHITE;  // 50
-o.age = 0;
-```
-
-**Без рекласификации:** белый карлик, поглощающий астероиды или туманности, **не превращается обратно** в красный/жёлтый — `starTypeFromMass` для `STAR.WHITE` пропускается.
-
-**Взрыв (новая):** если масса белого карлика достигает `WD_NOVA_MASS` (600 у.е., параметр `config.json → temperature.wd_nova_mass`), вызывается `doWhiteDwarfNova`:
-- 12 туманностей разлетаются в радиусе 5 у.е. (откусывают массу первыми)
-- 60% остатка → 24 осколка (астероиды, туманности, малые формации)
-- 40% остатка → формация с `birth_event_type = 'wd_nova'` и орбитальной скоростью `V_FLAT`
-
-Из этой формации по обычным правилам `checkFormationBirth` может родиться новая звезда (чаще всего красный карлик), которая уже **попадёт в реестр**.
-
-**Счётчики:** смерти белых карликов учитываются в `CNT.deathWD`, `CNT.lifeWD`. В реестре смерть белого карлика не фиксируется (нет записи рождения).
-
-### 7.6 Запись в реестр (вызов из `checkFormationBirth`)
-
-```javascript
-async function registerBirth(star, genCode, nPlanets, nRings, neighbors) {
-  const record = {
-    star_id:               star.id,
-    birth_tick:            tick,
-    birth_radius:          +star.r.toFixed(2),
-    birth_star_type:       star.star_type,
-    birth_mass:            star.mass,
-    birth_event:           { inflow:0, star_collision:1, asteroid_collision:2,
-                             star_cloud:3, formation_merge:4 }[star.birth_event_type] ?? 5,
-    neighbor_gravity_mass: neighbors.neighbor_gravity_mass,
-    neighbor_neb_mass:     neighbors.neighbor_neb_mass,
-    asteroid_absorbed:     star.asteroid_absorbed ?? 0,
-    birth_temp_env:        +neighbors.birth_temp_env.toFixed(1),
-    gen_code:              genCode,
-    n_planets:             nPlanets,
-    n_rings:               nRings,
-    death_tick:            null,
-    lifespan:              null,
-    death_cause:           null,
-    collision_partner:     null,
-    death_radius:          null,
-    mass_at_death:         null,
-    temp_at_death:         null
-  };
-  await fetch('/registry/birth', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify(record)
-  });
-}
-```
-
-### 7.7 Запись смерти
-
-Вызывать из `doSupernova`, `coolDeath`, `heatDeath` и при столкновении:
-
-```javascript
-async function registerDeath(star, cause, partnerType) {
-  await fetch('/registry/death', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({
-      star_id:           star.id,
-      death_tick:        tick,
-      lifespan:          tick - star.birth_tick_registered,  // нужно хранить на объекте
-      death_cause:       cause,       // 'overheat' | 'overcool' | 'collision' | 'mass_limit'
-      collision_partner: partnerType, // null или тип объекта
-      death_radius:      +star.r.toFixed(2),
-      mass_at_death:     star.mass,
-      temp_at_death:     +star.temp.toFixed(1)
-    })
-  });
-}
-```
+При `applyGalaxy` все начальные звёзды регистрируются одним запросом `POST /registry/birth/batch` (массив записей) вместо ~2000 одиночных запросов.
 
 ---
 
-## 8. `registry.html` — СТРАНИЦА РЕЕСТРА
+## 9. ПРЕДЕЛЬНЫЕ ПРИМЕРЫ
 
-### Концепция
+### 🟢 Минимум — «Выжженная зона»
 
-- Открывается как отдельная страница (кнопка в `galaxy.html`)
-- При открытии загружает `GET /registry` и `GET /registry/stats`
-- Обновляется синхронно с тиком галактики (см. механизм ниже)
-- Таблица с фильтрами, сортировкой и поиском по ID
+**GEN: `808000614`** → 0 планет, 0 колец
 
-### Колонки таблицы
+### 🟡 Норма — «Жёлтый карлик средней зоны»
 
-| Колонка | Поле | Примечание |
-|---|---|---|
-| ID | `star_id` | |
-| Тип | `birth_star_type` | С цветной точкой |
-| GEN | `gen_code` | Моноширинный шрифт |
-| Планеты | `n_planets` | |
-| Кольца | `n_rings` | |
-| Масса (рожд.) | `birth_mass` | |
-| Радиус (рожд.) | `birth_radius` | |
-| Событие | `birth_event` | Текстовый лейбл |
-| Тик рожд. | `birth_tick` | |
-| Статус | — | 🟢 Живая / 💀 Мёртвая |
-| Тик смерти | `death_tick` | — если живая |
-| Продолжительность | `lifespan` | — если живая |
-| Причина смерти | `death_cause` | — если живая |
+**GEN: `044221025`** → 8 планет, 0 колец  
+Планеты псевдослучайно распределены по 36 слотам (без соседних), разброс от lava до gas_giant.
 
-### Фильтры
+### 🔴 Максимум — «Богатая система»
 
-- По типу звезды (чекбоксы)
-- Только живые / только мёртвые / все
-- Тик рождения: от / до
-- Минимальное число планет
-
-### Синхронизация через SSE (Server-Sent Events)
-
-Синхронизация **событийная, без таймеров и опроса**. `registry.html` устанавливает постоянное SSE-соединение с сервером.
-
-**Механизм:** `EventSource('/registry/stream')` — браузер держит открытое HTTP-соединение, сервер отправляет именованные события по мере их возникновения.
-
-| Событие | Когда | Содержимое |
-|---|---|---|
-| `init` | При подключении | Полный массив `star_registry.json` |
-| `birth` | При каждом рождении звезды | JSON-запись рождения |
-| `death` | При каждой смерти звезды | JSON-патч (`star_id` + поля смерти) |
-| `reset` | При перегенерации галактики | `{}` |
-
-```javascript
-// registry.html
-const evtSource = new EventSource('/registry/stream');
-
-evtSource.addEventListener('init', e => {
-  allRecords = JSON.parse(e.data);
-  renderTable();
-  updateStatsFromRecords();
-});
-
-evtSource.addEventListener('birth', e => {
-  const rec = JSON.parse(e.data);
-  allRecords.push(rec);
-  if (passesFilter(rec))
-    document.getElementById('registry-tbody').appendChild(buildRow(rec, ...));
-  scheduleStatsUpdate(); // дебаунс 1500ms
-});
-
-evtSource.addEventListener('death', e => {
-  const patch = JSON.parse(e.data);
-  const rec = allRecords.find(r => r.star_id === patch.star_id);
-  if (rec) Object.assign(rec, patch);
-  // точечное обновление DOM через data-field атрибуты
-  const tr = document.querySelector(`#registry-tbody tr[data-id="${patch.star_id}"]`);
-  if (tr) { /* обновление конкретных ячеек */ }
-  scheduleStatsUpdate();
-});
-
-evtSource.addEventListener('reset', () => {
-  allRecords = [];
-  document.getElementById('registry-tbody').innerHTML = '';
-  updateStatsFromRecords();
-});
-```
-
-**Дельта-рендеринг:** ползунок прокрутки всегда стабилен. Рождения добавляются через `appendChild` в конец tbody. Смерти обновляются точечно через `tr.querySelector('[data-field="..."]')` — без пересборки таблицы.
-
-**Статистика:** пересчитывается на клиенте из `allRecords` с дебаунсом 1500ms. Запрос `GET /registry/stats` не используется из `registry.html`.
-
-Новые строки подсвечиваются зелёным (border-left). Смерти — анимацией `dead-flash`.
+**GEN: `034883400`** → 13 планет (cap 16), 1 кольцо  
+На 36 слотах 13 планет с зазором — визуально заметный разброс по всей системе.
 
 ---
 
-## 9. СВОДНАЯ СТАТИСТИКА В `registry.html`
-
-Панель статистики отображается над таблицей и пересчитывается при каждом обновлении. Все цифры по **всем записям** реестра, если не указано иное.
-
-### 9.1 Эндпоинт статистики
-
-Статистика вычисляется на сервере — один проход по файлу, O(n). Браузер получает готовый JSON.
-
-```
-GET /registry/stats
-```
-
-Возвращает:
-
-```json
-{
-  "tick": 500,
-  "total_registered":    2847,
-  "total_alive":         1203,
-  "total_dead":          1644,
-
-  "avg_planets":         6.8,
-  "stars_no_planets":    87,
-  "stars_10_12_planets": 34,
-  "stars_1_ring":        210,
-  "stars_2_rings":       58,
-
-  "by_type": {
-    "red_dwarf":    { "alive": 710, "dead": 980 },
-    "yellow_dwarf": { "alive": 380, "dead": 490 },
-    "blue_giant":   { "alive": 98,  "dead": 162 },
-    "neutron_star": { "alive": 15,  "dead": 12  }
-  },
-
-  "by_birth_event": {
-    "0": 420, "1": 310, "2": 180, "3": 260, "4": 90
-  },
-
-  "deaths_by_cause": {
-    "overheat":   820,
-    "overcool":   310,
-    "collision":  490,
-    "mass_limit": 24
-  }
-}
-```
-
-### 9.2 Поля статистики
-
-| Поле | Считается по | Описание |
-|---|---|---|
-| `total_registered` | все записи | Всего записей в реестре (живые + мёртвые) |
-| `total_alive` | `death_tick == null` | Звёзд без `death_tick` |
-| `total_dead` | `death_tick != null` | Звёзд с `death_tick` |
-| `avg_planets` | все записи | Среднее `n_planets`, 1 знак после запятой |
-| `stars_no_planets` | все записи | `n_planets == 0` |
-| `stars_10_12_planets` | все записи | `n_planets >= 10` |
-| `stars_1_ring` | все записи | `n_rings == 1` |
-| `stars_2_rings` | все записи | `n_rings == 2` |
-| `by_type` | все записи | Живые/мёртвые по каждому типу звезды |
-| `by_birth_event` | все записи | Число рождений по типу события 0–4 |
-| `deaths_by_cause` | мёртвые | Число смертей по причине |
-
-### 9.3 Макет панели статистики
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  REGISTRY  ·  Тик 500              ⟳ sync: per tick  [●]  [STOP]   │
-├──────────────┬──────────────┬──────────────┬────────────────────────┤
-│ ВСЕГО        │ ЖИВЫХ        │ МЁРТВЫХ       │ СРЕДНЕЕ ПЛАНЕТ         │
-│ 2847         │ 1203  ●      │ 1644          │ 6.8                    │
-├──────────────┴──────────────┴──────────────┴────────────────────────┤
-│  Без планет  87  │  10–12 планет  34  │  1 кольцо  210  │  2 кольца  58  │
-├────────────────────────────────────────────────────────────────────-┤
-│  Смерти: перегрев 820 · переохлаждение 310 · столкновение 490 · предел массы 24  │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-### 9.4 Реализация на сервере (Go)
-
-В `main.go` добавить обработчик `GET /registry/stats`:
-
-```go
-func registryStatsHandler(w http.ResponseWriter, r *http.Request) {
-    data, _ := os.ReadFile("star_registry.json")
-    var records []map[string]interface{}
-    json.Unmarshal(data, &records)
-
-    alive, dead := 0, 0
-    planetsSum, planetsCount := 0, 0
-    noP, highP, ring1, ring2 := 0, 0, 0, 0
-    byType := map[string]map[string]int{}
-    byEvent := map[string]int{}
-    byCause := map[string]int{}
-
-    for _, rec := range records {
-        isAlive := rec["death_tick"] == nil
-        if isAlive { alive++ } else { dead++ }
-
-        np := int(rec["n_planets"].(float64))
-        nr := int(rec["n_rings"].(float64))
-        planetsSum += np; planetsCount++
-        if np == 0 { noP++ }
-        if np >= 10 { highP++ }
-        if nr == 1 { ring1++ }
-        if nr == 2 { ring2++ }
-
-        st := rec["birth_star_type"].(string)
-        if byType[st] == nil { byType[st] = map[string]int{} }
-        if isAlive { byType[st]["alive"]++ } else { byType[st]["dead"]++ }
-
-        ev := fmt.Sprintf("%v", rec["birth_event"])
-        byEvent[ev]++
-
-        if !isAlive {
-            cause := fmt.Sprintf("%v", rec["death_cause"])
-            byCause[cause]++
-        }
-    }
-
-    avg := 0.0
-    if planetsCount > 0 { avg = math.Round(float64(planetsSum)/float64(planetsCount)*10) / 10 }
-
-    stats := map[string]interface{}{
-        "total_registered":    len(records),
-        "total_alive":         alive,
-        "total_dead":          dead,
-        "avg_planets":         avg,
-        "stars_no_planets":    noP,
-        "stars_10_12_planets": highP,
-        "stars_1_ring":        ring1,
-        "stars_2_rings":       ring2,
-        "by_type":             byType,
-        "by_birth_event":      byEvent,
-        "deaths_by_cause":     byCause,
-    }
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(stats)
-}
-```
-
----
-
-## 10. ОБРАБОТКА ПЕРЕГЕНЕРАЦИИ ГАЛАКТИКИ
-
-При нажатии кнопки `⟳ GEN` в `galaxy.html`:
-1. `POST /registry/reset` — очищает `star_registry.json` (пишет пустой массив `[]`)
-2. Генерация идёт как обычно
-3. При начальной генерации все звёзды `galaxy.json` регистрируются через `registerBirth` за один проход (тик = 0, `birth_event = 0` для всех начальных звёзд)
-
----
-
-## 11. ПРАВИЛО ПРЕДЕЛА МАССЫ > 1000
-
-Если формация при очередном поглощении превышает массу 1000:
-- Формация **немедленно взрывается** (supernova) без рождения звезды
-- Запись в реестр **не создаётся**
-- В счётчик `CNT` добавить `massLimitExplosions++` для статистики
-
----
-
-## 12. ПРОИЗВОДИТЕЛЬНОСТЬ
-
-- Запросы к `/registry/birth` и `/registry/death` — асинхронные (`await fetch`), не блокируют тик
-- При быстром прокручивании (Jump to Tick) — запросы батчируются: отправка раз в 50 тиков или в конце прыжка
-- `star_registry.json` хранится на сервере; `registry.html` никогда не пишет напрямую
-- `GET /registry/stats` — лёгкий запрос, один O(n) проход. При реестре 10 000+ записей рассмотреть кеш, инвалидируемый при каждом `POST /registry/*`
-
----
-
-## 13. КОНТРОЛЬНЫЙ СПИСОК РЕАЛИЗАЦИИ
+## 10. КОНТРОЛЬНЫЙ СПИСОК РЕАЛИЗАЦИИ
 
 ### main.go
-- [x] Эндпоинт `GET /registry` — читает и отдаёт `star_registry.json`
-- [x] Эндпоинт `GET /registry/stats` — считает и отдаёт статистику
-- [x] Эндпоинт `GET /registry/stream` — SSE-поток событий (`init/birth/death/reset`)
-- [x] Эндпоинт `POST /registry/birth` — append записи
-- [x] Эндпоинт `POST /registry/death` — patch записи по `star_id`
-- [x] Эндпоинт `POST /registry/reset` — перезаписывает файл как `[]`
+- [x] `GET /registry` — читает и отдаёт `star_registry.json`
+- [x] `GET /registry/stats` — статистика O(n)
+- [x] `GET /registry/stream` — SSE-поток (init/birth/death/reset)
+- [x] `POST /registry/birth` — append записи
+- [x] `POST /registry/birth/batch` — пакетный append (старт галактики)
+- [x] `POST /registry/death` — patch по `star_id`
+- [x] `POST /registry/reset` — перезаписывает как `[]`
+- [x] `GET /system/:id` — данные планетной системы по `star_id`
+- [x] `assignPlanetOrbits` — 36 слотов, no-adjacent, Fisher-Yates
+- [x] `planetTypeFromSlot` — lava 0–8, rocky 9–17, ice 18–26, gas_giant 27–35
+- [x] `orbitPeriods` — 36 значений, геометрическая прогрессия
 
 ### galaxy.html
-- [x] Добавить `birth_event_type` на объект формации при создании
-- [x] Добавить `asteroid_absorbed` на объект формации (инкрементировать при поглощении)
-- [x] Функция `scanNeighbors(o)` — один проход при рождении
-- [x] Функция `computeGenCode(r)` — вычисление кода
-- [x] Функции `computePlanets(...)` и `computeRings(...)` (формула обновлена, см. v1.3)
-- [x] Вызов `registerBirth(...)` в `checkFormationBirth`
-- [x] Вызов `registerBirth(...)` для начальных звёзд при `applyGalaxy`
-- [x] Вызов `registerDeath(...)` в `doSupernova`, `coolDeath`, `heatDeath`, `handleCollision`
-- [x] Кнопка «REGISTRY» в UI → открывает `registry.html`
+- [x] `birth_event_type` на объекте формации
+- [x] `asteroid_absorbed` на объекте формации
+- [x] `scanNeighbors(o)` — один проход при рождении
+- [x] `computeGenCode(r)` — вычисление кода
+- [x] `computePlanets(...)` и `computeRings(...)` — cap 16
+- [x] `registerBirth(...)` в `checkFormationBirth`
+- [x] `registerBirth(...)` (batch) для начальных звёзд при `applyGalaxy`
+- [x] `registerDeath(...)` в `doSupernova`, `coolDeath`, `heatDeath`, `handleCollision`
+- [x] System View: открытие по dblclick, `GET /system/:id`
+- [x] System View: 36 орбит, `sysOrbitRadius` в координатном пространстве 100×100
+- [x] System View: астероидные кольца на orbit_grid 38 и 42
+- [x] System View: зум колесом к курсору (0.15× — 15×)
+- [x] System View: пан перетаскиванием
+- [x] System View: сброс вида по dblclick на канвасе
+- [x] System View: симулированное время (`sysSimTime`, `sysSimSpeed`)
+- [x] System View: кнопки STOP / MIN/S / HR/S / DAY/S (`setSysSpeed`)
+- [x] System View: сетка координат 100×100, шаг 10 у.е. (кнопка GRID)
+- [x] System View: галактика продолжает работать в фоне
+- [x] System View: `notifySysStarDeath` — хук в `registerDeath`, анимация взрыва, авто-возврат
+- [x] System View: панель ENVIRONMENT — TEMP (live из `objects[]`), RADIATION=0, METEOR=0 (резерв)
+- [x] `ORBIT_PERIODS` — 36 значений (синхронно с сервером)
+- [x] Кнопка «REGISTRY» → `registry.html`
 - [x] `POST /registry/reset` при `⟳ GEN`
-- ~~`localStorage.setItem('ouroboros_tick', tick)`~~ — не используется, заменён SSE
-
-### registry.html
-- [x] Панель статистики (клиентский расчёт из `allRecords`, дебаунс 1500ms)
-- [x] Таблица с колонками из раздела 8
-- [x] Синхронизация через SSE `EventSource('/registry/stream')` — дельта-рендеринг
-- [x] Фильтры по типу, статусу, числу планет, поиск по ID
-- [x] Подсветка новых записей (зелёный border-left) и смертей (`dead-flash`)
-- ~~Переключатель «per tick / every N sec»~~ — не нужен при SSE
-
----
-
