@@ -1123,6 +1123,8 @@ function buildBirthRecord(star, neighbors) {
   const S5=Math.min(Math.floor(r.neighbor_neb_mass/4),9);
   const S6=Math.min(Math.floor(r.birth_temp_env/100),9);
   const S7=evMap[r.birth_event_type]??5;
+  star.birth_radius = +birth_radius.toFixed(2);
+  star.n_rings      = computeRings(S2, S4, S7);
   star.birth_tick_registered=tick;
   return {star_id:star.id,birth_tick:tick,birth_radius:+birth_radius.toFixed(2),
     birth_star_type:star.star_type,birth_mass:star.mass,birth_event:S7,
@@ -1493,6 +1495,15 @@ function resolveCollision(a, b, dying, toAdd) {
     if(isStar(absorber)) {
       absorber.temp = Math.max(0, Math.min(CFG.COLLAPSE_LIMIT, (absorber.temp||0) + tempOfObject(absorbed)));
     }
+    // Метеоритный всплеск: звезда поглощает формацию
+    if(isStar(absorber) && absorbed.type === TYPE.FORMATION) {
+      const spike = Math.min(50, absorbed.mass);
+      const remaining = (absorber.meteor_spike_0 > 0 && absorber.meteor_spike_tick !== undefined)
+        ? Math.max(0, absorber.meteor_spike_0 * (5 - (tick - absorber.meteor_spike_tick)) / 5)
+        : 0;
+      absorber.meteor_spike_0 = Math.min(50, remaining + spike);
+      absorber.meteor_spike_tick = tick;
+    }
     // Смена типа облака при превышении порога (туманность→астероид→формация)
     if(isCloud(absorber)) {
       const res = typeFromMass(totalMass);
@@ -1674,6 +1685,7 @@ function processFormations() {
 // MAIN TICK
 // ============================================================
 function runTick() {
+  tickStartReal = performance.now();
   tick++;
   const toAdd=[];
 
@@ -2005,17 +2017,57 @@ function findNearest(mx,my){
   return best;
 }
 
+// ============================================================
+// RADIATION & METEORITE ACTIVITY
+// ============================================================
+function computeRAD(star) {
+  const T_norm = Math.max(0, Math.min(1, ((star.temp||0) - 10) / 990));
+  let n_danger = 0;
+  for(const o of objects) {
+    if(o.id === star.id) continue;
+    if(o.type !== TYPE.BH && !(o.type === TYPE.STAR && o.star_type === STAR.NEUTRON)) continue;
+    const dx = o.x - star.x, dy = o.y - star.y;
+    if(dx*dx + dy*dy <= CFG.BH_RAD_RADIUS * CFG.BH_RAD_RADIUS) n_danger++;
+  }
+  const D_norm = Math.min(n_danger, 5) / 5;
+  const dist = Math.sqrt((star.x-CFG.CENTER)**2 + (star.y-CFG.CENTER)**2);
+  const G_norm = Math.max(0, Math.min(1, 1 - dist / CFG.GALAXY_R));
+  return Math.round(100 * (0.50 * T_norm + 0.35 * D_norm + 0.15 * G_norm));
+}
+
+function computeMA(star) {
+  const dist = Math.sqrt((star.x-CFG.CENTER)**2 + (star.y-CFG.CENTER)**2);
+  const G_norm = Math.max(0, Math.min(1, 1 - dist / CFG.GALAXY_R));
+  const M_norm = Math.max(0, Math.min(1, star.mass / 800));
+  const A_norm = (star.n_rings || 0) / 2;
+  const base = 50 * (0.30 * G_norm + 0.30 * M_norm + 0.40 * A_norm);
+  let spike = 0;
+  if(star.meteor_spike_0 > 0 && star.meteor_spike_tick !== undefined) {
+    const elapsed = tick - star.meteor_spike_tick;
+    if(elapsed < 5) spike = star.meteor_spike_0 * (5 - elapsed) / 5;
+  }
+  return Math.min(100, Math.round(base + spike));
+}
+
 function showTip(o,mx,my){
   const col=objColor(o);
   const label=isStar(o)?o.star_type.replace('_',' ').toUpperCase():o.type.replace('_',' ').toUpperCase();
   const tempStr=o.temp!==undefined?`<br>T &nbsp;&nbsp;&nbsp;&nbsp;${Math.round(o.temp)}`:'';
   const speed=Math.sqrt((o.vx||0)**2+(o.vy||0)**2);
+  let starStr = '';
+  if(isStar(o)) {
+    const rad = computeRAD(o);
+    const ma  = computeMA(o);
+    const br  = o.birth_radius !== undefined ? o.birth_radius.toFixed(2) : '—';
+    const rings = o.n_rings !== undefined ? o.n_rings : '—';
+    starStr = `<br>RAD &nbsp;&nbsp;${rad}<br>MA &nbsp;&nbsp;&nbsp;${ma}<br>Rbirth ${br}&nbsp;Rings ${rings}`;
+  }
   tooltip.innerHTML=`<div class="tt-type" style="color:rgb(${col[0]},${col[1]},${col[2]})">${label}</div>
     MASS &nbsp;${o.mass}${tempStr}<br>AGE &nbsp;&nbsp;${o.age}<br>
     R &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${o.r.toFixed(2)}<br>
     vx &nbsp;&nbsp;&nbsp;${(o.vx||0).toFixed(4)}<br>
     vy &nbsp;&nbsp;&nbsp;${(o.vy||0).toFixed(4)}<br>
-    |v| &nbsp;&nbsp;${speed.toFixed(4)}`;
+    |v| &nbsp;&nbsp;${speed.toFixed(4)}${starStr}`;
   let tx=mx+14,ty=my+14;
   if(tx+180>window.innerWidth) tx=mx-194;
   if(ty+180>window.innerHeight) ty=my-190;
@@ -2199,6 +2251,8 @@ async function jumpToTick(target) {
 // ============================================================
 function startSim(ms) {
   stopSim();
+  simIntervalMs=ms;
+  tickStartReal=performance.now();
   simTimer=setInterval(runTick,ms);
   document.getElementById('st-status').textContent='RUNNING';
   document.getElementById('st-speed').textContent=(ms/1000)+'s/tick';
@@ -2283,6 +2337,7 @@ let sysData=null, sysRafId=null;
 let sysZoom=1, sysPanX=0, sysPanY=0;
 let sysDragging=false, sysDragStart={x:0,y:0}, sysPanStart={x:0,y:0};
 let sysSimTime=0, sysSimSpeed=3600, sysSimRunning=true, sysSimLastReal=0;
+let tickStartReal=0, simIntervalMs=1000; // для синхронизации времени планет с тиком галактики
 let sysShowGrid=false;
 let sysDeathAnimating=false, sysDeathColor='#ffcc44', sysDeathStartTime=0;
 const sysOverlay=document.getElementById('sys-overlay');
@@ -2437,15 +2492,34 @@ function updateSysStats(){
   const tb=document.getElementById('ss-temp-bar');
   tb.style.width=tempPct+'%';
   tb.style.background=tempBarColor(temp,1000);
-  // Radiation и Meteor: зарезервированы, пока 0
+  // Radiation & Meteor — подтягиваем с галактического уровня
+  if(star){
+    const rad=computeRAD(star);
+    const ma =computeMA(star);
+    document.getElementById('ss-rad-val').textContent=rad;
+    document.getElementById('ss-met-val').textContent=ma;
+    const rb=document.getElementById('ss-rad-bar');
+    rb.style.width=rad+'%';
+    rb.style.background=rad>=70?'#ff4444':rad>=40?'#ffaa22':'#2a7fff';
+    const mb=document.getElementById('ss-met-bar');
+    mb.style.width=ma+'%';
+    mb.style.background=ma>=70?'#ff8822':ma>=40?'#cc7733':'#7a6040';
+  }
 }
 
 function renderSysLoop(){
   if(!sysData) return;
-  const now=performance.now();
-  if(sysSimRunning && sysSimLastReal>0)
-    sysSimTime+=(now-sysSimLastReal)*0.001*sysSimSpeed;
-  sysSimLastReal=now;
+  if(sysSimRunning){
+    if(simTimer!==null){
+      // Галактика идёт: плавная интерполяция позиции планет между тиками
+      const frac=Math.min(1,(performance.now()-tickStartReal)/simIntervalMs);
+      sysSimTime=(tick+frac)*sysSimSpeed;
+    } else {
+      // Галактика на паузе: планеты замирают в позиции текущего тика
+      sysSimTime=tick*sysSimSpeed;
+    }
+  }
+  // sysSimRunning=false (кнопка STOP): sysSimTime не меняется, планеты заморожены
   drawSystem(sysSimTime);
   if(++_sysStatFrame%8===0) updateSysStats();
   sysRafId=requestAnimationFrame(renderSysLoop);
@@ -2482,9 +2556,9 @@ async function openSystemView(star){
   sysData=data;
   // Сброс состояния
   resetSysView();
-  sysSimTime=0; sysSimLastReal=0;
+  sysSimTime=tick*sysSimSpeed; sysSimLastReal=0; // время = текущий тик галактики
   sysDeathAnimating=false;
-  setSysSpeed(3600); // HR/S по умолчанию
+  setSysSpeed(sysSimSpeed); // сохраняем текущую скорость
   tooltip.style.display='none';
   sysOverlay.classList.add('open');
   resizeSysCanvas();
