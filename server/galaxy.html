@@ -100,6 +100,11 @@
   .sys-env-max{font-family:var(--mono);font-size:9px;color:var(--text);opacity:0.35;}
   .sys-env-bar-wrap{height:2px;background:rgba(255,255,255,0.06);border-radius:1px;overflow:hidden;}
   .sys-env-bar{height:100%;border-radius:1px;transition:width 0.4s,background 0.4s;}
+  /* ── Planet info panel ───────────────────────────────────── */
+  #sys-planet-info{position:absolute;bottom:20px;right:20px;background:var(--panel-bg);border:1px solid var(--border);padding:10px 14px;backdrop-filter:blur(8px);min-width:195px;display:none;pointer-events:none;}
+  #sys-planet-info.visible{display:block;}
+  .sys-pi-title{font-family:var(--mono);font-size:9px;letter-spacing:3px;color:var(--accent);opacity:0.8;margin-bottom:5px;}
+  .sys-pi-subtitle{font-family:var(--mono);font-size:8px;color:var(--text);opacity:0.45;margin-bottom:8px;letter-spacing:1px;}
 </style>
 </head>
 <body>
@@ -286,6 +291,35 @@
         <span><span class="sys-env-val" id="ss-met-val">0</span><span class="sys-env-max"> / 100</span></span>
       </div>
       <div class="sys-env-bar-wrap"><div class="sys-env-bar" id="ss-met-bar" style="width:0%;background:#7a6040"></div></div>
+    </div>
+  </div>
+  <!-- ── Planet info panel ─────────────────────────────────── -->
+  <div id="sys-planet-info">
+    <div class="sys-pi-title">PLANET</div>
+    <div class="sys-pi-subtitle" id="spi-type">—</div>
+    <div class="sys-env-row">
+      <div class="sys-env-head"><span class="sys-env-label">GRAVITY</span><span class="sys-env-val" id="spi-grav">—</span></div>
+      <div class="sys-env-bar-wrap"><div class="sys-env-bar" id="spi-bar-grav" style="width:0%;background:#6688cc"></div></div>
+    </div>
+    <div class="sys-env-row">
+      <div class="sys-env-head"><span class="sys-env-label">RADIUS</span><span class="sys-env-val" id="spi-radius">—</span></div>
+      <div class="sys-env-bar-wrap"><div class="sys-env-bar" id="spi-bar-radius" style="width:0%;background:#4499aa"></div></div>
+    </div>
+    <div class="sys-env-row">
+      <div class="sys-env-head"><span class="sys-env-label">MASS</span><span class="sys-env-val" id="spi-mass">—</span></div>
+      <div class="sys-env-bar-wrap"><div class="sys-env-bar" id="spi-bar-mass" style="width:0%;background:#558844"></div></div>
+    </div>
+    <div class="sys-env-row">
+      <div class="sys-env-head"><span class="sys-env-label">CORE MASS</span><span class="sys-env-val" id="spi-core">—</span></div>
+      <div class="sys-env-bar-wrap"><div class="sys-env-bar" id="spi-bar-core" style="width:0%;background:#886644"></div></div>
+    </div>
+    <div class="sys-env-row">
+      <div class="sys-env-head"><span class="sys-env-label">WATER</span><span class="sys-env-val" id="spi-water">—</span></div>
+      <div class="sys-env-bar-wrap"><div class="sys-env-bar" id="spi-bar-water" style="width:0%;background:#2266aa"></div></div>
+    </div>
+    <div class="sys-env-row">
+      <div class="sys-env-head"><span class="sys-env-label">CORE TEMP</span><span class="sys-env-val" id="spi-ctemp">—</span></div>
+      <div class="sys-env-bar-wrap"><div class="sys-env-bar" id="spi-bar-ctemp" style="width:0%;background:#cc4422"></div></div>
     </div>
   </div>
 </div>
@@ -1421,6 +1455,12 @@ function resolveCollision(a, b, dying, toAdd) {
       if(isBigEvent(star)) { star.unstable=true; star.unstable_partner=-1; star.vx=0; star.vy=0; }
       else doSupernova(star, toAdd, dying);
     }
+    // Метеоритная активность: астероид бомбардирует звезду каждый тик
+    // ast_spike обновляется на каждом тике контакта → держится пока астероид рядом,
+    // затухает за 3 тика после разрыва контакта (см. computeMA)
+    { const asp = Math.min(30, ast.mass * 0.8);
+      star.ast_spike_0    = Math.max(asp, (star.ast_spike_0 || 0));
+      star.ast_spike_tick = tick; }
     if(ast.mass <= 0) { dying.push(ast.id); masslossBuffer.delete(ast.id); }
     return;
   }
@@ -2041,12 +2081,67 @@ function computeMA(star) {
   const M_norm = Math.max(0, Math.min(1, star.mass / 800));
   const A_norm = (star.n_rings || 0) / 2;
   const base = 50 * (0.30 * G_norm + 0.30 * M_norm + 0.40 * A_norm);
+  // Спайк от поглощения формации (до +50, затухает 5 тиков)
   let spike = 0;
   if(star.meteor_spike_0 > 0 && star.meteor_spike_tick !== undefined) {
     const elapsed = tick - star.meteor_spike_tick;
     if(elapsed < 5) spike = star.meteor_spike_0 * (5 - elapsed) / 5;
   }
-  return Math.min(100, Math.round(base + spike));
+  // Спайк от прямой бомбардировки астероидом (до +30, затухает 3 тика после разрыва контакта)
+  let ast_boost = 0;
+  if(star.ast_spike_0 > 0 && star.ast_spike_tick !== undefined) {
+    const elapsed = tick - star.ast_spike_tick;
+    if(elapsed < 3) ast_boost = star.ast_spike_0 * (3 - elapsed) / 3;
+  }
+  return Math.min(100, Math.round(base + spike + ast_boost));
+}
+
+// ============================================================
+// DETERMINISTIC PLANET PARAMETERS
+// ============================================================
+const STAR_START_TEMPS = {
+  red_dwarf:100, white_dwarf:50, yellow_dwarf:250, blue_giant:150, neutron_star:500
+};
+// Base values [gravity, radius, planet_mass, core_mass, water, core_temp] per planet type
+const PLANET_PARAM_BASES = {
+  //                  grav  rad  mass  core  water  ctemp
+  lava:      [72,   28,   40,   80,    3,   88],
+  rocky:     [55,   40,   38,   58,   22,   55],
+  ice:       [38,   52,   32,   28,   65,   22],
+  gas_giant: [62,   73,   72,   12,   38,   32],
+};
+
+// Returns deterministic {gravity,radius,planetMass,coreMass,water,coreTemp} each in [1,100]
+// Inputs come from planet slot, sysData (birth params) and the live star object (birth_radius)
+function computePlanetParams(planet, data, starObj) {
+  const orb  = planet.orbit_index;
+  const type = planet.type || 'rocky';
+  const gc   = data.gen_code   || '000000000';
+  const mass = data.mass       || 100;
+  const st   = data.star_type  || 'yellow_dwarf';
+  const np   = data.n_planets  || 1;
+  const br   = (starObj && starObj.birth_radius != null) ? starObj.birth_radius : 60;
+
+  const orbit_norm = orb / 35;
+  const M_norm     = Math.min(1, mass / 800);
+  const R_norm     = Math.min(1, br   / 120);
+  const T_norm     = (STAR_START_TEMPS[st] || 250) / 500;
+  const N_norm     = Math.min(1, np   / 12);
+
+  // Micro-variation: each param picks a different gen_code digit based on orbit_index
+  const sv = k => (parseInt(gc[(orb + k) % 9]) || 0) / 9;
+
+  const b = PLANET_PARAM_BASES[type] || PLANET_PARAM_BASES.rocky;
+  const clamp = v => Math.max(1, Math.min(100, Math.round(v)));
+
+  return {
+    gravity:    clamp(b[0] - 32*orbit_norm + 18*M_norm  - 8*N_norm              + 5*sv(0) - 2.5),
+    radius:     clamp(b[1] + 15*orbit_norm + 10*M_norm  - 5*N_norm              + 4*sv(1) - 2  ),
+    planetMass: clamp(b[2]               + 20*M_norm  - 12*N_norm              + 6*sv(2) - 3  ),
+    coreMass:   clamp(b[3] -  8*orbit_norm + 12*M_norm                         + 6*sv(3) - 3  ),
+    water:      clamp(b[4] + 25*orbit_norm - 15*T_norm  - 10*R_norm            + 8*sv(4) - 4  ),
+    coreTemp:   clamp(b[5] - 22*orbit_norm + 15*T_norm  + 12*M_norm - 8*R_norm + 6*sv(5) - 3  ),
+  };
 }
 
 function showTip(o,mx,my){
@@ -2345,8 +2440,9 @@ const sysCanvas=document.getElementById('sys-canvas');
 const sysCtx=sysCanvas.getContext('2d');
 
 function sysOrbitRadius(orbitIndex,size){
-  // 100×100 coordinate space: inner orbit at 6 units, outer at 42 units
-  return size*(0.06+0.36*orbitIndex/35);
+  // Inner orbit at 6%, outer at 50% of canvas size.
+  // gap=3 slots × 0.44/35 × size ≥ 28px at 1080p → no planet overlap.
+  return size*(0.06+0.44*orbitIndex/35);
 }
 
 function planetAngleDeg(orbitIndex,genCode,starId,nowSec,period){
@@ -2433,10 +2529,13 @@ function drawSystem(nowSec){
     const orb=sysOrbitRadius(p.orbit_index,size);
     const px=orb*Math.cos(ang), py=orb*Math.sin(ang);
     const pv=PLANET_VISUALS[p.visual_type]||{color:'#888888',r:6};
-    const pg=sc.createRadialGradient(px,py,0,px,py,pv.r*2.2);
+    // Визуальный радиус: 4–14px, пропорционально параметру RADIUS (1–100)
+    const pr=p._params ? (4 + (p._params.radius/100)*10) : pv.r;
+    const glowR=Math.max(pr*2.2, 10); // минимальный ореол 10px
+    const pg=sc.createRadialGradient(px,py,0,px,py,glowR);
     pg.addColorStop(0,pv.color+'55'); pg.addColorStop(1,pv.color+'00');
-    sc.beginPath(); sc.arc(px,py,pv.r*2.2,0,Math.PI*2); sc.fillStyle=pg; sc.fill();
-    sc.beginPath(); sc.arc(px,py,pv.r,0,Math.PI*2); sc.fillStyle=pv.color; sc.fill();
+    sc.beginPath(); sc.arc(px,py,glowR,0,Math.PI*2); sc.fillStyle=pg; sc.fill();
+    sc.beginPath(); sc.arc(px,py,pr,0,Math.PI*2); sc.fillStyle=pv.color; sc.fill();
   }
 
   // ── Взрыв звезды (внутри трансформа) ─────────────────────────
@@ -2554,6 +2653,9 @@ async function openSystemView(star){
     data=await resp.json();
   }catch(e){console.warn('system fetch failed',e);return;}
   sysData=data;
+  // Кешируем планетарные параметры (детерминированы, не меняются)
+  { const starObj=objects.find(o=>o.id===data.star_id);
+    for(const p of sysData.planets) p._params=computePlanetParams(p,sysData,starObj); }
   // Сброс состояния
   resetSysView();
   sysSimTime=tick*sysSimSpeed; sysSimLastReal=0; // время = текущий тик галактики
@@ -2572,6 +2674,7 @@ async function openSystemView(star){
 
 function closeSystemView(){
   sysOverlay.classList.remove('open');
+  hidePlanetInfo();
   sysData=null;
   sysDragging=false;
   sysDeathAnimating=false;
@@ -2649,6 +2752,78 @@ document.getElementById('sysb-fast').addEventListener('click',()=>setSysSpeed(86
 document.getElementById('sysb-grid').addEventListener('click',()=>{
   sysShowGrid=!sysShowGrid;
   document.getElementById('sysb-grid').classList.toggle('on',sysShowGrid);
+});
+
+// ============================================================
+// PLANET HOVER DETECTION
+// ============================================================
+let _hoveredPlanetIdx = -1;
+const sysPlanetInfoEl = document.getElementById('sys-planet-info');
+
+function showPlanetInfo(planet){
+  const star = objects.find(o => o.id === sysData.star_id);
+  const p = computePlanetParams(planet, sysData, star);
+  const typeLabel = planet.type.replace(/_/g,' ').toUpperCase();
+  document.getElementById('spi-type').textContent =
+    `ORBIT ${planet.orbit_index + 1}  ·  ${typeLabel}`;
+  function setBar(vid, bid, val, color){
+    document.getElementById(vid).textContent = val;
+    const b = document.getElementById(bid);
+    b.style.width = val + '%';
+    b.style.background = color;
+  }
+  setBar('spi-grav',   'spi-bar-grav',   p.gravity,    p.gravity   >= 70 ? '#dd5522' : p.gravity   >= 40 ? '#cc9933' : '#6688cc');
+  setBar('spi-radius', 'spi-bar-radius', p.radius,     '#4499aa');
+  setBar('spi-mass',   'spi-bar-mass',   p.planetMass, '#558844');
+  setBar('spi-core',   'spi-bar-core',   p.coreMass,   p.coreMass  >= 70 ? '#cc6633' : '#886644');
+  setBar('spi-water',  'spi-bar-water',  p.water,      p.water     >= 60 ? '#2277cc' : p.water     >= 30 ? '#336688' : '#446644');
+  setBar('spi-ctemp',  'spi-bar-ctemp',  p.coreTemp,   p.coreTemp  >= 70 ? '#cc4422' : p.coreTemp  >= 40 ? '#cc8822' : '#4466aa');
+  sysPlanetInfoEl.classList.add('visible');
+}
+
+function hidePlanetInfo(){
+  _hoveredPlanetIdx = -1;
+  sysPlanetInfoEl.classList.remove('visible');
+}
+
+sysCanvas.addEventListener('mousemove', e => {
+  if(!sysData || !sysData.planets.length || sysDragging) return;
+  const rect = sysCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const W = sysCanvas.width, H = sysCanvas.height;
+  const cx = W/2, cy = H/2, size = Math.min(W, H);
+  // Convert screen → system world coords (inverse of the canvas transform)
+  const sx = (mx - (cx + sysPanX)) / sysZoom;
+  const sy = (my - (cy + sysPanY)) / sysZoom;
+  // Find nearest planet — hit area = glow radius (matches visual)
+  let closest = -1, closestD = Infinity;
+  for(let i = 0; i < sysData.planets.length; i++){
+    const p = sysData.planets[i];
+    const ang = planetAngleDeg(p.orbit_index, sysData.gen_code, sysData.star_id, sysSimTime, p.period_sec) * Math.PI / 180;
+    const orb = sysOrbitRadius(p.orbit_index, size);
+    const px = orb * Math.cos(ang);
+    const py = orb * Math.sin(ang);
+    const d = Math.hypot(sx - px, sy - py);
+    const pr = p._params ? (4 + (p._params.radius/100)*10) : 7;
+    const hitR = Math.max(pr*2.2, 10); // совпадает с glowR в drawSystem
+    if(d < hitR && d < closestD){ closestD = d; closest = i; }
+  }
+  if(closest !== _hoveredPlanetIdx){
+    _hoveredPlanetIdx = closest;
+    if(closest >= 0){
+      showPlanetInfo(sysData.planets[closest]);
+      sysCanvas.style.cursor = 'pointer';
+    } else {
+      hidePlanetInfo();
+      sysCanvas.style.cursor = sysDragging ? 'grabbing' : 'grab';
+    }
+  }
+});
+
+sysCanvas.addEventListener('mouseleave', () => {
+  if(_hoveredPlanetIdx >= 0) hidePlanetInfo();
+  _hoveredPlanetIdx = -1;
 });
 
 // ============================================================

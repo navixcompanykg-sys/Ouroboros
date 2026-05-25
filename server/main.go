@@ -511,14 +511,15 @@ func assignPlanetOrbits(nPlanets int, seed int64) []int {
 		j := int(seed % int64(i+1))
 		slots[i], slots[j] = slots[j], slots[i]
 	}
-	// Greedy pick: no two adjacent orbits
+	// Greedy pick: minimum 2 free orbits between any two planets (gap >= 3 slots)
+	// With 36 slots this allows up to 12 planets (0,3,6,...,33) — maximum preserved.
 	taken := make(map[int]bool)
 	result := make([]int, 0, nPlanets)
 	for _, s := range slots {
 		if len(result) >= nPlanets {
 			break
 		}
-		if !taken[s-1] && !taken[s+1] {
+		if !taken[s-2] && !taken[s-1] && !taken[s+1] && !taken[s+2] {
 			taken[s] = true
 			result = append(result, s)
 		}

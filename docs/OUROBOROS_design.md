@@ -584,9 +584,112 @@ LCG: `1664525 × s + 1013904223`. Сид: `(tick × 73856093) XOR (round(x) × 1
 - Формация: оранжевое свечение 4×r.
 - Горячая туманность: цвет интерполируется к ярко-синему `(60, 160, 255)`.
 
+### Тултип (наведение мышью)
+
+При наведении на объект показывается тултип. Для **звёзд** дополнительно отображаются:
+
+| Поле | Описание |
+|---|---|
+| `T` | Текущая температура |
+| `RAD` | Уровень радиации [0–100] |
+| `MA` | Метеоритная активность [0–100] |
+| `Rbirth` | Радиус рождения (у.е. от центра) |
+| `Rings` | Число астероидных колец (0–2) |
+
+`RAD` и `MA` вычисляются функциями `computeRAD(star)` / `computeMA(star)` в реальном времени при каждом показе тултипа. `birth_radius` и `n_rings` хранятся прямо на объекте звезды — устанавливаются в `buildBirthRecord` при рождении.
+
 ### Двойной клик по звезде
 
 Открывает вид планетарной системы (оверлей). Симуляция галактики не останавливается. Закрытие: `ESC` или кнопка `← Galaxy`.
+
+---
+
+## 16.1 ИНДИКАТОРЫ СРЕДЫ — RAD И MA
+
+### Уровень радиации `RAD` ∈ [0, 100]
+
+```
+T_norm = clamp((temp − 10) / 990,  0, 1)   // температура звезды
+D_norm = clamp(n_danger / 5,       0, 1)   // ЧД + НЗ в радиусе BH_RAD_RADIUS (10 а.е.), макс. 5
+G_norm = clamp(1 − r / GALAXY_R,   0, 1)   // близость к центру галактики
+
+RAD = round(100 × (0.50 × T_norm + 0.35 × D_norm + 0.15 × G_norm))
+```
+
+| Компонент | Вес | Источник |
+|---|---|---|
+| Температура | 50% | `star.temp`, диапазон [10, 1000] |
+| Опасные соседи | 35% | ЧД + НЗ в радиусе 10 а.е., предел 5 объектов |
+| Центр галактики | 15% | `star.r / GALAXY_R`, ближе к центру = выше |
+
+**Предельный случай** (temp=1000, 5 соседей, центр): RAD = 100 ✓
+
+### Метеоритная активность `MA` ∈ [0, 100]
+
+#### Базовая часть `MA_base` ∈ [0, 50] — постоянная
+
+```
+G_norm = clamp(1 − r / GALAXY_R,   0, 1)   // близость к центру
+M_norm = clamp(mass / 800,         0, 1)   // масса звезды (макс. 800 у синего гиганта)
+A_norm = n_rings / 2                        // астероидные кольца (0, 0.5 или 1)
+
+MA_base = 50 × (0.30 × G_norm + 0.30 × M_norm + 0.40 × A_norm)
+```
+
+**Предел** (масса 800 + 2 кольца + центр): MA_base = 50 ✓
+
+#### Временный всплеск `MA_spike` — от поглощения формации
+
+При поглощении звездой формации массой `m` (≤ 50):
+
+```
+spike_new = min(50, m)
+spike_remaining = max(0, meteor_spike_0 × (5 − elapsed) / 5)   // остаток текущего всплеска
+meteor_spike_0 = min(50, spike_remaining + spike_new)
+meteor_spike_tick = tick
+```
+
+На тике `t` после события (t < 5):
+```
+MA_spike = meteor_spike_0 × (5 − (tick − meteor_spike_tick)) / 5
+```
+
+После 5 тиков: MA_spike = 0.
+
+#### Временный всплеск `MA_ast` — от прямой бомбардировки asteroid_field
+
+Пока asteroid_field находится в зоне столкновения (0.9 а.е.) со звездой, каждый тик обновляется:
+
+```
+ast_spike_0    = max(ast_spike_0, min(30, ast.mass × 0.8))
+ast_spike_tick = tick
+```
+
+Затухание (3 тика после разрыва контакта):
+```
+MA_ast = ast_spike_0 × (3 − (tick − ast_spike_tick)) / 3,  если elapsed < 3
+```
+
+Отличие от `MA_spike`: держится пока астероид рядом, сбрасывается быстрее (3 тика, не 5).
+
+#### Итог
+
+```
+MA = clamp(MA_base + MA_spike + MA_ast, 0, 100)
+```
+
+**Худший случай**: MA_base=50 + формация mass=50 + астероид mass=37 = **100** ✓
+
+#### Поля на объекте звезды
+
+| Поле | Когда устанавливается |
+|---|---|
+| `star.birth_radius` | В `buildBirthRecord` при рождении, не меняется |
+| `star.n_rings` | В `buildBirthRecord` при рождении |
+| `star.meteor_spike_0` | При поглощении формации в `resolveCollision` |
+| `star.meteor_spike_tick` | При поглощении формации в `resolveCollision` |
+| `star.ast_spike_0` | При каждом тике контакта с asteroid_field в `resolveCollision` |
+| `star.ast_spike_tick` | При каждом тике контакта с asteroid_field в `resolveCollision` |
 
 ---
 
@@ -1427,30 +1530,110 @@ func registryStatsHandler(w http.ResponseWriter, r *http.Request) {
 
 ### 34.1 Назначение орбит планетам (Go, Fisher-Yates LCG)
 
+36 слотов (0–35). Жадный выбор: **минимум 2 свободные орбиты** между любыми двумя планетами (зазор ≥ 3 слота). При 36 слотах это позволяет разместить до 12 планет (0, 3, 6, …, 33).
+
 ```go
 func assignPlanetOrbits(nPlanets int, seed int64) []int {
-    slots := make([]int, 12)
+    slots := make([]int, 36)
     for i := range slots { slots[i] = i }
-    for i := 11; i > 0; i-- {
+    // Fisher-Yates через LCG
+    for i := 35; i > 0; i-- {
         seed = (seed*1664525 + 1013904223) & 0x7fffffff
         j := int(seed % int64(i+1))
         slots[i], slots[j] = slots[j], slots[i]
     }
-    result := slots[:nPlanets]
+    taken := make(map[int]bool)
+    result := make([]int, 0, nPlanets)
+    for _, s := range slots {
+        if len(result) >= nPlanets { break }
+        // Зазор ≥ 3: проверяем оба ближайших соседа с каждой стороны
+        if !taken[s-2] && !taken[s-1] && !taken[s+1] && !taken[s+2] {
+            taken[s] = true
+            result = append(result, s)
+        }
+    }
     sort.Ints(result)
     return result
 }
 // seed = star_id * 1000003 + genCodeToInt(gen_code)
 ```
 
+**Гарантия зазора:** минимальное расстояние между кольцами орбит ≥ 3 × шаг = 0.036 × size  
+→ при size=1080px: 38.9px > 2 × 14px (max диаметр планеты) — перекрытия нет.
+
 ### 34.2 Тип планеты по зоне орбиты
+
+36 слотов делятся на 4 зоны по 9:
 
 | Орбитные слоты | Зона | Тип |
 |---|---|---|
-| 0–2 | Горячая | Лавовая |
-| 3–5 | Тёплая | Каменистая |
-| 6–8 | Умеренная | Ледяная |
-| 9–11 | Холодная | Газовый гигант |
+| 0–8  | Горячая | Лавовая |
+| 9–17 | Тёплая | Каменистая |
+| 18–26 | Умеренная | Ледяная |
+| 27–35 | Холодная | Газовый гигант |
+
+### 34.4 Детерминированные физические параметры планет
+
+Шесть параметров на каждую планету, диапазон **[1, 100]**, вычисляются один раз при открытии системы и кешируются в `p._params`. Никакого `Math.random()` — только формулы из начальных данных.
+
+#### Нормализованные входные переменные
+
+| Переменная | Формула | Источник |
+|---|---|---|
+| `orbit_norm` | `orbit_index / 35` | слот орбиты |
+| `M_norm` | `min(1, birth_mass / 800)` | масса звезды при рождении |
+| `R_norm` | `min(1, birth_radius / 120)` | расстояние от центра галактики при рождении |
+| `T_norm` | `start_temp / 500` | R=100, W=50, Y=250, B=150, NS=500 |
+| `N_norm` | `min(1, n_planets / 12)` | число планет в системе |
+| `sv(k)` | `parseInt(gen_code[(orbit_index + k) % 9]) / 9` | псевдорандом из gen_code |
+
+#### Базовые значения по типу планеты
+
+|  | GRAVITY | RADIUS | MASS | CORE MASS | WATER | CORE TEMP |
+|---|---|---|---|---|---|---|
+| Lava | 72 | 28 | 40 | 80 | 3 | 88 |
+| Rocky | 55 | 40 | 38 | 58 | 22 | 55 |
+| Ice | 38 | 52 | 32 | 28 | 65 | 22 |
+| Gas giant | 62 | 73 | 72 | 12 | 38 | 32 |
+
+#### Формулы (все зажаты в [1, 100])
+
+```
+GRAVITY    = base − 32·orbit_norm + 18·M_norm − 8·N_norm                + 5·sv(0) − 2.5
+RADIUS     = base + 15·orbit_norm + 10·M_norm − 5·N_norm                + 4·sv(1) − 2
+PLANET_MASS= base              + 20·M_norm − 12·N_norm                + 6·sv(2) − 3
+CORE_MASS  = base − 8·orbit_norm  + 12·M_norm                           + 6·sv(3) − 3
+WATER      = base + 25·orbit_norm − 15·T_norm − 10·R_norm              + 8·sv(4) − 4
+CORE_TEMP  = base − 22·orbit_norm + 15·T_norm + 12·M_norm − 8·R_norm   + 6·sv(5) − 3
+```
+
+#### Визуальный радиус планеты
+
+Вычисляется из параметра RADIUS:
+```javascript
+const pr = p._params ? (4 + (p._params.radius / 100) * 10) : pv.r;
+// Диапазон: [4, 14] px; oreол = max(pr × 2.2, 10)
+```
+Типичные значения:
+| Тип | RADIUS | px |
+|---|---|---|
+| Lava (inner) | ~28–38 | 6.8–7.8 |
+| Rocky | ~42–52 | 8.2–9.2 |
+| Ice | ~55–65 | 9.5–10.5 |
+| Gas giant | ~85–95 | 12.5–13.5 |
+
+#### Панель параметров планеты (`#sys-planet-info`)
+
+При наведении мыши на планету в system view появляется панель (нижний правый угол). Скрывается при уходе курсора или закрытии вида системы. Курсор меняется на `pointer` при попадании в зону свечения планеты.
+
+| Бар | Описание | Цвет |
+|---|---|---|
+| GRAVITY | Поверхностная гравитация | Blue→Orange (≥40%) →Red (≥70%) |
+| RADIUS | Планетарный радиус | `#4499aa` |
+| MASS | Полная масса планеты | `#558844` |
+| CORE MASS | Размер твёрдого ядра | Orange (≥70%) |
+| WATER | Содержание воды/льда | Cyan (≥60%) |
+| CORE TEMP | Температура ядра | Blue→Orange (≥40%)→Red (≥70%) |
 
 ### 34.3 Базовые ресурсы по типу и gen_code (S3–S6)
 
@@ -1672,24 +1855,38 @@ function planetAngleDeg(orbitIndex, genCode, starId, serverTimeSec) {
 **Координаты:**
 ```javascript
 function sysOrbitRadius(orbitIndex, size) {
-  return size * 0.065 + (size * 0.44 - size * 0.065) * orbitIndex / 11;
+  // Внутренняя орбита: 6% size, внешняя: 50% size. 36 слотов (0–35).
+  return size * (0.06 + 0.44 * orbitIndex / 35);
 }
 // cx, cy — центр canvas; size = min(W, H)
+// Шаг между слотами: 0.44/35 × size ≈ 0.01257 × size
+// Минимальный зазор (gap=3): ≈ 0.0377 × size = 40.7px при 1080px
 ```
 
 ### 39.4 Визуальные примитивы планет (текущая реализация)
 
+**Звёзды** — фиксированный радиус:
+
 | Тип | Цвет | Радиус | Будущий ассет |
 |---|---|---|---|
-| Красный карлик (звезда) | `#ff5533` | 18px | `assets/stars/red_dwarf.gif` |
-| Жёлтый карлик (звезда) | `#ffcc22` | 22px | `assets/stars/yellow_dwarf.gif` |
-| Синий гигант (звезда) | `#55aaff` | 30px | `assets/stars/blue_giant.gif` |
-| Белый карлик (звезда) | `#ddeeff` | 13px | — |
+| Красный карлик | `#ff5533` | 18px | `assets/stars/red_dwarf.gif` |
+| Жёлтый карлик | `#ffcc22` | 22px | `assets/stars/yellow_dwarf.gif` |
+| Синий гигант | `#55aaff` | 30px | `assets/stars/blue_giant.gif` |
+| Белый карлик | `#ddeeff` | 13px | — |
 | Нейтронная звезда | `#aaffcc` | 10px | — |
-| Лавовая | `#dd4411` | 7px | `assets/planets/lava.gif` |
-| Каменистая | `#7a8870` | 7px | `assets/planets/rocky.gif` |
-| Ледяная | `#99bbdd` | 6px | `assets/planets/ice.gif` |
-| Газовый гигант | `#ddaa55` | 11px | `assets/planets/gas_giant.gif` |
+
+**Планеты** — радиус динамический, вычисляется из параметра RADIUS (§34.4):
+```
+pr = 4 + (p._params.radius / 100) × 10    // [4, 14] px
+glowR = max(pr × 2.2, 10)                 // ореол, минимум 10px
+```
+
+| Тип | Цвет | Типичный радиус | Будущий ассет |
+|---|---|---|---|
+| Лавовая | `#dd4411` | 6.8–7.8px | `assets/planets/lava.gif` |
+| Каменистая | `#7a8870` | 8.2–9.2px | `assets/planets/rocky.gif` |
+| Ледяная | `#99bbdd` | 9.5–10.5px | `assets/planets/ice.gif` |
+| Газовый гигант | `#ddaa55` | 12.5–13.5px | `assets/planets/gas_giant.gif` |
 
 ### 39.5 Fallback: примитив → анимация
 
@@ -1704,12 +1901,83 @@ function drawPlanet(ctx, x, y, planet) {
 }
 ```
 
-### 39.6 Анимационный цикл
+### 39.6 Панель среды (Environment Panel)
+
+Боковая панель системного вида показывает три живых индикатора, обновляемых каждые 8 кадров (`updateSysStats`):
+
+| Бар | ID | Диапазон | Цвет |
+|---|---|---|---|
+| TEMP | `ss-temp-bar` | 0–1000 | Градиент от синего к красному |
+| RADIATION | `ss-rad-bar` | 0–100 | Синий → оранжевый (≥40%) → красный (≥70%) |
+| METEOR | `ss-met-bar` | 0–100 | Коричневый → тёмно-оранжевый (≥40%) → оранжевый (≥70%) |
+
+`RADIATION` и `METEOR` вычисляются через `computeRAD(star)` / `computeMA(star)` — те же функции, что и в тултипе галактической карты. Источник данных — текущее состояние объекта звезды в `objects[]`.
+
+### 39.7 Синхронизация времени с галактикой
+
+**Принцип:** `sysSimTime` не накапливается от реального времени независимо. Он вычисляется из галактического `tick` с плавной интерполяцией между тиками.
+
+```javascript
+// Глобальные переменные
+let tickStartReal = 0;   // performance.now() в начале текущего тика
+let simIntervalMs = 1000; // текущий интервал тика (1000 / 3000 / 10000 мс)
+
+// В runTick():
+tickStartReal = performance.now();
+
+// В startSim(ms):
+simIntervalMs = ms;
+tickStartReal = performance.now();
+
+// В renderSysLoop():
+if (sysSimRunning) {
+  if (simTimer !== null) {
+    // Галактика идёт: интерполяция между тиками (60 fps плавно)
+    const frac = Math.min(1, (performance.now() - tickStartReal) / simIntervalMs);
+    sysSimTime = (tick + frac) * sysSimSpeed;
+  } else {
+    // Галактика на паузе: планеты замирают в позиции текущего тика
+    sysSimTime = tick * sysSimSpeed;
+  }
+}
+// sysSimRunning = false (кнопка STOP): sysSimTime не меняется
+```
+
+**Следствия:**
+
+| Состояние галактики | Поведение планет |
+|---|---|
+| Запущена (1s/тик) | Плавно вращаются, скорость определяется `sysSimSpeed` |
+| Запущена (10s/тик) | Вращаются медленнее (пропорционально) |
+| Пауза | Замирают в позиции текущего тика |
+| Кнопка STOP (системный вид) | Заморожены на любом моменте |
+
+**Кнопки скорости системного вида** (`sysSimSpeed`):
+
+| Кнопка | `sysSimSpeed` | Значение |
+|---|---|---|
+| MIN/S | 60 | 60 сек планетного времени / тик |
+| HR/S | 3600 | 3600 сек / тик (по умолчанию) |
+| DAY/S | 86400 | 86400 сек / тик |
+| STOP | 0 | `sysSimRunning = false` |
+
+При открытии системы (`openSystemView`): `sysSimTime = tick × sysSimSpeed` — планеты сразу показываются в позиции, соответствующей текущему тику.
+
+### 39.8 Анимационный цикл (текущая реализация)
 
 ```javascript
 function renderSysLoop() {
   if (!sysData) return;
-  drawSystem(Date.now() / 1000);
+  if (sysSimRunning) {
+    if (simTimer !== null) {
+      const frac = Math.min(1, (performance.now() - tickStartReal) / simIntervalMs);
+      sysSimTime = (tick + frac) * sysSimSpeed;
+    } else {
+      sysSimTime = tick * sysSimSpeed;
+    }
+  }
+  drawSystem(sysSimTime);
+  if (++_sysStatFrame % 8 === 0) updateSysStats();
   sysRafId = requestAnimationFrame(renderSysLoop);
 }
 ```
@@ -1786,6 +2054,18 @@ function preloadAssets() {
 - [x] `requestAnimationFrame` рендер-цикл
 - [x] Рендер примитивов: звезда, орбитальные кольца, планеты с гало
 - [x] Закрытие: кнопка + `Escape`
+- [x] Панель среды: TEMP, RADIATION, METEOR — живые бары (обновление каждые 8 кадров)
+- [x] Тултип галактической карты: RAD, MA, Rbirth, Rings для звёзд
+- [x] Формулы RAD и MA (§16.1) реализованы в `computeRAD` / `computeMA`
+- [x] MA: спайк от поглощения формации (`meteor_spike_0/tick`, 5 тиков, до +50)
+- [x] MA: спайк от бомбардировки asteroid_field (`ast_spike_0/tick`, 3 тика, до +30)
+- [x] Синхронизация времени планет с галактическим тиком (§39.7)
+- [x] Детерминированные параметры планет — 6 значений [1–100] (§34.4), кеш в `p._params`
+- [x] Визуальный радиус планеты пропорционален параметру RADIUS (4–14px)
+- [x] Hover-панель планеты `#sys-planet-info` с 6 барами (нижний правый угол)
+- [x] Курсор `pointer` при наведении на планету в system view
+- [x] Орбитальный алгоритм: зазор ≥ 3 слота (2 свободные орбиты), 36 слотов, 12 типов
+- [x] Диапазон орбит расширен: 6%–50% canvas (формула `0.06 + 0.44 × t`)
 - [ ] `preloadAssets()` — предзагрузка GIF
 
 ### Этап 2 — Хранение игровых данных
