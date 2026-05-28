@@ -16,7 +16,7 @@ import (
 
 const port = ":8080"
 const registryFile = "star_registry.json"
-const maxDeadRecords = 1000
+const maxDeadRecords = 5000
 
 // trimDeadRecords keeps all alive stars + the newest maxDeadRecords dead ones.
 func trimDeadRecords(records []map[string]interface{}) []map[string]interface{} {

@@ -598,6 +598,25 @@ function makeObject(x, y, type, star_type, mass, vx, vy, temp) {
 }
 
 // ============================================================
+// STAR NAMES — deterministic LCG от star ID
+// ============================================================
+const _NAME_A = ['Al','Arc','Bel','Cal','Cap','Cas','Cep','Cor','Del','Den',
+  'Dra','Eld','Eri','Eta','Fom','Gal','Gem','Hel','Iol','Kel',
+  'Lam','Leo','Mir','Neb','Ori','Pav','Per','Reg','Sar','Scor',
+  'Ser','Sig','Sol','Tau','Vel'];
+const _NAME_B = ['anis','aran','aris','atan','cen','dori','elan','elis','enar','eris',
+  'idan','inar','irus','isar','itar','kara','lair','laran','lisar','loran',
+  'lux','manar','naris','noris','odan','onar','oris','rion','sar','sena',
+  'tanar','toris','uri','usan','varis'];
+function starName(id) {
+  let s = (Math.imul(id, 1664525) + 1013904223) & 0x7fffffff;
+  const a = _NAME_A[s % _NAME_A.length];
+  s = (Math.imul(s, 1664525) + 1013904223) & 0x7fffffff;
+  const b = _NAME_B[s % _NAME_B.length];
+  return a + b;
+}
+
+// ============================================================
 // COLORS
 // ============================================================
 const COLORS = {
@@ -1022,13 +1041,14 @@ function checkStarDeath(o, toAdd, dying) {
   CNT.deathCool++;
   if(o.star_type===STAR.NEUTRON){ CNT.nsDiedCool++; CNT.nsDeaths++; CNT.nsTotalAge+=o.age; }
   trackStarDeath(o);
-  registerDeath(o, 'overcool', null);
   if(o.star_type===STAR.RED || o.star_type===STAR.YELLOW) {
+    // Трансформация в белый карлик — звезда продолжает жить, запись в реестре остаётся открытой
     o.star_type = STAR.WHITE;
     o.temp = CFG.T_WHITE;
     o.age = 0;
     return true;
   }
+  registerDeath(o, 'overcool', null);
   disperseObject(o, toAdd, dying, 'decay', 'remnant_decay');
   return true;
 }
@@ -2203,20 +2223,23 @@ function showTip(o,mx,my){
   const label=isStar(o)?o.star_type.replace('_',' ').toUpperCase():o.type.replace('_',' ').toUpperCase();
   const tempStr=o.temp!==undefined?`<br>T &nbsp;&nbsp;&nbsp;&nbsp;${Math.round(o.temp)}`:'';
   const speed=Math.sqrt((o.vx||0)**2+(o.vy||0)**2);
+  let nameBlock='';
   let starStr = '';
   if(isStar(o)) {
+    const nm = starName(o.id);
+    nameBlock = `<div style="font-size:13px;color:var(--text-bright);letter-spacing:0.5px;margin:2px 0 1px">${nm}</div>`+
+                `<div style="font-size:9px;opacity:0.4;margin-bottom:5px;letter-spacing:1px">ID&nbsp;${o.id}</div>`;
     const rad = computeRAD(o);
     const ma  = computeMA(o);
     const br  = o.birth_radius !== undefined ? o.birth_radius.toFixed(2) : '—';
     const rings = o.n_rings !== undefined ? o.n_rings : '—';
-    starStr = `<br>RAD &nbsp;&nbsp;${rad}<br>MA &nbsp;&nbsp;&nbsp;${ma}<br>Rbirth ${br}&nbsp;Rings ${rings}`;
+    starStr = `<br>RAD &nbsp;&nbsp;${rad}&nbsp;&nbsp;MA &nbsp;&nbsp;&nbsp;${ma}<br>Rbirth ${br}&nbsp;&nbsp;Rings ${rings}`;
+  } else {
+    nameBlock = `<div style="font-size:9px;opacity:0.4;margin-bottom:4px;letter-spacing:1px">ID&nbsp;${o.id}</div>`;
   }
   tooltip.innerHTML=`<div class="tt-type" style="color:rgb(${col[0]},${col[1]},${col[2]})">${label}</div>
-    MASS &nbsp;${o.mass}${tempStr}<br>AGE &nbsp;&nbsp;${o.age}<br>
-    R &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${o.r.toFixed(2)}<br>
-    vx &nbsp;&nbsp;&nbsp;${(o.vx||0).toFixed(4)}<br>
-    vy &nbsp;&nbsp;&nbsp;${(o.vy||0).toFixed(4)}<br>
-    |v| &nbsp;&nbsp;${speed.toFixed(4)}${starStr}`;
+    ${nameBlock}MASS &nbsp;${o.mass}${tempStr}<br>AGE &nbsp;&nbsp;${o.age}<br>
+    R &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${o.r.toFixed(2)}&nbsp;&nbsp;|v| &nbsp;${speed.toFixed(3)}${starStr}`;
   let tx=mx+14,ty=my+14;
   if(tx+180>window.innerWidth) tx=mx-194;
   if(ty+180>window.innerHeight) ty=my-190;
@@ -2827,10 +2850,11 @@ async function openSystemView(star){
   tooltip.style.display='none';
   sysOverlay.classList.add('open');
   resizeSysCanvas();
+  const sname = starName(data.star_id);
   document.getElementById('sys-star-name').textContent=
-    `Star #${data.star_id} · ${data.star_type.replace(/_/g,' ')} · mass ${data.mass}`;
+    `${sname}  ·  ${data.star_type.replace(/_/g,' ')}  ·  mass ${data.mass}`;
   document.getElementById('sys-star-gen').textContent=
-    `GEN: ${data.gen_code} · Planets: ${data.n_planets} · Rings: ${data.n_rings}`;
+    `#${data.star_id}  ·  GEN: ${data.gen_code}  ·  Planets: ${data.n_planets}  ·  Rings: ${data.n_rings}`;
   if(sysRafId) cancelAnimationFrame(sysRafId);
   sysRafId=requestAnimationFrame(renderSysLoop);
 }
