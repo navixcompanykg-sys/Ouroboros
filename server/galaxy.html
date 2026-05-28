@@ -2200,6 +2200,12 @@ function computePlanetParams(planet, data, starObj) {
   const T_norm     = (starObj && starObj.temp != null)
                      ? starObj.temp / 500
                      : (STAR_START_TEMPS[st] || 250) / 500;
+  // T_cold: фактор охлаждения при умирающей звезде (T < 100).
+  // При T=10 (порог смерти) = 0.9; при T=100 = 0; выше 100 = 0.
+  // Добавляет чувствительность в диапазоне 10–100, не затрагивая горячие звёзды.
+  const T_cold     = (starObj && starObj.temp != null)
+                     ? Math.max(0, 1 - (starObj.temp / 100))
+                     : 0;
   const N_norm     = Math.min(1, np   / 12);
 
   // Micro-variation: each param picks a different gen_code digit based on orbit_index
@@ -2213,8 +2219,8 @@ function computePlanetParams(planet, data, starObj) {
     radius:     clamp(b[1] + 15*orbit_norm + 10*M_norm  - 5*N_norm              + 4*sv(1) - 2  ),
     planetMass: clamp(b[2]               + 20*M_norm  - 12*N_norm              + 6*sv(2) - 3  ),
     coreMass:   clamp(b[3] -  8*orbit_norm + 12*M_norm                         + 6*sv(3) - 3  ),
-    water:      clamp(b[4] + 25*orbit_norm - 15*T_norm  - 10*R_norm            + 8*sv(4) - 4  ),
-    coreTemp:   Math.max(1, Math.min(200, Math.round(b[5] - 22*orbit_norm + 45*T_norm + 12*M_norm - 8*R_norm + 6*sv(5) - 3))),
+    water:      clamp(b[4] + 25*orbit_norm - 15*T_norm + 10*T_cold - 10*R_norm + 8*sv(4) - 4  ),
+    coreTemp:   Math.max(1, Math.min(200, Math.round(b[5] - 22*orbit_norm + 45*T_norm - 30*T_cold + 12*M_norm - 8*R_norm + 6*sv(5) - 3))),
   };
 }
 
