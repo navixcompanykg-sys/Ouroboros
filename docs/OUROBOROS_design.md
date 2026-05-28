@@ -487,6 +487,34 @@ boost = BH_HEAT_MAX × (1 − d / BH_RAD_RADIUS)
 
 LCG: `1664525 × s + 1013904223`. Сид: `(tick × 73856093) XOR (round(x) × 19349663) XOR (round(y) × 83492791)`.
 
+### Вид формации (Formation View)
+
+Двойной клик по объекту типа `FORMATION` открывает **Formation View** — оверлей, идентичный System View по управлению (ESC / ← Galaxy), но показывающий внутреннюю структуру формации.
+
+**Содержимое:** только астероидные кольца; ни звезды, ни планет нет. В центре рендерится пульсирующее пылевое облако (оранжевое свечение 4×r, дышит с частотой ~0.8 Гц).
+
+**Генерация колец из LCG-сида:**
+
+```javascript
+let seed = form.id;
+seed = (seed * 1664525 + 1013904223) & 0x7fffffff;
+const nRings = 2 + (seed % 5);   // 2–6 колец
+
+for (let i = 0; i < nRings; i++) {
+  seed = (seed * 1664525 + 1013904223) & 0x7fffffff;
+  const orbit = 3 + (seed % 27);      // орбитный слот 3–29
+  seed = (seed * 1664525 + 1013904223) & 0x7fffffff;
+  const density = 0.3 + (seed % 70) / 100;  // 0.30–1.00
+  rings.push({ orbit, density });
+}
+```
+
+Кольца рисуются пунктиром `rgba(160,140,100,0.22)`, толщина масштабируется плотностью (8–20px). Повторяющиеся орбиты не фильтруются — могут совпасть (артефакт «плотного кольца»).
+
+**Автозакрытие:** если формация в течение просмотра эволюционирует в звезду (пропадает из `objects`), `updateSysStats` обнаруживает это и закрывает оверлей.
+
+**Разделение состояния:** `sysData` (системный вид) и `formData` (вид формации) — взаимоисключающие переменные. Все обработчики событий (wheel, mousedown, mouseup, dblclick, keydown, resize) проверяют `if (!sysData && !formData)` для блокировки галактической карты.
+
 ### Рождение звезды из формации
 
 Через `FORMATION_TICKS (6)` тиков:
@@ -782,6 +810,15 @@ bg_threshold: 20, jet_deficit_step: 2, nebula_mass: 5, start_temp: 400, heat_per
 go run galaxy_gen.go -config config.json   # Генерация галактики
 serve.bat                                   # Windows
 go run main.go                              # → http://localhost:8080
+```
+
+**serve.bat / launch.bat — ожидание готовности сервера:**
+
+Оба bat-файла используют PowerShell-поллер вместо фиксированной задержки. Браузер открывается только после успешного ответа сервера (опросы каждые 500 мс, до 60 секунд):
+
+```bat
+start "" powershell -NoProfile -WindowStyle Hidden -Command ^
+  "$i=0; while($i -lt 120){try{Invoke-WebRequest -Uri 'http://localhost:8080' -UseBasicParsing -TimeoutSec 1 -ErrorAction Stop; break}catch{Start-Sleep -Milliseconds 500; $i++}}; Start-Process 'http://localhost:8080'"
 ```
 
 ---
@@ -1201,6 +1238,8 @@ o.age = 0;
 
 **Без реклассификации:** белый карлик, поглощающий астероиды или туманности, **не превращается обратно** в красный/жёлтый — `starTypeFromMass` для `STAR.WHITE` пропускается.
 
+**Регистрация белых карликов из `remnant_decay`:** НЗ и белые карлики при остывании могут «рассыпаться» в новый объект через `disperseObject`. Если остаток — звезда (красный/жёлтый/синий карлик), она получает `birth_event_type='remnant_decay'` и регистрируется через `registerBirth` сразу в `disperseObject`. Без этого вызова `GET /system/{id}` возвращал бы 404 (записи в реестре нет). Это объясняет, почему белые карлики, созданные этим путём, открывались двойным кликом без ошибок только после исправления.
+
 **Взрыв (wd_nova):** если масса белого карлика достигает `WD_NOVA_MASS` (600 у.е., параметр `config.json → temperature.wd_nova_mass`), вызывается `doWhiteDwarfNova`:
 - 12 туманностей разлетаются в радиусе 5 у.е. (откусывают массу первыми)
 - 60% остатка → 24 осколка (астероиды, туманности, малые формации)
@@ -1512,15 +1551,15 @@ func registryStatsHandler(w http.ResponseWriter, r *http.Request) {
 
 ## 33. КООРДИНАТНАЯ СИСТЕМА
 
-Сетка `12 секторов × 36 орбит = 432 позиции`.
+Сетка `12 секторов × 36 орбит = 432 позиции`. Орбитные слоты нумеруются **0–35**.
 
 | Орбиты сетки | Зона | Объекты |
 |---|---|---|
-| 1 | Зона звезды | Станции у звезды |
-| 2–13 | Планетная зона | Планеты (орбитные слоты 1–12) |
-| 14 | Внутреннее кольцо | Астероидное кольцо 1 (n_rings ≥ 1) |
-| 17 | Внешнее кольцо | Астероидное кольцо 2 (n_rings = 2) |
-| 18–36 | Дальний космос | Транзит флотов, дальние станции |
+| 0 | Зона звезды | Станции у звезды |
+| 1–35 | Планетно-кольцевая зона | Планеты (0–12 штук) + астероидные кольца |
+| >35 | Дальний космос | Транзит флотов, дальние станции |
+
+**Астероидные кольца** занимают орбитные слоты из диапазона 0–35, выбранные алгоритмом нахождения зазоров (см. §34.1b). Фиксированные позиции не используются.
 
 ---
 
@@ -1561,6 +1600,47 @@ func assignPlanetOrbits(nPlanets int, seed int64) []int {
 **Гарантия зазора:** минимальное расстояние между кольцами орбит ≥ 3 × шаг = 0.036 × size  
 → при size=1080px: 38.9px > 2 × 14px (max диаметр планеты) — перекрытия нет.
 
+### 34.1b Назначение орбит астероидным кольцам (алгоритм зазоров)
+
+Кольца размещаются **между** планетными орбитами, в серединах самых больших зазоров. Фиксированные позиции не используются.
+
+```go
+type gapInfo struct{ mid, size int }
+
+// После сортировки планетных орбит — найти зазоры
+gaps := []gapInfo{}
+prev := -1
+for _, p := range sortedPlanetOrbits {
+    if prev >= 0 && p-prev >= 3 {
+        gaps = append(gaps, gapInfo{mid: (prev+p)/2, size: p-prev})
+    }
+    prev = p
+}
+// Добавить зазоры у краёв (до первой и после последней планеты)
+if len(sortedPlanetOrbits) > 0 {
+    first := sortedPlanetOrbits[0]
+    last  := sortedPlanetOrbits[len(sortedPlanetOrbits)-1]
+    if first >= 3 { gaps = append(gaps, gapInfo{mid: first/2, size: first}) }
+    if 35-last >= 3 { gaps = append(gaps, gapInfo{mid: (last+35)/2, size: 35-last}) }
+}
+sort.Slice(gaps, func(i, j int) bool { return gaps[i].size > gaps[j].size })
+
+// Выбрать кольцо из топ-3 зазоров через LCG (детерминировано)
+ringSeed := seed*31337 + 1
+for i := 0; i < nRings && len(gaps) > 0; i++ {
+    ringSeed = (ringSeed*1664525 + 1013904223) & 0x7fffffff
+    topN := int64(3); if topN > int64(len(gaps)) { topN = int64(len(gaps)) }
+    idx := int(ringSeed % topN)
+    pos := gaps[idx].mid
+    for usedOrbits[pos] { pos++ }   // сдвиг если слот занят
+    usedOrbits[pos] = true
+    gaps = append(gaps[:idx], gaps[idx+1:]...)
+    rings = append(rings, RingInfo{RingIndex: i+1, OrbitGrid: pos})
+}
+```
+
+**Следствие:** кольца всегда видны среди планет, а не только на крайних орбитах. Расположение детерминировано от `star_id`.
+
 ### 34.2 Тип планеты по зоне орбиты
 
 36 слотов делятся на 4 зоны по 9:
@@ -1583,7 +1663,7 @@ func assignPlanetOrbits(nPlanets int, seed int64) []int {
 | `orbit_norm` | `orbit_index / 35` | слот орбиты |
 | `M_norm` | `min(1, birth_mass / 800)` | масса звезды при рождении |
 | `R_norm` | `min(1, birth_radius / 120)` | расстояние от центра галактики при рождении |
-| `T_norm` | `start_temp / 500` | R=100, W=50, Y=250, B=150, NS=500 |
+| `T_norm` | `star.temp / 500` (живая T) или `start_temp / 500` при отсутствии объекта | Динамическая: отражает текущую T звезды |
 | `N_norm` | `min(1, n_planets / 12)` | число планет в системе |
 | `sv(k)` | `parseInt(gen_code[(orbit_index + k) % 9]) / 9` | псевдорандом из gen_code |
 
@@ -1604,8 +1684,10 @@ RADIUS     = base + 15·orbit_norm + 10·M_norm − 5·N_norm                + 4
 PLANET_MASS= base              + 20·M_norm − 12·N_norm                + 6·sv(2) − 3
 CORE_MASS  = base − 8·orbit_norm  + 12·M_norm                           + 6·sv(3) − 3
 WATER      = base + 25·orbit_norm − 15·T_norm − 10·R_norm              + 8·sv(4) − 4
-CORE_TEMP  = base − 22·orbit_norm + 15·T_norm + 12·M_norm − 8·R_norm   + 6·sv(5) − 3
+CORE_TEMP  = base − 22·orbit_norm + 45·T_norm + 12·M_norm − 8·R_norm   + 6·sv(5) − 3
 ```
+
+**Диапазон CORE_TEMP:** [1, 200]. Значение > 100 запускает каскадную трансформацию (см. §34.5).
 
 #### Визуальный радиус планеты
 
@@ -1634,6 +1716,45 @@ const pr = p._params ? (4 + (p._params.radius / 100) * 10) : pv.r;
 | CORE MASS | Размер твёрдого ядра | Orange (≥70%) |
 | WATER | Содержание воды/льда | Cyan (≥60%) |
 | CORE TEMP | Температура ядра | Blue→Orange (≥40%)→Red (≥70%) |
+
+### 34.5 Каскадная трансформация планет (CORE_TEMP > 100)
+
+Если `coreTemp` превышает 100 (что возможно при высокой T звезды), планета трансформируется в следующий тип или уничтожается. Трансформация **не меняет базовый тип** в данных — `effectivePlanetType` применяется при каждом рендере и в интерфейсе.
+
+#### Таблица трансформаций
+
+| Базовый тип | Эффективный тип при coreTemp > 100 |
+|---|---|
+| `ice` | `rocky` |
+| `rocky` | `lava` |
+| `lava` | `destroyed` |
+| `gas_giant` | `rocky` |
+
+```javascript
+const PLANET_TRANSFORM = { ice: 'rocky', rocky: 'lava', lava: null, gas_giant: 'rocky' };
+
+function effectivePlanetType(base, coreTemp) {
+  if (coreTemp <= 100) return base;
+  return base in PLANET_TRANSFORM ? PLANET_TRANSFORM[base] : base;
+  // null → 'destroyed'
+}
+```
+
+**Уничтоженная планета** (`lava` при coreTemp > 100) — `effType === null`:
+- На орбите рисуется пунктирное красное кольцо (orbit ring)
+- Вместо тела планеты — медленно рассеивающееся дебрисное облако
+- Панель параметров показывает «LAVA → DESTROYED»
+
+**Трансформированная планета** — оранжевый контур вокруг тела.
+
+**Панель параметров при трансформации:**
+- Строка: `ICE → ROCKY`, `ROCKY → LAVA`, `GAS GIANT → ROCKY`
+- Полоса CORE TEMP отображает реальное значение (может превышать 100); цвет `#ff2200` при переполнении
+- Ширина полосы зажата в 100% визуально
+
+**Направление:** трансформация **одностороняя** — планета никогда не остывает обратно (базовый тип зафиксирован при генерации). Газовые гиганты не образуются в процессе жизни звезды из других типов — только при начальной генерации системы.
+
+**Обновление параметров:** `_params` пересчитывается каждые 8 кадров в `updateSysStats`, поэтому трансформация отражается в реальном времени при просмотре системы.
 
 ### 34.3 Базовые ресурсы по типу и gen_code (S3–S6)
 
@@ -1824,7 +1945,10 @@ function planetAngleDeg(orbitIndex, genCode, starId, serverTimeSec) {
 
 ### 39.1 Вход в систему
 
-**Триггер:** двойной клик по объекту типа `star` в `galaxy.html`.
+**Триггер:** двойной клик по объекту типа `star` или `formation` в `galaxy.html`.
+
+- `star` → открывает **System View** (звезда + планеты + кольца)
+- `formation` → открывает **Formation View** (только астероидные кольца; см. §12)
 
 Симуляция галактики **не останавливается**. Поверх открывается полноэкранный оверлей.
 
@@ -2066,6 +2190,11 @@ function preloadAssets() {
 - [x] Курсор `pointer` при наведении на планету в system view
 - [x] Орбитальный алгоритм: зазор ≥ 3 слота (2 свободные орбиты), 36 слотов, 12 типов
 - [x] Диапазон орбит расширен: 6%–50% canvas (формула `0.06 + 0.44 × t`)
+- [x] Алгоритм размещения колец: зазоры между планетами, топ-3 × LCG (§34.1b)
+- [x] Formation View: двойной клик по формации, 2–6 колец, LCG-сид от form.id (§12)
+- [x] Динамический T_norm для CORE_TEMP: `star.temp / 500` (живая температура звезды)
+- [x] Каскадная трансформация планет: coreTemp > 100 → ice→rocky→lava→destroyed, gas_giant→rocky (§34.5)
+- [x] Регистрация звёзд из remnant_decay в `disperseObject` (fix: белые карлики открывались с 404)
 - [ ] `preloadAssets()` — предзагрузка GIF
 
 ### Этап 2 — Хранение игровых данных

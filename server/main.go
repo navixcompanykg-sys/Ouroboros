@@ -579,10 +579,51 @@ func handleSystemGet(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	ringGridOrbits := []int{38, 42}
+	// Build candidate ring positions in the largest gaps between planets
+	type gapInfo struct{ mid, size int }
+	var gaps []gapInfo
+	if len(slots) == 0 {
+		gaps = []gapInfo{{10, 36}, {22, 36}, {30, 36}}
+	} else {
+		if slots[0] >= 4 {
+			gaps = append(gaps, gapInfo{slots[0] / 2, slots[0]})
+		}
+		for i := 1; i < len(slots); i++ {
+			g := slots[i] - slots[i-1]
+			if g >= 4 {
+				gaps = append(gaps, gapInfo{(slots[i-1] + slots[i]) / 2, g})
+			}
+		}
+		last := slots[len(slots)-1]
+		gaps = append(gaps, gapInfo{last + 3, 8})
+		gaps = append(gaps, gapInfo{last + 6, 6})
+	}
+	sort.Slice(gaps, func(i, j int) bool { return gaps[i].size > gaps[j].size })
+
+	usedOrbits := make(map[int]bool)
+	for _, s := range slots {
+		usedOrbits[s] = true
+	}
+	ringSeed := seed*31337 + 1
 	rings := make([]RingInfo, 0, nRings)
-	for i := 0; i < nRings && i < 2; i++ {
-		rings = append(rings, RingInfo{RingIndex: i + 1, OrbitGrid: ringGridOrbits[i]})
+	for i := 0; i < nRings && len(gaps) > 0; i++ {
+		ringSeed = (ringSeed*1664525 + 1013904223) & 0x7fffffff
+		topN := int64(3)
+		if topN > int64(len(gaps)) {
+			topN = int64(len(gaps))
+		}
+		idx := int(ringSeed % topN)
+		pos := gaps[idx].mid
+		for usedOrbits[pos] {
+			pos++
+		}
+		usedOrbits[pos] = true
+		gaps = append(gaps[:idx], gaps[idx+1:]...)
+		rings = append(rings, RingInfo{RingIndex: i + 1, OrbitGrid: pos})
+	}
+	for len(rings) < nRings {
+		pos := 38 + len(rings)
+		rings = append(rings, RingInfo{RingIndex: len(rings) + 1, OrbitGrid: pos})
 	}
 
 	result := map[string]interface{}{

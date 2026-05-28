@@ -983,7 +983,13 @@ function disperseObject(o, toAdd, dying, mode, remnantMode) {
     const mass40=remaining-mass60;
     ejectSixty(o.x, o.y, srcVx, srcVy, mass60, toAdd);
     const rem=makeByMass(o.x, o.y, remVx, remVy, mass40, remnantMode||'ejecta');
-    if(rem) toAdd.push(rem);
+    if(rem) {
+      toAdd.push(rem);
+      if(isStar(rem) && !rem.birth_tick_registered && rem.birth_tick_registered!==0) {
+        rem.birth_event_type='remnant_decay'; rem.asteroid_absorbed=0;
+        registerBirth(rem, scanNeighbors(rem));
+      }
+    }
   }
   dying.push(o.id);
   masslossBuffer.delete(o.id);
@@ -2113,6 +2119,13 @@ const PLANET_PARAM_BASES = {
 
 // Returns deterministic {gravity,radius,planetMass,coreMass,water,coreTemp} each in [1,100]
 // Inputs come from planet slot, sysData (birth params) and the live star object (birth_radius)
+// ice→rocky→lava→null(уничтожена), gas_giant→rocky
+const PLANET_TRANSFORM = {ice:'rocky', rocky:'lava', lava:null, gas_giant:'rocky'};
+function effectivePlanetType(base, coreTemp) {
+  if(coreTemp <= 100) return base;
+  return base in PLANET_TRANSFORM ? PLANET_TRANSFORM[base] : base;
+}
+
 function computePlanetParams(planet, data, starObj) {
   const orb  = planet.orbit_index;
   const type = planet.type || 'rocky';
@@ -2125,7 +2138,9 @@ function computePlanetParams(planet, data, starObj) {
   const orbit_norm = orb / 35;
   const M_norm     = Math.min(1, mass / 800);
   const R_norm     = Math.min(1, br   / 120);
-  const T_norm     = (STAR_START_TEMPS[st] || 250) / 500;
+  const T_norm     = (starObj && starObj.temp != null)
+                     ? starObj.temp / 500
+                     : (STAR_START_TEMPS[st] || 250) / 500;
   const N_norm     = Math.min(1, np   / 12);
 
   // Micro-variation: each param picks a different gen_code digit based on orbit_index
@@ -2140,7 +2155,7 @@ function computePlanetParams(planet, data, starObj) {
     planetMass: clamp(b[2]               + 20*M_norm  - 12*N_norm              + 6*sv(2) - 3  ),
     coreMass:   clamp(b[3] -  8*orbit_norm + 12*M_norm                         + 6*sv(3) - 3  ),
     water:      clamp(b[4] + 25*orbit_norm - 15*T_norm  - 10*R_norm            + 8*sv(4) - 4  ),
-    coreTemp:   clamp(b[5] - 22*orbit_norm + 15*T_norm  + 12*M_norm - 8*R_norm + 6*sv(5) - 3  ),
+    coreTemp:   Math.max(1, Math.min(200, Math.round(b[5] - 22*orbit_norm + 45*T_norm + 12*M_norm - 8*R_norm + 6*sv(5) - 3))),
   };
 }
 
@@ -2428,7 +2443,7 @@ const STAR_VISUALS={
   neutron_star: {color:'#aaffcc',r:10},
 };
 
-let sysData=null, sysRafId=null;
+let sysData=null, sysRafId=null, formData=null;
 let sysZoom=1, sysPanX=0, sysPanY=0;
 let sysDragging=false, sysDragStart={x:0,y:0}, sysPanStart={x:0,y:0};
 let sysSimTime=0, sysSimSpeed=3600, sysSimRunning=true, sysSimLastReal=0;
@@ -2450,6 +2465,77 @@ function planetAngleDeg(orbitIndex,genCode,starId,nowSec,period){
   const phase=(S8*36+orbitIndex*30+(starId*7)%360)%360;
   const p=period||ORBIT_PERIODS[orbitIndex]||86400;
   return (phase+(nowSec%p)/p*360)%360;
+}
+
+function drawFormation(nowSec){
+  const W=sysCanvas.width, H=sysCanvas.height;
+  const cx=W/2, cy=H/2, size=Math.min(W,H);
+  const sc=sysCtx;
+  sc.clearRect(0,0,W,H);
+  sc.fillStyle='#080610'; sc.fillRect(0,0,W,H);
+
+  const d=formData;
+  const lw=1/sysZoom;
+
+  sc.save();
+  sc.translate(cx+sysPanX, cy+sysPanY);
+  sc.scale(sysZoom, sysZoom);
+
+  if(sysShowGrid){
+    const unit=size*0.01, step=unit*10;
+    const reach=Math.ceil((Math.max(W,H)*0.6/sysZoom)/step+1)*step;
+    sc.strokeStyle='rgba(60,80,40,0.13)'; sc.lineWidth=lw;
+    for(let p=-reach;p<=reach;p+=step){
+      sc.beginPath(); sc.moveTo(p,-reach); sc.lineTo(p,reach); sc.stroke();
+      sc.beginPath(); sc.moveTo(-reach,p); sc.lineTo(reach,p); sc.stroke();
+    }
+  }
+
+  // Кольца астероидов
+  let rs=d.seed;
+  for(const ring of d.rings){
+    const orb=sysOrbitRadius(ring.orbit_index, size);
+    const h=ring.hue;
+    const rr=Math.min(255,(100+h*2.4)|0);
+    const gg=Math.min(255,(30+h*1.1)|0);
+
+    // Полоса кольца
+    sc.strokeStyle=`rgba(${rr},${gg},15,${ring.density*0.4})`;
+    sc.lineWidth=lw*(4+ring.density*8);
+    sc.beginPath(); sc.arc(0,0,orb,0,Math.PI*2); sc.stroke();
+
+    // Астероиды
+    const nDots=Math.floor(ring.density*80+20);
+    const period=ORBIT_PERIODS[Math.min(ring.orbit_index,ORBIT_PERIODS.length-1)]||86400;
+    for(let i=0;i<nDots;i++){
+      rs=(rs*1664525+1013904223)>>>0;
+      const phase=rs/4294967296*Math.PI*2;
+      const ang=phase+(nowSec/period)*Math.PI*2;
+      rs=(rs*1664525+1013904223)>>>0;
+      const jitter=((rs%9)-4)*lw;
+      const ax=(orb+jitter)*Math.cos(ang);
+      const ay=(orb+jitter)*Math.sin(ang);
+      rs=(rs*1664525+1013904223)>>>0;
+      const dr=Math.max(lw*0.4, lw*(0.5+(rs%4)*0.6));
+      sc.beginPath(); sc.arc(ax,ay,dr,0,Math.PI*2);
+      sc.fillStyle=`rgba(${Math.min(255,rr+60)},${Math.min(255,gg+50)},40,${0.3+ring.density*0.7})`;
+      sc.fill();
+    }
+  }
+
+  // Центральное пульсирующее облако (пульс в реальном времени, не зависит от скорости симуляции)
+  const pulse=0.85+0.15*Math.sin(performance.now()*0.001);
+  const dustR=size*(0.045+0.01*pulse);
+  const dustG=sc.createRadialGradient(0,0,0,0,0,dustR*4);
+  dustG.addColorStop(0,`rgba(220,130,60,${(0.35*pulse).toFixed(2)})`);
+  dustG.addColorStop(0.3,`rgba(170,80,30,${(0.15*pulse).toFixed(2)})`);
+  dustG.addColorStop(0.7,'rgba(120,45,15,0.04)');
+  dustG.addColorStop(1,'rgba(80,20,5,0)');
+  sc.beginPath(); sc.arc(0,0,dustR*4,0,Math.PI*2); sc.fillStyle=dustG; sc.fill();
+  sc.beginPath(); sc.arc(0,0,dustR*0.5,0,Math.PI*2);
+  sc.fillStyle=`rgba(230,160,80,${(0.12*pulse).toFixed(2)})`; sc.fill();
+
+  sc.restore();
 }
 
 function drawSystem(nowSec){
@@ -2500,10 +2586,19 @@ function drawSystem(nowSec){
   }
 
   // ── Орбитальные кольца планет ────────────────────────────────
-  sc.strokeStyle='rgba(255,255,255,0.06)'; sc.lineWidth=lw;
   for(const p of d.planets){
     const orb=sysOrbitRadius(p.orbit_index,size);
-    sc.beginPath(); sc.arc(0,0,orb,0,Math.PI*2); sc.stroke();
+    const ct=p._params?p._params.coreTemp:50;
+    const eff=effectivePlanetType(p.type,ct);
+    if(eff===null){
+      sc.strokeStyle='rgba(200,80,30,0.18)'; sc.lineWidth=lw;
+      sc.setLineDash([lw*3,lw*7]);
+      sc.beginPath(); sc.arc(0,0,orb,0,Math.PI*2); sc.stroke();
+      sc.setLineDash([]);
+    } else {
+      sc.strokeStyle='rgba(255,255,255,0.06)'; sc.lineWidth=lw;
+      sc.beginPath(); sc.arc(0,0,orb,0,Math.PI*2); sc.stroke();
+    }
   }
 
   // ── Астероидные кольца (orbit_grid за орбитой 35) ───────────
@@ -2528,14 +2623,34 @@ function drawSystem(nowSec){
     const ang=planetAngleDeg(p.orbit_index,d.gen_code,d.star_id,nowSec,p.period_sec)*Math.PI/180;
     const orb=sysOrbitRadius(p.orbit_index,size);
     const px=orb*Math.cos(ang), py=orb*Math.sin(ang);
-    const pv=PLANET_VISUALS[p.visual_type]||{color:'#888888',r:6};
-    // Визуальный радиус: 4–14px, пропорционально параметру RADIUS (1–100)
-    const pr=p._params ? (4 + (p._params.radius/100)*10) : pv.r;
-    const glowR=Math.max(pr*2.2, 10); // минимальный ореол 10px
+    const ct=p._params?p._params.coreTemp:50;
+    const effType=effectivePlanetType(p.type,ct);
+
+    if(effType===null){
+      // Уничтожена — обломочное облако на орбите
+      const pr=4;
+      sc.fillStyle='rgba(190,100,50,0.45)';
+      for(let i=0;i<6;i++){
+        const da=ang+i*Math.PI/3;
+        sc.beginPath(); sc.arc(px+Math.cos(da)*pr*2,py+Math.sin(da)*pr*2,lw*1.8,0,Math.PI*2); sc.fill();
+      }
+      sc.fillStyle='rgba(220,130,60,0.25)';
+      sc.beginPath(); sc.arc(px,py,pr*2.5,0,Math.PI*2); sc.fill();
+      continue;
+    }
+
+    const pv=PLANET_VISUALS[effType]||{color:'#888888',r:6};
+    const pr=p._params?(4+(p._params.radius/100)*10):pv.r;
+    const glowR=Math.max(pr*2.2,10);
     const pg=sc.createRadialGradient(px,py,0,px,py,glowR);
     pg.addColorStop(0,pv.color+'55'); pg.addColorStop(1,pv.color+'00');
     sc.beginPath(); sc.arc(px,py,glowR,0,Math.PI*2); sc.fillStyle=pg; sc.fill();
     sc.beginPath(); sc.arc(px,py,pr,0,Math.PI*2); sc.fillStyle=pv.color; sc.fill();
+    // Оранжевый контур если тип изменился
+    if(effType!==p.type){
+      sc.strokeStyle='rgba(255,160,40,0.7)'; sc.lineWidth=lw*1.5;
+      sc.beginPath(); sc.arc(px,py,pr+lw*2,0,Math.PI*2); sc.stroke();
+    }
   }
 
   // ── Взрыв звезды (внутри трансформа) ─────────────────────────
@@ -2583,8 +2698,19 @@ function tempBarColor(t,max){
 
 let _sysStatFrame=0;
 function updateSysStats(){
+  if(formData){
+    const fo=objects.find(o=>o.id===formData.id);
+    if(!fo||fo.type!==TYPE.FORMATION){ closeSystemView(); return; }
+    if(fo.mass!==formData.mass){
+      formData.mass=fo.mass;
+      document.getElementById('sys-star-name').textContent=`Formation #${formData.id}  ·  mass ${fo.mass}`;
+    }
+    return;
+  }
   if(!sysData) return;
   const star=objects.find(o=>o.id===sysData.star_id);
+  // Обновляем _params планет (coreTemp динамически меняется со звездой)
+  if(star) for(const p of sysData.planets) p._params=computePlanetParams(p,sysData,star);
   const temp=star?Math.round(star.temp||0):0;
   const tempPct=Math.min(100,temp/1000*100).toFixed(1);
   document.getElementById('ss-temp-val').textContent=temp;
@@ -2607,19 +2733,17 @@ function updateSysStats(){
 }
 
 function renderSysLoop(){
-  if(!sysData) return;
+  if(!sysData&&!formData) return;
   if(sysSimRunning){
     if(simTimer!==null){
-      // Галактика идёт: плавная интерполяция позиции планет между тиками
       const frac=Math.min(1,(performance.now()-tickStartReal)/simIntervalMs);
       sysSimTime=(tick+frac)*sysSimSpeed;
     } else {
-      // Галактика на паузе: планеты замирают в позиции текущего тика
       sysSimTime=tick*sysSimSpeed;
     }
   }
-  // sysSimRunning=false (кнопка STOP): sysSimTime не меняется, планеты заморожены
-  drawSystem(sysSimTime);
+  if(sysData) drawSystem(sysSimTime);
+  else drawFormation(sysSimTime);
   if(++_sysStatFrame%8===0) updateSysStats();
   sysRafId=requestAnimationFrame(renderSysLoop);
 }
@@ -2675,38 +2799,77 @@ async function openSystemView(star){
 function closeSystemView(){
   sysOverlay.classList.remove('open');
   hidePlanetInfo();
-  sysData=null;
+  sysData=null; formData=null;
   sysDragging=false;
   sysDeathAnimating=false;
   sysSimRunning=false;
   if(sysRafId){cancelAnimationFrame(sysRafId);sysRafId=null;}
 }
 
+function openFormationView(form){
+  // LCG seed из id формации
+  let s=(Math.imul(form.id,2654435761)>>>0);
+  s=(s^(s>>>16))>>>0;
+
+  const massNorm=Math.min(1,form.mass/300);
+  const nRings=Math.min(6, 2+Math.floor(massNorm*3)+(s%2));
+
+  const rings=[], used=new Set();
+  let rs=s;
+  for(let i=0;i<nRings;i++){
+    rs=(rs*1664525+1013904223)>>>0;
+    let orbit=3+(rs%27);
+    for(let t=0;t<35&&(used.has(orbit)||used.has(orbit-1)||used.has(orbit+1)||used.has(orbit+2));t++)
+      orbit=(orbit+3)%30+3;
+    used.add(orbit);
+    rs=(rs*1664525+1013904223)>>>0;
+    const density=0.3+(rs%70)/100;
+    rs=(rs*1664525+1013904223)>>>0;
+    const hue=15+(rs%50);
+    rings.push({orbit_index:orbit, density, hue});
+  }
+  rings.sort((a,b)=>a.orbit_index-b.orbit_index);
+
+  formData={id:form.id, mass:form.mass, n_rings:nRings, rings, seed:s};
+  sysData=null;
+  resetSysView();
+  sysSimTime=tick*sysSimSpeed; sysSimLastReal=0;
+  sysDeathAnimating=false;
+  setSysSpeed(sysSimSpeed);
+  tooltip.style.display='none';
+  sysOverlay.classList.add('open');
+  resizeSysCanvas();
+  document.getElementById('sys-star-name').textContent=`Formation #${form.id}  ·  mass ${form.mass}`;
+  document.getElementById('sys-star-gen').textContent=`Asteroid rings: ${nRings}  ·  Pre-stellar cloud`;
+  if(sysRafId) cancelAnimationFrame(sysRafId);
+  sysRafId=requestAnimationFrame(renderSysLoop);
+}
+
 wrap.addEventListener('dblclick',e=>{
-  if(sysData) return;
+  if(sysData||formData) return;
   const rect=canvas.getBoundingClientRect();
   const mx=e.clientX-rect.left, my=e.clientY-rect.top;
-  // Сначала ищем звезду в радиусе 28px — приоритет перед другими объектами
   let bestStar=null, bestStarD=28;
+  let bestForm=null, bestFormD=22;
   let bestAny=null,  bestAnyD=16;
   for(const o of objects){
     const [sx,sy]=toScreen(o.x,o.y);
     const d=Math.hypot(sx-mx,sy-my);
     if(isStar(o) && d<bestStarD){bestStarD=d;bestStar=o;}
+    if(o.type===TYPE.FORMATION && d<bestFormD){bestFormD=d;bestForm=o;}
     if(d<bestAnyD){bestAnyD=d;bestAny=o;}
   }
-  const hit=bestStar||bestAny;
-  console.log('[dblclick] hit:',hit?`${hit.type}/${hit.star_type||''} id=${hit.id} d=${bestStar?bestStarD.toFixed(1):bestAnyD.toFixed(1)}px`:'nothing');
   if(bestStar) openSystemView(bestStar);
-  else if(hit) console.log('[dblclick] found non-star:',hit.type,'— double-click a star to open system view');
+  else if(bestForm) openFormationView(bestForm);
+  else if(bestAny) console.log('[dblclick]',bestAny.type,'id='+bestAny.id,'— not openable');
 });
 document.getElementById('sys-back').addEventListener('click',closeSystemView);
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&sysData) closeSystemView();});
-window.addEventListener('resize',()=>{if(sysData) resizeSysCanvas();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&(sysData||formData)) closeSystemView();});
+window.addEventListener('resize',()=>{if(sysData||formData) resizeSysCanvas();});
 
 // Зум колесом мыши (к курсору)
 sysCanvas.addEventListener('wheel',e=>{
-  if(!sysData) return;
+  if(!sysData&&!formData) return;
   e.preventDefault();
   const rect=sysCanvas.getBoundingClientRect();
   const mx=e.clientX-rect.left, my=e.clientY-rect.top;
@@ -2722,7 +2885,7 @@ sysCanvas.addEventListener('wheel',e=>{
 
 // Пан перетаскиванием
 sysCanvas.addEventListener('mousedown',e=>{
-  if(!sysData) return;
+  if(!sysData&&!formData) return;
   sysDragging=true;
   sysDragStart={x:e.clientX,y:e.clientY};
   sysPanStart={x:sysPanX,y:sysPanY};
@@ -2734,12 +2897,12 @@ window.addEventListener('mousemove',e=>{
   sysPanY=sysPanStart.y+(e.clientY-sysDragStart.y);
 });
 window.addEventListener('mouseup',()=>{
-  if(sysDragging){sysDragging=false; if(sysData) sysCanvas.style.cursor='grab';}
+  if(sysDragging){sysDragging=false; if(sysData||formData) sysCanvas.style.cursor='grab';}
 });
 
 // Двойной клик на канвасе системы — сброс вида
 sysCanvas.addEventListener('dblclick',()=>{
-  if(sysData) resetSysView();
+  if(sysData||formData) resetSysView();
 });
 
 // Кнопки скорости симуляции системы
@@ -2763,13 +2926,21 @@ const sysPlanetInfoEl = document.getElementById('sys-planet-info');
 function showPlanetInfo(planet){
   const star = objects.find(o => o.id === sysData.star_id);
   const p = computePlanetParams(planet, sysData, star);
-  const typeLabel = planet.type.replace(/_/g,' ').toUpperCase();
+  const effType = effectivePlanetType(planet.type, p.coreTemp);
+
+  let typeLabel = planet.type.replace(/_/g,' ').toUpperCase();
+  if(effType === null)
+    typeLabel += ' → DESTROYED';
+  else if(effType !== planet.type)
+    typeLabel += ' → ' + effType.replace(/_/g,' ').toUpperCase();
+
   document.getElementById('spi-type').textContent =
     `ORBIT ${planet.orbit_index + 1}  ·  ${typeLabel}`;
+
   function setBar(vid, bid, val, color){
     document.getElementById(vid).textContent = val;
     const b = document.getElementById(bid);
-    b.style.width = val + '%';
+    b.style.width = Math.min(100, val) + '%';
     b.style.background = color;
   }
   setBar('spi-grav',   'spi-bar-grav',   p.gravity,    p.gravity   >= 70 ? '#dd5522' : p.gravity   >= 40 ? '#cc9933' : '#6688cc');
@@ -2777,7 +2948,10 @@ function showPlanetInfo(planet){
   setBar('spi-mass',   'spi-bar-mass',   p.planetMass, '#558844');
   setBar('spi-core',   'spi-bar-core',   p.coreMass,   p.coreMass  >= 70 ? '#cc6633' : '#886644');
   setBar('spi-water',  'spi-bar-water',  p.water,      p.water     >= 60 ? '#2277cc' : p.water     >= 30 ? '#336688' : '#446644');
-  setBar('spi-ctemp',  'spi-bar-ctemp',  p.coreTemp,   p.coreTemp  >= 70 ? '#cc4422' : p.coreTemp  >= 40 ? '#cc8822' : '#4466aa');
+  // coreTemp: бар до 100%, значение показываем реальное (может быть >100)
+  const ctColor = p.coreTemp > 100 ? '#ff2200' : p.coreTemp >= 70 ? '#cc4422' : p.coreTemp >= 40 ? '#cc8822' : '#4466aa';
+  setBar('spi-ctemp', 'spi-bar-ctemp', p.coreTemp, ctColor);
+
   sysPlanetInfoEl.classList.add('visible');
 }
 

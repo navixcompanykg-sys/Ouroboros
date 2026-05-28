@@ -34,12 +34,12 @@ if not exist galaxy.json (
     echo.
 )
  
-:: Open browser after short delay
+:: Open browser once server is ready (background poller, up to 60s)
 echo  Server starting on http://localhost:8080
 echo  Press Ctrl+C to stop
 echo.
-start "" cmd /c "timeout /t 2 >nul && start http://localhost:8080"
- 
+start "" powershell -NoProfile -WindowStyle Hidden -Command "$i=0; while($i -lt 120){try{Invoke-WebRequest -Uri 'http://localhost:8080' -UseBasicParsing -TimeoutSec 1 -ErrorAction Stop; break}catch{Start-Sleep -Milliseconds 500; $i++}}; Start-Process 'http://localhost:8080'"
+
 :: Start Go server (blocking)
 go run main.go
  

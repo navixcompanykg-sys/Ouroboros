@@ -45,12 +45,10 @@ echo.
 echo  Starting Go server on http://localhost:8080 ...
 start "OUROBOROS Server" cmd /k "cd /d "%~dp0" && go run main.go"
 
-:: Ждём секунду чтобы сервер поднялся
-timeout /t 2 /nobreak >nul
-
-:: ─── Открываем браузер ──────────────────────────────────────
-echo  Opening browser...
-start http://localhost:8080
+:: ─── Ждём готовности сервера (до 60с) и открываем браузер ───
+echo  Waiting for server to start...
+powershell -NoProfile -WindowStyle Hidden -Command "$i=0; while($i -lt 120){try{Invoke-WebRequest -Uri 'http://localhost:8080' -UseBasicParsing -TimeoutSec 1 -ErrorAction Stop; break}catch{Start-Sleep -Milliseconds 500; $i++}}; Start-Process 'http://localhost:8080'"
+echo  Browser opened.
 
 :: ─── Запускаем Claude Code в текущем окне ───────────────────
 echo.
@@ -61,8 +59,8 @@ goto :end
 
 :run_server_only
 start "OUROBOROS Server" cmd /k "cd /d "%~dp0" && go run main.go"
-timeout /t 2 /nobreak >nul
-start http://localhost:8080
+echo  Waiting for server to start...
+powershell -NoProfile -WindowStyle Hidden -Command "$i=0; while($i -lt 120){try{Invoke-WebRequest -Uri 'http://localhost:8080' -UseBasicParsing -TimeoutSec 1 -ErrorAction Stop; break}catch{Start-Sleep -Milliseconds 500; $i++}}; Start-Process 'http://localhost:8080'"
 echo  Server started. Open http://localhost:8080
 echo.
 cmd /k "cd /d "%~dp0""
