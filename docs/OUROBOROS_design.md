@@ -1558,17 +1558,41 @@ var regByID    = map[int]map[string]interface{}{}  // O(1) lookup по star_id
 | Операция | Сложность | Описание |
 |---|---|---|
 | `GET /system/{id}` | **O(1)** | `regByID[starID]` — map lookup |
-| `POST /registry/birth` | O(1) append + write | Добавить в slice + map, записать файл |
-| `POST /registry/birth/batch` | O(k) + write | k = размер батча |
-| `POST /registry/death` | O(n) trim + rebuild + write | Обрезка мёртвых + перестройка map |
+| `POST /registry/birth` | **O(1)** | Append в slice + map, файл — отложенно |
+| `POST /registry/birth/batch` | O(k) | k = размер батча, файл — отложенно |
+| `POST /registry/death` | O(n) trim + rebuild + write | Обрезка мёртвых + перестройка map, пишем сразу |
 | `GET /registry` | O(n) marshal | Marshal slice из памяти |
 | `GET /registry/stream` init | O(n) marshal | Без чтения с диска |
 
-**Загрузка при старте:** `loadRegistryIntoMemory()` читает файл один раз, строит `regRecords` и `regByID`. Все последующие операции работают с памятью; файл перезаписывается только при изменениях.
+**Загрузка при старте:** `loadRegistryIntoMemory()` читает файл один раз, строит `regRecords` и `regByID`. Все последующие операции работают с памятью.
 
-**Перестройка индекса:** после `trimDeadRecords` (обрезка мёртвых при превышении 5000) вызывается `rebuildIndex()` — O(n) проход по срезу. Это единственный момент, когда map пересоздаётся полностью.
+**Отложенные записи на диск (`startRegistrySaver`):** birth-запросы обновляют только память и выставляют флаг `regDirty = true`. Фоновый горутин пишет файл раз в **2 секунды** если `regDirty`. Это устраняет блокировку мьютекса файловым I/O во время `Jump to Tick` (сотни birth-запросов завершаются мгновенно). Death и reset пишут файл немедленно.
 
-**Потокобезопасность:** все операции над `regRecords` и `regByID` защищены `registryMu sync.Mutex`. В `handleSystemGet` нужные поля копируются под локом в локальную map до его освобождения — исключает data race при конкурентном чтении.
+```go
+var regDirty bool  // true = есть несохранённые изменения
+
+// Birth: только память
+regRecords = append(regRecords, rec)
+regByID[id] = rec
+regDirty = true   // файл запишет фоновый тикер
+
+// Death: сразу на диск
+rebuildIndex()
+saveRegistryLocked()
+
+// Фоновый горутин
+go func() {
+    for range time.Tick(2 * time.Second) {
+        registryMu.Lock()
+        if regDirty { saveRegistryLocked() }
+        registryMu.Unlock()
+    }
+}()
+```
+
+**Перестройка индекса:** после `trimDeadRecords` вызывается `rebuildIndex()` — O(n). Это единственный момент, когда map пересоздаётся полностью.
+
+**Потокобезопасность:** все операции над `regRecords` и `regByID` защищены `registryMu sync.Mutex`. В `handleSystemGet` поля копируются под локом до освобождения — исключает data race.
 
 ### 30.2 Фоллбэк для звёзд без записи в реестре
 
@@ -1668,44 +1692,51 @@ func assignPlanetOrbits(nPlanets int, seed int64) []int {
 
 ### 34.1b Назначение орбит астероидным кольцам (алгоритм зазоров)
 
-Кольца размещаются **между** планетными орбитами, в серединах самых больших зазоров. Фиксированные позиции не используются.
+Кольца размещаются в серединах зазоров между планетными орбитами. Выбор детерминирован, но с элементом разнообразия — случайный выбор из **топ-3 зазоров** по LCG-сиду.
 
 ```go
 type gapInfo struct{ mid, size int }
 
-// После сортировки планетных орбит — найти зазоры
-gaps := []gapInfo{}
-prev := -1
-for _, p := range sortedPlanetOrbits {
-    if prev >= 0 && p-prev >= 3 {
-        gaps = append(gaps, gapInfo{mid: (prev+p)/2, size: p-prev})
+// Зазор до первой планеты
+if slots[0] >= 4 {
+    gaps = append(gaps, gapInfo{slots[0] / 2, slots[0]})
+}
+// Внутренние зазоры (min 4 слота)
+for i := 1; i < len(slots); i++ {
+    g := slots[i] - slots[i-1]
+    if g >= 4 {
+        gaps = append(gaps, gapInfo{(slots[i-1] + slots[i]) / 2, g})
     }
-    prev = p
 }
-// Добавить зазоры у краёв (до первой и после последней планеты)
-if len(sortedPlanetOrbits) > 0 {
-    first := sortedPlanetOrbits[0]
-    last  := sortedPlanetOrbits[len(sortedPlanetOrbits)-1]
-    if first >= 3 { gaps = append(gaps, gapInfo{mid: first/2, size: first}) }
-    if 35-last >= 3 { gaps = append(gaps, gapInfo{mid: (last+35)/2, size: 35-last}) }
-}
+// Внешние позиции — намеренно низкий приоритет (size=4,3)
+// чтобы не доминировать над внутренними зазорами
+last := slots[len(slots)-1]
+gaps = append(gaps, gapInfo{last + 3, 4})
+gaps = append(gaps, gapInfo{last + 6, 3})
+
 sort.Slice(gaps, func(i, j int) bool { return gaps[i].size > gaps[j].size })
 
-// Выбрать кольцо из топ-3 зазоров через LCG (детерминировано)
+// Выбор из топ-3 через LCG (детерминировано, но разнообразно)
 ringSeed := seed*31337 + 1
 for i := 0; i < nRings && len(gaps) > 0; i++ {
     ringSeed = (ringSeed*1664525 + 1013904223) & 0x7fffffff
-    topN := int64(3); if topN > int64(len(gaps)) { topN = int64(len(gaps)) }
+    topN := int64(3)
+    if topN > int64(len(gaps)) { topN = int64(len(gaps)) }
     idx := int(ringSeed % topN)
     pos := gaps[idx].mid
-    for usedOrbits[pos] { pos++ }   // сдвиг если слот занят
+    for usedOrbits[pos] { pos++ }
     usedOrbits[pos] = true
     gaps = append(gaps[:idx], gaps[idx+1:]...)
     rings = append(rings, RingInfo{RingIndex: i+1, OrbitGrid: pos})
 }
 ```
 
-**Следствие:** кольца всегда видны среди планет, а не только на крайних орбитах. Расположение детерминировано от `star_id`.
+**Принцип приоритетов:**
+- Внутренние зазоры ≥ 8 слотов — высший приоритет
+- Внутренние зазоры 4–7 слотов — средний
+- Внешние позиции (size=4, size=3) — низший; побеждают только если нет достаточно внутренних зазоров
+
+**Следствие:** кольца равномерно распределяются по всей системе, а не только на крайних орбитах. Расположение детерминировано от `star_id`.
 
 ### 34.2 Тип планеты по зоне орбиты
 

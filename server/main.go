@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 const port = ":8080"
@@ -62,9 +63,26 @@ func rebuildIndex() {
 	}
 }
 
+var regDirty bool // true = файл устарел относительно памяти
+
 func saveRegistryLocked() {
 	out, _ := json.Marshal(regRecords)
 	os.WriteFile(registryFile, out, 0644)
+	regDirty = false
+}
+
+// startRegistrySaver запускает фоновый горутин, пишущий файл раз в 2с если есть несохранённые изменения.
+// Вызывать один раз из main(). Благодаря этому birth-запросы не блокируются файловым I/O.
+func startRegistrySaver() {
+	go func() {
+		for range time.Tick(2 * time.Second) {
+			registryMu.Lock()
+			if regDirty {
+				saveRegistryLocked()
+			}
+			registryMu.Unlock()
+		}
+	}()
 }
 
 func loadRegistryIntoMemory() {
@@ -275,7 +293,7 @@ func handleRegistryBirth(w http.ResponseWriter, r *http.Request) {
 	if id := recID(rec); id >= 0 {
 		regByID[id] = rec
 	}
-	saveRegistryLocked()
+	regDirty = true // файл запишет фоновый тикер
 	registryMu.Unlock()
 	if b, err := json.Marshal(rec); err == nil {
 		hub.broadcast("event: birth\ndata: " + string(b) + "\n\n")
@@ -303,7 +321,7 @@ func handleRegistryBirthBatch(w http.ResponseWriter, r *http.Request) {
 			regByID[id] = rec
 		}
 	}
-	saveRegistryLocked()
+	regDirty = true
 	registryMu.Unlock()
 	for _, rec := range newRecs {
 		if b, err := json.Marshal(rec); err == nil {
@@ -340,7 +358,7 @@ func handleRegistryDeath(w http.ResponseWriter, r *http.Request) {
 	}
 	regRecords = trimDeadRecords(regRecords)
 	rebuildIndex()
-	saveRegistryLocked()
+	saveRegistryLocked() // смерть — пишем сразу (важно для персистентности)
 	registryMu.Unlock()
 	if b, err := json.Marshal(patch); err == nil {
 		hub.broadcast("event: death\ndata: " + string(b) + "\n\n")
@@ -647,8 +665,8 @@ func handleSystemGet(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		last := slots[len(slots)-1]
-		gaps = append(gaps, gapInfo{last + 3, 8})
-		gaps = append(gaps, gapInfo{last + 6, 6})
+		gaps = append(gaps, gapInfo{last + 3, 4}) // внешние позиции — приоритет как у мелких внутренних зазоров
+		gaps = append(gaps, gapInfo{last + 6, 3})
 	}
 	sort.Slice(gaps, func(i, j int) bool { return gaps[i].size > gaps[j].size })
 
@@ -698,6 +716,7 @@ func handleSystemGet(w http.ResponseWriter, r *http.Request) {
 func main() {
 	loadRegistryIntoMemory()
 	log.Printf("Registry loaded: %d records (%d unique IDs)", len(regRecords), len(regByID))
+	startRegistrySaver()
 
 	// Registry API
 	http.HandleFunc("/registry/birth/batch", func(w http.ResponseWriter, r *http.Request) {
