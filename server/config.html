@@ -120,15 +120,15 @@
     <div class="field"><label>dT/tick — White Dwarf</label><input type="number" data-path="temperature.dt_white_dwarf" step="0.01"><div class="default">default: -0.1</div></div>
     <div class="field"><label>Nebula T per unit mass (display only)</label><input type="number" data-path="temperature.nebula_temp_per_mass"><div class="default">default: 3</div></div>
     <div class="field"><label>Nebula cooling per unit mass (when absorbed)</label><input type="number" data-path="temperature.nebula_cooling_per_mass"><div class="default">default: 3</div></div>
-    <div class="field"><label>Asteroid T per unit mass</label><input type="number" data-path="temperature.asteroid_temp_per_mass"><div class="default">default: 1</div></div>
+    <div class="field"><label>Asteroid T per unit mass</label><input type="number" data-path="temperature.asteroid_temp_per_mass" step="0.1"><div class="default">default: 0.5</div></div>
   </div>
 </div>
 
 <div class="section">
   <div class="section-title">Black Holes</div>
   <div class="fields">
-    <div class="field"><label>Mass Loss per Tick — base (Hawking)</label><input type="number" data-path="black_holes.mass_loss_per_tick"><div class="hint">Fixed loss each tick. If remaining mass is less than this — BH disperses via 60/40.</div><div class="default">default: 10</div></div>
-    <div class="field"><label>Mass Loss % per Tick</label><input type="number" data-path="black_holes.mass_loss_pct" step="0.01" min="0" max="1"><div class="hint">Total loss = ceil(base + mass x pct). Set 0 for fixed-only.</div><div class="default">default: 0.1</div></div>
+    <div class="field"><label>Mass Loss per Tick — base (Hawking)</label><input type="number" data-path="black_holes.mass_loss_per_tick"><div class="hint">Fixed loss each tick. If remaining mass is less than this — BH disperses via 60/40.</div><div class="default">default: 5</div></div>
+    <div class="field"><label>Mass Loss % per Tick</label><input type="number" data-path="black_holes.mass_loss_pct" step="0.01" min="0" max="1"><div class="hint">Total loss = ceil(base + mass x pct). Set 0 for fixed-only.</div><div class="default">default: 0.01</div></div>
     <div class="field"><label>Radiation Heat Radius (u)</label><input type="number" data-path="black_holes.radiation_radius" step="0.5"><div class="default">default: 10</div></div>
     <div class="field"><label>Max Heat at Distance 0 (T/tick)</label><input type="number" data-path="black_holes.heat_max" step="0.01"><div class="hint">Linear falloff to 0 at radiation_radius.</div><div class="default">default: 0.14</div></div>
   </div>
@@ -163,7 +163,7 @@
     <div class="field"><label>Deficit step (BG/jet)</label><input type="number" data-path="blue_giant_inject.jet_deficit_step" min="1"><div class="hint">1 jet per this many missing blue giants.</div><div class="default">default: 2</div></div>
     <div class="field"><label>Nebula mass per jet neb (u)</label><input type="number" data-path="blue_giant_inject.nebula_mass" min="1"><div class="default">default: 5</div></div>
     <div class="field"><label>Start temperature</label><input type="number" data-path="blue_giant_inject.start_temp" min="1"><div class="hint">Hot nebula starting temp. Each heat transfer costs 50T; cools in flight at 8T/tick.</div><div class="default">default: 400</div></div>
-    <div class="field"><label>Heat per mass drained (T)</label><input type="number" data-path="blue_giant_inject.heat_per_mass"><div class="hint">Temp given to absorbing star per unit of hot nebula mass.</div><div class="default">default: 50</div></div>
+    <div class="field"><label>Heat per mass drained (T)</label><input type="number" data-path="blue_giant_inject.heat_per_mass"><div class="hint">Temp given to absorbing star per unit of hot nebula mass.</div><div class="default">default: 25</div></div>
     <div class="field"><label>Drain every N ticks</label><input type="number" data-path="blue_giant_inject.drain_every" min="1"><div class="hint">How often (ticks) 1 mass unit is absorbed from a hot nebula.</div><div class="default">default: 20</div></div>
     <div class="field"><label>Cooling per tick (flight)</label><input type="number" data-path="blue_giant_inject.cooling_per_tick" min="1"><div class="hint">Temp lost per tick while flying. At 8/tick nebula cools ~23 ticks (~midpoint of galaxy).</div><div class="default">default: 8</div></div>
   </div>
@@ -259,7 +259,7 @@ function getDefaults() {
     },
     physics: {
       v_flat:1.3963, max_influence_radius:20,
-      gravity_k_base:0.0001, gravity_power:1.5,
+      gravity_k_base:0.0000667, gravity_power:1.5,
       orbital_drag:0.05, radial_damp:0.12, drift_k:0.0022
     },
     temperature: {
@@ -269,10 +269,10 @@ function getDefaults() {
       start_temp_blue_giant:150,   dt_blue_giant:1.0,
       start_temp_neutron_star:500, dt_neutron_star:-0.2,
       start_temp_white_dwarf:50,   dt_white_dwarf:-0.1,
-      nebula_temp_per_mass:3, nebula_cooling_per_mass:3, asteroid_temp_per_mass:1
+      nebula_temp_per_mass:3, nebula_cooling_per_mass:3, asteroid_temp_per_mass:0.5
     },
     black_holes: {
-      mass_loss_per_tick:10, mass_loss_pct:0.1,
+      mass_loss_per_tick:5, mass_loss_pct:0.01,
       radiation_radius:10, heat_max:0.14
     },
     dispersal: {
@@ -280,7 +280,7 @@ function getDefaults() {
       impulse_min:1.5, directions:12, big_event_mass_threshold:601
     },
     mass_return: { nebula_return_max:5, asteroid_return_max:30, inflow_speed:4.0 },
-    blue_giant_inject: { bg_threshold:20, mass_grow_threshold:10, jet_deficit_step:2, nebula_mass:5, start_temp:400, heat_per_mass:50, drain_every:20, cooling_per_tick:8 },
+    blue_giant_inject: { bg_threshold:20, mass_grow_threshold:10, jet_deficit_step:2, nebula_mass:5, start_temp:400, heat_per_mass:25, drain_every:20, cooling_per_tick:8 },
     simulation: { max_jump_tick:2000 }
   };
 }

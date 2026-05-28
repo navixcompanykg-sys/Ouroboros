@@ -237,7 +237,7 @@
       <div class="stat-row"><span class="stat-label">Born total</span><span class="stat-value" id="ns-born">0</span></div>
       <div class="stat-row"><span class="stat-label">Died cooled</span><span class="stat-value" id="ns-cool">0</span></div>
       <div class="stat-row"><span class="stat-label">Died overheated</span><span class="stat-value" id="ns-heat">0</span></div>
-      <div class="stat-row"><span class="stat-label">Died mass≥1001</span><span class="stat-value" id="ns-mass">0</span></div>
+      <div class="stat-row"><span class="stat-label">Died mass≥2000 (→BH)</span><span class="stat-value" id="ns-mass">0</span></div>
       <div class="stat-row"><span class="stat-label">Died collision</span><span class="stat-value" id="ns-coll">0</span></div>
       <div class="stat-row"><span class="stat-label">Avg lifespan</span><span class="stat-value" id="ns-age">—</span></div>
     </div>
@@ -341,8 +341,8 @@ let CFG = {
   COLLAPSE_LIMIT:1000, DEATH_LIMIT:10, WD_NOVA_MASS:600,
   T_RED:100, T_YELLOW:250, T_BLUE:150, T_NEUTRON:500, T_WHITE:50,
   DT_RED:-0.3, DT_YELLOW:-1.5, DT_BLUE:1.0, DT_NEUTRON:-0.2, DT_WHITE:-0.1,
-  NEB_TEMP_PER_MASS:3, NEB_COOLING_PER_MASS:3, AST_TEMP_PER_MASS:1,
-  BH_MASS_LOSS:10, BH_LOSS_PCT:0.1, BH_RAD_RADIUS:10, BH_HEAT_MAX:0.14,
+  NEB_TEMP_PER_MASS:3, NEB_COOLING_PER_MASS:3, AST_TEMP_PER_MASS:0.5,
+  BH_MASS_LOSS:5, BH_LOSS_PCT:0.01, BH_RAD_RADIUS:10, BH_HEAT_MAX:0.14,
   ORBITAL_DRAG:0.05,
   EJECTA_FRACTION:0.6,
   IMPULSE_MIN:1.5, EJECTA_DIRS:12,
@@ -351,7 +351,7 @@ let CFG = {
   // Регулятор синих гигантов: плазменные выбросы из ядра
   BG_INJECT_BELOW:20, BG_MASS_GROW_BELOW:10, CORE_JET_DEFICIT_STEP:2,
   CORE_NEB_MASS:5, CORE_NEB_START_TEMP:400,
-  CORE_NEB_HEAT_PER_MASS:50, CORE_NEB_DRAIN_EVERY:20, CORE_NEB_COOLING:8,
+  CORE_NEB_HEAT_PER_MASS:25, CORE_NEB_DRAIN_EVERY:20, CORE_NEB_COOLING:8,
   // Вычисляемые из GALAXY_R (не задавать вручную)
   CENTER:150,   // = GALAXY_R * 1.25
   FIELD_SIZE:300 // = CENTER * 2
@@ -514,7 +514,7 @@ function nebulaMassColor(mass) {
 function isStar(o)    { return o.type===TYPE.STAR; }
 function isBH(o)      { return o.type===TYPE.BH; }
 function isCloud(o)   { return o.type===TYPE.NEBULA || o.type===TYPE.ASTEROID; }
-function isMassive(o) { return isBH(o) || (isStar(o) && (o.star_type===STAR.BLUE || (o.star_type===STAR.YELLOW && o.mass>=500))); }
+function isMassive(o) { return isBH(o) || (isStar(o) && (o.star_type===STAR.BLUE || o.star_type===STAR.NEUTRON || (o.star_type===STAR.YELLOW && o.mass>=500))); }
 function isBigEvent(o){ return o.mass >= CFG.BIG_EVENT_MASS; }
 
 function baseOmega(r) {
@@ -674,7 +674,7 @@ let massiveObjects=[];
 
 // Таблица гравитационных коэффициентов для объектов (r=1..20)
 // GRAVITY_TABLE[i] = K_BASE / (i+1)^1.5   пересчитывается при loadConfig
-const GRAVITY_K_BASE = 0.0001;
+const GRAVITY_K_BASE = 0.0000667;
 const GRAVITY_POWER  = 1.5;
 let GRAVITY_TABLE = buildGravityTable(GRAVITY_K_BASE, GRAVITY_POWER);
 
@@ -865,14 +865,8 @@ function makeByMass(x, y, vx, vy, mass, mode) {
   if(mass<=0) return null;
 
   if(mode==='remnant_nova') {
-    // Соотношение ЧД:НЗ = 1:1 детерминированно по порядку сверхновых:
-    // 1→НЗ, 2→ЧД, 3→НЗ, 4→ЧД ...
-    const isBHturn = (CNT.supernovae % 2 === 0);
-    if(isBHturn) {
-      const bh=makeObject(x,y,TYPE.BH,'',mass,vx,vy,0);
-      CNT.bhBorn++;
-      return bh;
-    }
+    // Синий гигант всегда оставляет НЗ.
+    // ЧД рождаются только из НЗ: коллапс при mass >= 2000 или слияние НЗ+НЗ.
     const ns=makeObject(x,y,TYPE.STAR,STAR.NEUTRON,mass,vx,vy,CFG.T_NEUTRON);
     CNT.nsBorn++; return ns;
   }
@@ -1500,6 +1494,44 @@ function resolveCollision(a, b, dying, toAdd) {
       return;
     }
 
+    // НЗ + НЗ → килонова → ЧД напрямую
+    const aNS = a.star_type === STAR.NEUTRON;
+    const bNS = b.star_type === STAR.NEUTRON;
+    if(aNS && bNS) {
+      const totalMass = a.mass + b.mass;
+      const mx = (a.x*a.mass + b.x*b.mass) / totalMass;
+      const my = (a.y*a.mass + b.y*b.mass) / totalMass;
+      const theta = Math.atan2(my - CFG.CENTER, mx - CFG.CENTER);
+      const fvx = -rotDir * CFG.V_FLAT * Math.sin(theta);
+      const fvy =  rotDir * CFG.V_FLAT * Math.cos(theta);
+      const bh = makeObject(mx, my, TYPE.BH, '', totalMass, fvx, fvy, 0);
+      CNT.bhBorn++;
+      toAdd.push(bh);
+      [a, b].forEach(s => {
+        trackStarDeath(s);
+        registerDeath(s, 'collision', 'neutron_star');
+        CNT.nsDiedCollision++; CNT.nsDeaths++; CNT.nsTotalAge += s.age;
+        dying.push(s.id);
+        masslossBuffer.delete(s.id);
+      });
+      return;
+    }
+
+    // НЗ поглощает обычную звезду (красный/жёлтый/белый карлик)
+    if(aNS || bNS) {
+      const [ns, other] = aNS ? [a, b] : [b, a];
+      const oldMass = ns.mass;
+      const totalM = oldMass + other.mass;
+      ns.temp = Math.min(CFG.COLLAPSE_LIMIT, (ns.temp * oldMass + other.temp * other.mass) / totalM);
+      ns.mass = totalM;
+      if(other.star_type===STAR.NEUTRON) { CNT.nsDiedCollision++; CNT.nsDeaths++; CNT.nsTotalAge+=other.age; }
+      trackStarDeath(other);
+      registerDeath(other, 'collision', 'neutron_star');
+      dying.push(other.id);
+      masslossBuffer.delete(other.id);
+      return;
+    }
+
     // Режим 2: слияние через формацию
     const totalMass = a.mass + b.mass;
     const mx = (a.x*a.mass + b.x*b.mass) / totalMass;
@@ -1675,11 +1707,18 @@ function processStarLifecycle() {
     if(!isStar(o)) continue;
     if(dying.includes(o.id)) continue;
 
-    // НЗ рассыпается при mass >= 1001 — полный распад, нет остатка
-    if(o.star_type===STAR.NEUTRON && o.mass>=1001) {
+    // НЗ при mass >= 2000 — коллапс в ЧД (60% разлёт, 40% → ЧД)
+    if(o.star_type===STAR.NEUTRON && o.mass>=2000) {
       registerDeath(o, 'mass_limit', null);
-      disperseObject(o, toAdd, dying, 'decay', 'ejecta');
-      CNT.deathCool++; CNT.nsDiedMass++; CNT.nsDeaths++; CNT.nsTotalAge+=o.age;
+      trackStarDeath(o);
+      const mass60=Math.floor(o.mass*CFG.EJECTA_FRACTION);
+      const mass40=o.mass-mass60;
+      ejectSixty(o.x, o.y, o.vx||0, o.vy||0, mass60, toAdd);
+      const bh=makeObject(o.x, o.y, TYPE.BH, '', mass40, o.vx||0, o.vy||0, 0);
+      CNT.bhBorn++;
+      toAdd.push(bh);
+      dying.push(o.id);
+      CNT.nsDiedMass++; CNT.nsDeaths++; CNT.nsTotalAge+=o.age;
       continue;
     }
 

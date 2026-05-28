@@ -1,19 +1,19 @@
 {
-  "blue_giant_inject": {
-    "bg_threshold": 20,
-    "mass_grow_threshold": 10,
-    "jet_deficit_step": 2,
-    "nebula_mass": 5,
-    "start_temp": 400,
-    "heat_per_mass": 50,
-    "drain_every": 20,
-    "cooling_per_tick": 8
-  },
   "black_holes": {
     "heat_max": 0.14,
-    "mass_loss_pct": 0.1,
-    "mass_loss_per_tick": 10,
+    "mass_loss_pct": 0.01,
+    "mass_loss_per_tick": 1,
     "radiation_radius": 10
+  },
+  "blue_giant_inject": {
+    "bg_threshold": 20,
+    "cooling_per_tick": 8,
+    "drain_every": 20,
+    "heat_per_mass": 25,
+    "jet_deficit_step": 2,
+    "mass_grow_threshold": 10,
+    "nebula_mass": 5,
+    "start_temp": 400
   },
   "dispersal": {
     "big_event_mass_threshold": 601,
@@ -99,7 +99,7 @@
   },
   "physics": {
     "drift_k": 0.0022,
-    "gravity_k_base": 0.0001,
+    "gravity_k_base": 0.0000667,
     "gravity_power": 1.5,
     "max_influence_radius": 20,
     "orbital_drag": 0.05,
@@ -110,21 +110,21 @@
     "max_jump_tick": 2000
   },
   "temperature": {
-    "asteroid_temp_per_mass": 1,
+    "asteroid_temp_per_mass": 0.5,
     "collapse_limit": 1000,
     "death_limit": 10,
-    "dt_blue_giant": 1.0,
+    "dt_blue_giant": 1,
     "dt_neutron_star": -0.2,
     "dt_red_dwarf": -0.3,
     "dt_white_dwarf": -0.1,
     "dt_yellow_dwarf": -1.5,
     "nebula_cooling_per_mass": 3,
     "nebula_temp_per_mass": 3,
-    "wd_nova_mass": 600,
     "start_temp_blue_giant": 150,
     "start_temp_neutron_star": 500,
     "start_temp_red_dwarf": 100,
     "start_temp_white_dwarf": 50,
-    "start_temp_yellow_dwarf": 250
+    "start_temp_yellow_dwarf": 250,
+    "wd_nova_mass": 600
   }
 }
