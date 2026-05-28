@@ -120,11 +120,11 @@
     "dt_yellow_dwarf": -1.5,
     "nebula_cooling_per_mass": 3,
     "nebula_temp_per_mass": 3,
-    "start_temp_blue_giant": 150,
-    "start_temp_neutron_star": 500,
-    "start_temp_red_dwarf": 100,
+    "start_temp_blue_giant": 190,
+    "start_temp_neutron_star": 540,
+    "start_temp_red_dwarf": 140,
     "start_temp_white_dwarf": 50,
-    "start_temp_yellow_dwarf": 250,
+    "start_temp_yellow_dwarf": 290,
     "wd_nova_mass": 600
   }
 }

@@ -41,6 +41,45 @@ func trimDeadRecords(records []map[string]interface{}) []map[string]interface{} 
 
 var registryMu sync.Mutex
 
+// In-memory registry — все операции с реестром работают с этими структурами.
+// Файл используется только для персистентности (загрузка при старте, запись при изменениях).
+var regRecords []map[string]interface{}
+var regByID = map[int]map[string]interface{}{}
+
+func recID(rec map[string]interface{}) int {
+	if v, ok := rec["star_id"].(float64); ok {
+		return int(v)
+	}
+	return -1
+}
+
+func rebuildIndex() {
+	regByID = make(map[int]map[string]interface{}, len(regRecords))
+	for _, rec := range regRecords {
+		if id := recID(rec); id >= 0 {
+			regByID[id] = rec
+		}
+	}
+}
+
+func saveRegistryLocked() {
+	out, _ := json.Marshal(regRecords)
+	os.WriteFile(registryFile, out, 0644)
+}
+
+func loadRegistryIntoMemory() {
+	registryMu.Lock()
+	defer registryMu.Unlock()
+	data, err := os.ReadFile(registryFile)
+	if err != nil || len(data) == 0 {
+		regRecords = nil
+		regByID = map[int]map[string]interface{}{}
+		return
+	}
+	json.Unmarshal(data, &regRecords)
+	rebuildIndex()
+}
+
 // ============================================================
 // SSE HUB
 // ============================================================
@@ -213,15 +252,10 @@ func handleStatic(w http.ResponseWriter, r *http.Request) {
 func handleRegistryGet(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	registryMu.Lock()
-	data, err := os.ReadFile(registryFile)
+	out, _ := json.Marshal(regRecords)
 	registryMu.Unlock()
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte("[]"))
-		return
-	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	w.Write(out)
 }
 
 func handleRegistryBirth(w http.ResponseWriter, r *http.Request) {
@@ -237,14 +271,12 @@ func handleRegistryBirth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	registryMu.Lock()
-	defer registryMu.Unlock()
-	var records []map[string]interface{}
-	if data, err := os.ReadFile(registryFile); err == nil {
-		json.Unmarshal(data, &records)
+	regRecords = append(regRecords, rec)
+	if id := recID(rec); id >= 0 {
+		regByID[id] = rec
 	}
-	records = append(records, rec)
-	out, _ := json.Marshal(records)
-	os.WriteFile(registryFile, out, 0644)
+	saveRegistryLocked()
+	registryMu.Unlock()
 	if b, err := json.Marshal(rec); err == nil {
 		hub.broadcast("event: birth\ndata: " + string(b) + "\n\n")
 	}
@@ -265,14 +297,14 @@ func handleRegistryBirthBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	registryMu.Lock()
-	defer registryMu.Unlock()
-	var records []map[string]interface{}
-	if data, err := os.ReadFile(registryFile); err == nil {
-		json.Unmarshal(data, &records)
+	regRecords = append(regRecords, newRecs...)
+	for _, rec := range newRecs {
+		if id := recID(rec); id >= 0 {
+			regByID[id] = rec
+		}
 	}
-	records = append(records, newRecs...)
-	out, _ := json.Marshal(records)
-	os.WriteFile(registryFile, out, 0644)
+	saveRegistryLocked()
+	registryMu.Unlock()
 	for _, rec := range newRecs {
 		if b, err := json.Marshal(rec); err == nil {
 			hub.broadcast("event: birth\ndata: " + string(b) + "\n\n")
@@ -294,24 +326,22 @@ func handleRegistryDeath(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
-	starID := patch["star_id"]
-	registryMu.Lock()
-	defer registryMu.Unlock()
-	var records []map[string]interface{}
-	if data, err := os.ReadFile(registryFile); err == nil {
-		json.Unmarshal(data, &records)
+	sid := -1
+	if v, ok := patch["star_id"].(float64); ok {
+		sid = int(v)
 	}
-	for _, rec := range records {
-		if fmt.Sprintf("%v", rec["star_id"]) == fmt.Sprintf("%v", starID) {
+	registryMu.Lock()
+	if sid >= 0 {
+		if rec, ok := regByID[sid]; ok {
 			for k, v := range patch {
 				rec[k] = v
 			}
-			break
 		}
 	}
-	records = trimDeadRecords(records)
-	out, _ := json.Marshal(records)
-	os.WriteFile(registryFile, out, 0644)
+	regRecords = trimDeadRecords(regRecords)
+	rebuildIndex()
+	saveRegistryLocked()
+	registryMu.Unlock()
 	if b, err := json.Marshal(patch); err == nil {
 		hub.broadcast("event: death\ndata: " + string(b) + "\n\n")
 	}
@@ -327,8 +357,10 @@ func handleRegistryReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	registryMu.Lock()
-	defer registryMu.Unlock()
+	regRecords = nil
+	regByID = map[int]map[string]interface{}{}
 	os.WriteFile(registryFile, []byte("[]"), 0644)
+	registryMu.Unlock()
 	hub.broadcast("event: reset\ndata: {}\n\n")
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprint(w, `{"ok":true}`)
@@ -337,10 +369,9 @@ func handleRegistryReset(w http.ResponseWriter, r *http.Request) {
 func handleRegistryStats(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	registryMu.Lock()
-	data, _ := os.ReadFile(registryFile)
+	records := make([]map[string]interface{}, len(regRecords))
+	copy(records, regRecords)
 	registryMu.Unlock()
-	var records []map[string]interface{}
-	json.Unmarshal(data, &records)
 
 	alive, dead := 0, 0
 	planetsSum, planetsCount := 0, 0
@@ -429,12 +460,9 @@ func handleRegistryStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	registryMu.Lock()
-	data, err := os.ReadFile(registryFile)
+	initData, _ := json.Marshal(regRecords)
 	registryMu.Unlock()
-	if err != nil {
-		data = []byte("[]")
-	}
-	fmt.Fprintf(w, "event: init\ndata: %s\n\n", data)
+	fmt.Fprintf(w, "event: init\ndata: %s\n\n", initData)
 	flusher.Flush()
 
 	ch := hub.subscribe()
@@ -540,22 +568,46 @@ func handleSystemGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	registryMu.Lock()
-	data, _ := os.ReadFile(registryFile)
-	registryMu.Unlock()
-
-	var records []map[string]interface{}
-	json.Unmarshal(data, &records)
-
+	found, inIndex := regByID[starID]
 	var rec map[string]interface{}
-	for _, candidate := range records {
-		if fmt.Sprintf("%v", candidate["star_id"]) == strconv.Itoa(starID) {
-			rec = candidate
-			break
+	if inIndex {
+		// Копируем нужные поля под локом — без гонок при последующем чтении
+		rec = map[string]interface{}{
+			"gen_code":        found["gen_code"],
+			"n_planets":       found["n_planets"],
+			"n_rings":         found["n_rings"],
+			"birth_star_type": found["birth_star_type"],
+			"birth_mass":      found["birth_mass"],
 		}
 	}
+	registryMu.Unlock()
+
 	if rec == nil {
-		http.Error(w, `{"error":"star not found"}`, http.StatusNotFound)
-		return
+		// Запись не найдена (возможно, удалена прунингом после старой трансформации WD).
+		// Генерируем синтетическую запись детерминированно из ID и query-параметров.
+		qMass, _ := strconv.Atoi(r.URL.Query().Get("mass"))
+		if qMass <= 0 {
+			qMass = 50
+		}
+		qType := r.URL.Query().Get("type")
+		if qType == "" {
+			qType = "white_dwarf"
+		}
+		lcg := func(s int64) int64 { return (s*1664525 + 1013904223) & 0x7fffffff }
+		s := lcg(int64(starID))
+		gc := fmt.Sprintf("%09d", s%1000000000)
+		s = lcg(s)
+		nP := int(s%7) + 1
+		s = lcg(s)
+		nR := int(s % 3)
+		rec = map[string]interface{}{
+			"star_id":         float64(starID),
+			"gen_code":        gc,
+			"n_planets":       float64(nP),
+			"n_rings":         float64(nR),
+			"birth_star_type": qType,
+			"birth_mass":      float64(qMass),
+		}
 	}
 
 	genCode, _ := rec["gen_code"].(string)
@@ -644,6 +696,9 @@ func handleSystemGet(w http.ResponseWriter, r *http.Request) {
 // ============================================================
 
 func main() {
+	loadRegistryIntoMemory()
+	log.Printf("Registry loaded: %d records (%d unique IDs)", len(regRecords), len(regByID))
+
 	// Registry API
 	http.HandleFunc("/registry/birth/batch", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {

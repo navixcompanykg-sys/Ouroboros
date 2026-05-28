@@ -339,7 +339,7 @@ let CFG = {
   DRIFT_K:2.2e-3,      // массовый дрифт к центру: dr = DRIFT_K × mass / r за тик (только звёзды, ЧД, формации)
   MAX_JUMP_TICK:2000,
   COLLAPSE_LIMIT:1000, DEATH_LIMIT:10, WD_NOVA_MASS:600,
-  T_RED:100, T_YELLOW:250, T_BLUE:150, T_NEUTRON:500, T_WHITE:50,
+  T_RED:140, T_YELLOW:290, T_BLUE:190, T_NEUTRON:540, T_WHITE:50,
   DT_RED:-0.3, DT_YELLOW:-1.5, DT_BLUE:1.0, DT_NEUTRON:-0.2, DT_WHITE:-0.1,
   NEB_TEMP_PER_MASS:3, NEB_COOLING_PER_MASS:3, AST_TEMP_PER_MASS:0.5,
   BH_MASS_LOSS:5, BH_LOSS_PCT:0.01, BH_RAD_RADIUS:10, BH_HEAT_MAX:0.14,
@@ -1035,19 +1035,13 @@ function doWhiteDwarfNova(o, toAdd, dying) {
   disperseObject(o, toAdd, dying, 'explode', 'remnant_decay');
 }
 
-// П6: красный/жёлтый карлик при остывании → белый карлик на месте; остальные рассыпаются
+// Остывание НЗ / БК ниже DEATH_LIMIT → распад
+// Красный/жёлтый сюда не доходят — они трансформируются в БК раньше (при T ≤ T_WHITE)
 function checkStarDeath(o, toAdd, dying) {
   if(o.temp>CFG.DEATH_LIMIT) return false;
   CNT.deathCool++;
   if(o.star_type===STAR.NEUTRON){ CNT.nsDiedCool++; CNT.nsDeaths++; CNT.nsTotalAge+=o.age; }
   trackStarDeath(o);
-  if(o.star_type===STAR.RED || o.star_type===STAR.YELLOW) {
-    // Трансформация в белый карлик — звезда продолжает жить, запись в реестре остаётся открытой
-    o.star_type = STAR.WHITE;
-    o.temp = CFG.T_WHITE;
-    o.age = 0;
-    return true;
-  }
   registerDeath(o, 'overcool', null);
   disperseObject(o, toAdd, dying, 'decay', 'remnant_decay');
   return true;
@@ -1748,7 +1742,18 @@ function processStarLifecycle() {
       continue;
     }
 
-    // Остывание → распад (кроме синего гиганта — он нагревается)
+    // Красный/жёлтый карлик охладился до температуры БК → трансформация в белый
+    // Порог: T_WHITE (50). Белый карлик не даёт registerDeath — запись реестра остаётся открытой.
+    if((o.star_type===STAR.RED || o.star_type===STAR.YELLOW) && o.temp<=CFG.T_WHITE) {
+      CNT.deathCool++;
+      trackStarDeath(o);
+      o.star_type = STAR.WHITE;
+      o.temp = CFG.T_WHITE;
+      o.age = 0;
+      continue;
+    }
+
+    // Остывание → распад (БК, НЗ; красные/жёлтые уже перехвачены выше)
     if(o.star_type!==STAR.BLUE && o.temp<=CFG.DEATH_LIMIT) {
       checkStarDeath(o, toAdd, dying);
       continue;
@@ -2165,7 +2170,7 @@ function computeMA(star) {
 // DETERMINISTIC PLANET PARAMETERS
 // ============================================================
 const STAR_START_TEMPS = {
-  red_dwarf:100, white_dwarf:50, yellow_dwarf:250, blue_giant:150, neutron_star:500
+  red_dwarf:140, white_dwarf:50, yellow_dwarf:290, blue_giant:190, neutron_star:540
 };
 // Base values [gravity, radius, planet_mass, core_mass, water, core_temp] per planet type
 const PLANET_PARAM_BASES = {
@@ -2837,13 +2842,45 @@ function setSysSpeed(speed){
   if(btn) btn.classList.add('active');
 }
 
+// Генерирует систему детерминированно из ID звезды (фоллбэк когда запись отсутствует в реестре)
+function syntheticSystemData(star) {
+  const lcg = s => (Math.imul(s & 0x7fffffff, 1664525) + 1013904223) & 0x7fffffff;
+  let s = lcg(star.id);
+  const gc = String(s % 1000000000).padStart(9, '0');
+  s = lcg(s); const nP = (s % 7) + 1;
+  // Seed для орбит: аналог Go int64(starID)*1000003 + genCodeToSeed(gc)
+  let gcN = 0; for(const c of gc){ const d=parseInt(c); if(!isNaN(d)) gcN=gcN*10+d; }
+  let rng = lcg((star.id * 1000003 + gcN) & 0x7fffffff);
+  // Fisher-Yates shuffle (аналог assignPlanetOrbits на сервере)
+  const slots = Array.from({length:36},(_,i)=>i);
+  for(let i=35;i>0;i--){ rng=lcg(rng); const j=rng%(i+1); [slots[i],slots[j]]=[slots[j],slots[i]]; }
+  const taken=new Set(), chosen=[];
+  for(const sl of slots){
+    if(chosen.length>=nP) break;
+    if(!taken.has(sl-2)&&!taken.has(sl-1)&&!taken.has(sl+1)&&!taken.has(sl+2)){ taken.add(sl); chosen.push(sl); }
+  }
+  chosen.sort((a,b)=>a-b);
+  const planets=chosen.map(sl=>{
+    const t=sl<=8?'lava':sl<=17?'rocky':sl<=26?'ice':'gas_giant';
+    return {slot:sl+1,orbit_index:sl,type:t,visual_type:t,period_sec:ORBIT_PERIODS[sl]||86400};
+  });
+  return {star_id:star.id,star_type:star.star_type,mass:star.mass,
+          gen_code:gc,n_planets:nP,n_rings:0,planets,rings:[]};
+}
+
 async function openSystemView(star){
   let data;
   try{
-    const resp=await fetch(`/system/${star.id}`);
-    if(!resp.ok){console.warn('system not in registry:',star.id);return;}
-    data=await resp.json();
+    const resp=await fetch(`/system/${star.id}?mass=${star.mass}&type=${encodeURIComponent(star.star_type)}`);
+    if(!resp.ok){
+      // Запись удалена из реестра (прунинг) — генерируем систему на клиенте
+      data = syntheticSystemData(star);
+    } else {
+      data=await resp.json();
+    }
   }catch(e){console.warn('system fetch failed',e);return;}
+  // Актуальный тип может отличаться от birth_star_type в реестре (напр. желтый→белый карлик)
+  data.star_type = star.star_type;
   sysData=data;
   // Кешируем планетарные параметры (детерминированы, не меняются)
   { const starObj=objects.find(o=>o.id===data.star_id);

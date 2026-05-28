@@ -108,13 +108,13 @@
   <div class="fields">
     <div class="field"><label>Collapse Limit (T >= this: supernova)</label><input type="number" data-path="temperature.collapse_limit"><div class="default">default: 1000</div></div>
     <div class="field"><label>Death Limit (T <= this: star dies)</label><input type="number" data-path="temperature.death_limit"><div class="default">default: 10</div></div>
-    <div class="field"><label>Start T — Red Dwarf</label><input type="number" data-path="temperature.start_temp_red_dwarf"><div class="default">default: 100</div></div>
+    <div class="field"><label>Start T — Red Dwarf</label><input type="number" data-path="temperature.start_temp_red_dwarf"><div class="default">default: 140</div></div>
     <div class="field"><label>dT/tick — Red Dwarf</label><input type="number" data-path="temperature.dt_red_dwarf" step="0.01"><div class="default">default: -0.3</div></div>
-    <div class="field"><label>Start T — Yellow Dwarf</label><input type="number" data-path="temperature.start_temp_yellow_dwarf"><div class="default">default: 250</div></div>
+    <div class="field"><label>Start T — Yellow Dwarf</label><input type="number" data-path="temperature.start_temp_yellow_dwarf"><div class="default">default: 290</div></div>
     <div class="field"><label>dT/tick — Yellow Dwarf</label><input type="number" data-path="temperature.dt_yellow_dwarf" step="0.01"><div class="default">default: -1.5</div></div>
-    <div class="field"><label>Start T — Blue Giant</label><input type="number" data-path="temperature.start_temp_blue_giant"><div class="default">default: 150</div></div>
+    <div class="field"><label>Start T — Blue Giant</label><input type="number" data-path="temperature.start_temp_blue_giant"><div class="default">default: 190</div></div>
     <div class="field"><label>dT/tick — Blue Giant</label><input type="number" data-path="temperature.dt_blue_giant" step="0.1"><div class="default">default: +1.0</div></div>
-    <div class="field"><label>Start T — Neutron Star</label><input type="number" data-path="temperature.start_temp_neutron_star"><div class="default">default: 500</div></div>
+    <div class="field"><label>Start T — Neutron Star</label><input type="number" data-path="temperature.start_temp_neutron_star"><div class="default">default: 540</div></div>
     <div class="field"><label>dT/tick — Neutron Star</label><input type="number" data-path="temperature.dt_neutron_star" step="0.01"><div class="default">default: -0.2</div></div>
     <div class="field"><label>Start T — White Dwarf</label><input type="number" data-path="temperature.start_temp_white_dwarf"><div class="default">default: 50</div></div>
     <div class="field"><label>dT/tick — White Dwarf</label><input type="number" data-path="temperature.dt_white_dwarf" step="0.01"><div class="default">default: -0.1</div></div>
@@ -264,10 +264,10 @@ function getDefaults() {
     },
     temperature: {
       collapse_limit:1000, death_limit:10,
-      start_temp_red_dwarf:100,    dt_red_dwarf:-0.3,
-      start_temp_yellow_dwarf:250, dt_yellow_dwarf:-1.5,
-      start_temp_blue_giant:150,   dt_blue_giant:1.0,
-      start_temp_neutron_star:500, dt_neutron_star:-0.2,
+      start_temp_red_dwarf:140,    dt_red_dwarf:-0.3,
+      start_temp_yellow_dwarf:290, dt_yellow_dwarf:-1.5,
+      start_temp_blue_giant:190,   dt_blue_giant:1.0,
+      start_temp_neutron_star:540, dt_neutron_star:-0.2,
       start_temp_white_dwarf:50,   dt_white_dwarf:-0.1,
       nebula_temp_per_mass:3, nebula_cooling_per_mass:3, asteroid_temp_per_mass:0.5
     },
