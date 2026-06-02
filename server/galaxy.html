@@ -3384,13 +3384,37 @@ function showPlanetResPanel(planet) {
   const CLABELS= {BASE:'BASE MATERIALS', METALS:'RARE METALS', FUEL:'FUEL & ISOTOPES', GAS:'GASES', NUCLEAR:'NUCLEAR'};
   const TIDX   = {lava:0, rocky:1, ice:2, gas_giant:3, bare_core:4};
   const resEffType = effType ?? 'bare_core';
+
+  // Тип звезды при рождении (WD берёт progenitor, ресурсы зафиксированы на момент рождения системы)
+  const birthStarType = (st === 'white_dwarf' && star && star.progenitor) ? star.progenitor : st;
+  // Галактическая металличность: inner galaxy (r→0) богаче металлами, outer (r→10) богаче летучими
+  const birthRadius   = (star && star.birth_radius != null) ? star.birth_radius : 5;
+  const galDelta      = (5 - Math.max(0, Math.min(10, birthRadius))) / 5;  // +1 центр → -1 край
+  // Множители по типу звезды (yellow_dwarf = 1.0 baseline)
+  const STAR_BIRTH_MOD = {
+    yellow_dwarf: {METALS:1.00, NUCLEAR:1.00, FUEL:1.00, GAS:1.00, BASE:1.00},
+    red_dwarf:    {METALS:0.72, NUCLEAR:0.65, FUEL:1.20, GAS:1.15, BASE:0.90},
+    blue_giant:   {METALS:1.55, NUCLEAR:1.50, FUEL:0.50, GAS:0.70, BASE:1.05},
+    neutron_star: {METALS:1.00, NUCLEAR:1.00, FUEL:1.00, GAS:1.00, BASE:1.00},
+    white_dwarf:  {METALS:1.00, NUCLEAR:1.00, FUEL:1.00, GAS:1.00, BASE:1.00},
+  };
+  const starBirthMod = STAR_BIRTH_MOD[birthStarType] || STAR_BIRTH_MOD.yellow_dwarf;
+  // Галактический множитель по категории ресурса
+  function galMod(cat) {
+    if (cat === 'METALS' || cat === 'NUCLEAR') return 1 + galDelta * 0.35;  // ±35%
+    if (cat === 'FUEL')                        return 1 - galDelta * 0.20;  // обратный: летучие на периферии
+    if (cat === 'GAS')                         return 1 - galDelta * 0.15;
+    return 1 + galDelta * 0.12;  // BASE
+  }
+
   for (const cat of CATS) {
     html += `<div class="prp-section">${CLABELS[cat]}</div>`;
     for (const d of RES_DEFS.filter(r => r.cat === cat)) {
       let base = d.bases[TIDX[resEffType] ?? 1];
       if (d.id === 'helium3' && (effType === 'rocky' || effType === 'lava') && atm.pressure < 20)
         base = Math.min(10000, base + Math.round((1 - orbitNorm) * 1500));
-      const val = Math.max(0, Math.min(10000, base + Math.round((resRand(gc, orb, d.idx) - 0.5) * 2 * d.var)));
+      const mod = (starBirthMod[cat] ?? 1) * galMod(cat);
+      const val = Math.max(0, Math.min(10000, Math.round(base * mod) + Math.round((resRand(gc, orb, d.idx) - 0.5) * 2 * d.var)));
       html += prpBar(d.label, val, 10000, d.color, d.inf ? ' <span class="prp-note">∞</span>' : '');
     }
   }
