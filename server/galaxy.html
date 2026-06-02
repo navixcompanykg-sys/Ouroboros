@@ -3163,18 +3163,29 @@ function computeSurfTemp(starTemp, orbitNorm, pressure) {
   return Math.max(1, Math.min(100, Math.round(starHeat * proxFactor * greenhouse * 100)));
 }
 
-function computeAtmosphere(p, effType, starTemp, orbitNorm) {
-  if (!effType) return {pressure:0, nitrogen:0};
-  const PBASE  = {lava:50, rocky:35, ice:12, gas_giant:82};
+function computeAtmosphere(p, effType, starTemp, orbitNorm, gc, orb) {
+  if (!effType) return {pressure:0, nitrogen:0, geoActivity:0};
+  const PBASE  = {lava:50, rocky:20, ice:10, gas_giant:82};
   const N2FRAC = {lava:0.68, rocky:0.74, ice:0.18, gas_giant:0.04};
+
+  // Геологическая активность: lava/gas всегда активны, rocky/ice — случайно
+  const geoRnd = (gc && orb !== undefined) ? resRand(gc, orb, 99) : 0.5;
+  const geoActivity = (effType==='lava' || effType==='gas_giant') ? 1.0
+                    : effType==='ice'   ? 0.15 + geoRnd * 0.65   // 0.15–0.80
+                    : geoRnd;                                      // rocky: 0.0–1.0
+
   const retention = (p.planetMass * 0.55 + p.gravity * 0.45) / 100;
   const outgas    = Math.min(1, p.coreTemp / 150);
   const solWind   = (starTemp / 300) * (1 - orbitNorm) * 0.4;
+
+  // Гравитационный минимум (удерживает уже имеющееся без активности)
+  const geoFloor  = retention * 6;
   const pressure  = Math.max(0, Math.min(100, Math.round(
-    (PBASE[effType] ?? 15) + 28 * retention + 18 * outgas - 22 * solWind)));
+    geoFloor + (PBASE[effType] + 28 * retention + 18 * outgas) * geoActivity - 22 * solWind)));
+
   const frac      = (N2FRAC[effType] ?? 0.25) + (p.coreTemp / 200) * 0.12;
   const nitrogen  = Math.max(0, Math.min(100, Math.round(pressure * frac)));
-  return {pressure, nitrogen};
+  return {pressure, nitrogen, geoActivity};
 }
 
 function computeOxygen(p, pressure, lifeBirthAge, starAge, starLifespan) {
@@ -3193,6 +3204,8 @@ function computeLifeBirthAge(planet, sysData, starObj) {
 
   const br        = starObj.birth_radius || 60;
   const orbitNorm = planet.orbit_index / 35;
+  const gc        = sysData.gen_code || '000000000';
+  const orb       = planet.orbit_index;
 
   // Для white dwarf сначала симулируем фазу предшественника
   // birthAge возвращается как отрицательное число (до перехода в WD)
@@ -3213,7 +3226,7 @@ function computeLifeBirthAge(planet, sysData, starObj) {
       const pp  = computePlanetParams(planet, sysData, {temp: T, birth_radius: br});
       const eff = effectivePlanetType(planet.type, pp.coreTemp);
       if (eff !== 'rocky' && eff !== 'ice') { streak = 0; continue; }
-      const atm      = computeAtmosphere(pp, eff, T, orbitNorm);
+      const atm      = computeAtmosphere(pp, eff, T, orbitNorm, gc, orb);
       const surfTemp = computeSurfTemp(T, orbitNorm, atm.pressure);
       const ok = pp.water >= 25
         && atm.pressure >= 10 && atm.pressure <= 75
@@ -3240,7 +3253,7 @@ function computeLifeBirthAge(planet, sysData, starObj) {
     const pp  = computePlanetParams(planet, sysData, {temp: T, birth_radius: br});
     const eff = effectivePlanetType(planet.type, pp.coreTemp);
     if (eff !== 'rocky' && eff !== 'ice') { streak = 0; continue; }
-    const atm      = computeAtmosphere(pp, eff, T, orbitNorm);
+    const atm      = computeAtmosphere(pp, eff, T, orbitNorm, gc, orb);
     const surfTemp = computeSurfTemp(T, orbitNorm, atm.pressure);
     const ok = pp.water >= 25
       && atm.pressure >= 10 && atm.pressure <= 75
@@ -3284,7 +3297,7 @@ function showPlanetResPanel(planet) {
   const dtVal        = CFG['DT_' + ST_CFG[st]] ?? -1;
   const starLifespan = dtVal < 0 ? Math.ceil((startTemp - 10) / Math.abs(dtVal)) : 80;
 
-  const atm     = computeAtmosphere(p, effType, starTemp, orbitNorm);
+  const atm     = computeAtmosphere(p, effType, starTemp, orbitNorm, gc, orb);
   const starRad  = star ? computeRAD(star) : 50;
   const surfRad  = computeSurfaceRad(starRad, orbitNorm, atm.pressure);
 
@@ -3516,15 +3529,20 @@ async function scanGalaxy() {
 
   await new Promise(r => setTimeout(r, 0)); // дать браузеру отрисоваться
 
-  const stars = objects.filter(o => isStar(o));
+  const allStars = objects.filter(o => isStar(o));
+  const SAMPLE_STEP = 40; // 40 лучей → берём 1 из каждых 40 звёзд (≈ 1 луч)
+  const stars = allStars.filter((_, i) => i % SAMPLE_STEP === 0);
+  const sampleRatio = allStars.length / Math.max(1, stars.length);
   const KEY = {yellow_dwarf:'YELLOW',red_dwarf:'RED',blue_giant:'BLUE',white_dwarf:'WHITE',neutron_star:'NEUTRON'};
 
+  const _mkStarLifeStat = () => ({planets:0, life:0, alive:0, extinct:0, life_age_sum:0});
+  const _mkPlanetStat   = () => ({total:0, life:0, alive:0, extinct:0, life_age_sum:0});
   const summary = {
     stars_total: stars.length,
     stars_by_type: {},
     planets_total: 0,
-    planets_by_type:      {lava:0,rocky:0,ice:0,gas_giant:0},
-    planets_eff_type:     {lava:0,rocky:0,ice:0,gas_giant:0,destroyed:0},
+    planets_by_type:  {lava:0,rocky:0,ice:0,gas_giant:0},
+    planets_eff_type: {lava:0,rocky:0,ice:0,gas_giant:0,destroyed:0},
     planets_with_life:    0,
     planets_life_alive:   0,
     planets_life_extinct: 0,
@@ -3532,108 +3550,133 @@ async function scanGalaxy() {
     water_dist:    {},
     pressure_dist: {},
     life_miss_reasons: {bad_type:0, low_water:0, bad_pressure:0, bad_temp:0, radiation:0, no_zone:0},
+    // детальная статистика жизни
+    life_by_star:   {},  // по типу звезды
+    life_by_planet: {lava:_mkPlanetStat(), rocky:_mkPlanetStat(), ice:_mkPlanetStat(), gas_giant:_mkPlanetStat()},
+    extinct_reasons: {radiation:0, scorching:0, frozen:0, atm_loss:0, crushing_atm:0, conditions:0},
+    life_age_dist:   {'0-10':0,'11-30':0,'31-60':0,'61-100':0,'101-200':0,'200+':0},
+    activity_dist:   {'0-19':0,'20-39':0,'40-59':0,'60-79':0,'80-100':0},
+    // ресурсы: суммы и списки для медианы
+    bio_res: {biomass:{sum:0,n:0,vals:[]}, phosphates:{sum:0,n:0,vals:[]}, carbonates:{sum:0,n:0,vals:[]}, bitumens:{sum:0,n:0,vals:[]}},
   };
+  for(const st of ['yellow_dwarf','red_dwarf','white_dwarf','blue_giant','neutron_star'])
+    summary.life_by_star[st] = _mkStarLifeStat();
 
-  // инициализируем бакеты
   for(let i=0;i<10;i++) summary.water_dist[`${i*10}-${i*10+9}`] = 0;
   summary.water_dist['100'] = 0;
   for(const k of ['0-9','10-19','20-29','30-49','50-69','70-100']) summary.pressure_dist[k] = 0;
 
-  const starsOut = [];
-
   try {
+  let _si = 0;
   for(const star of stars) {
+    if(++_si % 50 === 0) await new Promise(r => setTimeout(r, 0)); // отдаём управление браузеру
     summary.stars_by_type[star.star_type] = (summary.stars_by_type[star.star_type]||0)+1;
-    const sys = buildScanSystemData(star);
+    const sys    = buildScanSystemData(star);
+    const scanGc = sys.gen_code || '000000000';
     const st = star.star_type||'yellow_dwarf';
     const startTemp = CFG['T_'+(KEY[st]||'YELLOW')]??200;
     const dtVal     = CFG['DT_'+(KEY[st]||'YELLOW')]??-1;
     const starLifespan = dtVal<0 ? Math.ceil((startTemp-10)/Math.abs(dtVal)) : 80;
     const starRad = computeRAD(star);
 
-    const planetsOut = [];
     for(const pl of sys.planets) {
       summary.planets_total++;
       summary.planets_by_type[pl.type]++;
 
-      const p       = computePlanetParams(pl, sys, star);
-      const effType = effectivePlanetType(pl.type, p.coreTemp);
-      const orbitNorm = pl.orbit_index/35;
-      const atm     = computeAtmosphere(p, effType, star.temp, orbitNorm);
+      const p        = computePlanetParams(pl, sys, star);
+      const effType  = effectivePlanetType(pl.type, p.coreTemp);
+      const orbitNorm= pl.orbit_index/35;
+      const atm      = computeAtmosphere(p, effType, star.temp, orbitNorm, scanGc, pl.orbit_index);
       summary.planets_eff_type[effType||'destroyed']++;
 
-      // water distribution
       const wb = Math.min(10, Math.floor(p.water/10));
-      const wk = wb>=10 ? '100' : `${wb*10}-${wb*10+9}`;
-      summary.water_dist[wk]++;
+      summary.water_dist[wb>=10?'100':`${wb*10}-${wb*10+9}`]++;
 
-      // pressure distribution
       const pr = atm.pressure;
-      const pk = pr<10?'0-9':pr<20?'10-19':pr<30?'20-29':pr<50?'30-49':pr<70?'50-69':'70-100';
-      summary.pressure_dist[pk]++;
+      summary.pressure_dist[pr<10?'0-9':pr<20?'10-19':pr<30?'20-29':pr<50?'30-49':pr<70?'50-69':'70-100']++;
 
       const surfRad  = computeSurfaceRad(starRad, orbitNorm, atm.pressure);
       const surfTemp = computeSurfTemp(star.temp, orbitNorm, atm.pressure);
 
-      // потенциально пригодна для жизни по физическим условиям
       const couldHaveLife = (effType==='rocky'||effType==='ice')
         && p.water>=25 && atm.pressure>=10 && atm.pressure<=75
         && surfTemp>=12 && surfTemp<=72;
       if(couldHaveLife) summary.planets_in_hab_zone++;
 
-      const lifeBirthAge = computeLifeBirthAge(pl, sys, star);
-      const lifeAge = lifeBirthAge!==null ? Math.max(0, star.age-lifeBirthAge) : 0;
-      const isWD = star.type==='white_dwarf';
+      // Быстрая проверка жизни для скана: O(1) вместо O(age)
+      // Проверяем текущие условия — достаточно для статистики
+      const isWD = star.star_type==='white_dwarf';
+      const canLiveNow = (effType==='rocky'||effType==='ice')
+        && p.water>=25 && atm.pressure>=10 && atm.pressure<=75
+        && surfTemp>=12 && surfTemp<=72 && surfRad<70;
+      const lifeBirthAge = (effType==='rocky'||effType==='ice')
+        ? (canLiveNow ? 0 : (isWD ? 0 : null))  // WD: считаем что жизнь унаследована если планета rocky/ice
+        : null;
       const lifeAlive = lifeBirthAge!==null
         && (effType==='rocky'||effType==='ice')
         && p.water>=20 && atm.pressure>=5 && atm.pressure<=80
         && (isWD || (surfTemp>=8 && surfTemp<=80)) && surfRad<70;
 
+      const lifeAge = lifeBirthAge!==null ? Math.max(0, star.age - lifeBirthAge) : 0;
+      const pStat = summary.life_by_planet[pl.type];
+      const sStat = summary.life_by_star[star.star_type];
+      if(pStat) pStat.total++;
+      if(sStat) sStat.planets++;
+
       if(lifeBirthAge!==null) {
         summary.planets_with_life++;
-        if(lifeAlive) summary.planets_life_alive++;
-        else summary.planets_life_extinct++;
+        if(pStat) { pStat.life++; pStat.life_age_sum += lifeAge; }
+        if(sStat) { sStat.life++; sStat.life_age_sum += lifeAge; }
+
+        // возраст жизни
+        const ab = lifeAge<=10?'0-10':lifeAge<=30?'11-30':lifeAge<=60?'31-60':lifeAge<=100?'61-100':lifeAge<=200?'101-200':'200+';
+        summary.life_age_dist[ab]++;
+
+        if(lifeAlive) {
+          summary.planets_life_alive++;
+          if(pStat) pStat.alive++;
+          if(sStat) sStat.alive++;
+          // активность
+          const act = Math.round(computeLifeActivity(surfTemp, atm.pressure, p.water, surfRad, isWD) * 100);
+          const actB = act<20?'0-19':act<40?'20-39':act<60?'40-59':act<80?'60-79':'80-100';
+          summary.activity_dist[actB]++;
+          // биоресурсы
+          const activity = computeLifeActivity(surfTemp, atm.pressure, p.water, surfRad, isWD);
+          for(const b of BIO_DEFS) {
+            if(lifeAge < b.minAge) continue;
+            const val = Math.round(Math.min(1, Math.log(1 + lifeAge/b.halfLife)/Math.log(2)) * b.maxVal * activity);
+            const br = summary.bio_res[b.id];
+            if(br) { br.sum += val; br.n++; br.vals.push(val); }
+          }
+        } else {
+          summary.planets_life_extinct++;
+          if(pStat) pStat.extinct++;
+          if(sStat) sStat.extinct++;
+          // причина гибели
+          const kill = surfRad>=70?'radiation':surfTemp>80?'scorching':surfTemp<8?'frozen':atm.pressure<5?'atm_loss':atm.pressure>80?'crushing_atm':'conditions';
+          summary.extinct_reasons[kill]++;
+        }
       } else {
         if(!effType||effType==='lava'||effType==='gas_giant') summary.life_miss_reasons.bad_type++;
-        else if(p.water<25)                          summary.life_miss_reasons.low_water++;
-        else if(atm.pressure<10||atm.pressure>75)    summary.life_miss_reasons.bad_pressure++;
-        else if(surfTemp<12||surfTemp>72)             summary.life_miss_reasons.bad_temp++;
-        else if(surfRad>=70)                         summary.life_miss_reasons.radiation++;
-        else                                         summary.life_miss_reasons.no_zone++;
+        else if(p.water<25)                       summary.life_miss_reasons.low_water++;
+        else if(atm.pressure<10||atm.pressure>75) summary.life_miss_reasons.bad_pressure++;
+        else if(surfTemp<12||surfTemp>72)          summary.life_miss_reasons.bad_temp++;
+        else if(surfRad>=70)                       summary.life_miss_reasons.radiation++;
+        else                                       summary.life_miss_reasons.no_zone++;
       }
-
-      const o2 = computeOxygen(p, atm.pressure, lifeAlive?lifeBirthAge:null, star.age, starLifespan);
-      planetsOut.push({
-        orbit:          pl.orbit_index,
-        type:           pl.type,
-        eff_type:       effType||'destroyed',
-        gravity:        p.gravity,
-        radius:         p.radius,
-        mass:           p.planetMass,
-        water:          p.water,
-        core_temp:      p.coreTemp,
-        pressure:       atm.pressure,
-        nitrogen:       atm.nitrogen,
-        oxygen:         o2,
-        surface_rad:    surfRad,
-        surf_temp:      surfTemp,
-        in_hab_zone:    couldHaveLife,
-        life_birth_age: lifeBirthAge,
-        life_age:       lifeBirthAge!==null ? lifeAge : null,
-        life_alive:     lifeAlive,
-      });
     }
+  }
 
-    starsOut.push({
-      id:         star.id,
-      type:       star.star_type,
-      age:        star.age,
-      temp:       Math.round(star.temp),
-      mass:       star.mass,
-      n_planets:  sys.n_planets,
-      gen_code:   sys.gen_code,
-      planets:    planetsOut,
-    });
+  // вычисляем медианы биоресурсов
+  for(const b of BIO_DEFS) {
+    const br = summary.bio_res[b.id];
+    if(br.vals.length) {
+      br.vals.sort((a,b)=>a-b);
+      const mid = Math.floor(br.vals.length/2);
+      br.median = br.vals.length%2 ? br.vals[mid] : Math.round((br.vals[mid-1]+br.vals[mid])/2);
+      br.avg = Math.round(br.sum/br.n);
+    }
+    delete br.vals; // не нужно в файле
   }
 
   const payload = {
@@ -3650,7 +3693,7 @@ async function scanGalaxy() {
       body: JSON.stringify(payload),
     });
     const res = await resp.json();
-    alert(`Scan saved: ${res.file}\n\nStars: ${summary.stars_total}  |  Planets: ${summary.planets_total}\nWith life: ${summary.planets_with_life} (alive: ${summary.planets_life_alive}, extinct: ${summary.planets_life_extinct})\nIn hab.zone (no life): ${summary.planets_in_hab_zone - summary.planets_with_life}\n\nMissed life reasons:\n  bad_type: ${summary.life_miss_reasons.bad_type}\n  low_water: ${summary.life_miss_reasons.low_water}\n  bad_pressure: ${summary.life_miss_reasons.bad_pressure}\n  bad_temp: ${summary.life_miss_reasons.bad_temp}\n  radiation: ${summary.life_miss_reasons.radiation}\n  no_zone: ${summary.life_miss_reasons.no_zone}`);
+    alert(`Scan saved: ${res.file}\nSample: ${summary.stars_total}/${allStars.length} stars (1 ray of ${SAMPLE_STEP})\n\nPlanets: ${summary.planets_total}  |  With life: ${summary.planets_with_life} (alive: ${summary.planets_life_alive}, extinct: ${summary.planets_life_extinct})\nIn hab.zone (no life): ${summary.planets_in_hab_zone - summary.planets_with_life}\n\nMissed life reasons:\n  bad_type: ${summary.life_miss_reasons.bad_type}\n  low_water: ${summary.life_miss_reasons.low_water}\n  bad_pressure: ${summary.life_miss_reasons.bad_pressure}\n  bad_temp: ${summary.life_miss_reasons.bad_temp}\n  radiation: ${summary.life_miss_reasons.radiation}\n  no_zone: ${summary.life_miss_reasons.no_zone}`);
   } catch(e) {
     alert('Scan error: '+e.message);
   }

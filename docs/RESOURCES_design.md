@@ -176,13 +176,27 @@ value = 10 000 × √(relative_abundance)
 > Атмосфера — **производный показатель** от параметров планеты. Вычисляется детерминированно каждый тик через `computeAtmosphere()`.
 
 ### Атмосферное давление
+Давление зависит от геологической активности планеты — большинство каменистых тел геологически мёртвы (как Марс, Луна) и имеют тонкую или нулевую атмосферу.
+
 ```js
-const PBASE  = { lava:50, rocky:35, ice:12, gas_giant:82 };
-const retention = (p.planetMass * 0.6 + p.gravity * 0.4) / 100;
-const outgas    = p.coreTemp / 200;
-const solWind   = (starTemp / 300) * orbitNorm * 0.4;
-pressure = clamp(PBASE[eff] + 28*retention + 18*outgas - 22*solWind, 0, 100);
+const PBASE  = { lava:50, rocky:20, ice:10, gas_giant:82 };
+
+// Геологическая активность: детерминированно из gen_code + orbit_index
+// lava/gas_giant — всегда активны (1.0)
+// ice — частично активны (0.15–0.80)
+// rocky — полностью случайно (0.0–1.0), ~50% планет геологически мёртвы
+const geoActivity = (effType==='lava' || effType==='gas_giant') ? 1.0
+                  : effType==='ice'   ? 0.15 + resRand(gc, orb, 99) * 0.65
+                  : resRand(gc, orb, 99);  // rocky
+
+const retention = (p.planetMass * 0.55 + p.gravity * 0.45) / 100;
+const outgas    = min(1, p.coreTemp / 150);
+const solWind   = (starTemp / 300) * (1 - orbitNorm) * 0.4;
+const geoFloor  = retention * 6;  // гравитационный минимум без активности
+pressure = clamp(geoFloor + (PBASE[eff] + 28*retention + 18*outgas) * geoActivity - 22*solWind, 0, 100);
 ```
+
+**Следствие**: ~50% rocky-планет имеют pressure < 10 (непригодны для жизни). Lava и gas_giant всегда активны. Ice — промежуточно.
 
 ### Азот N₂
 ```js
