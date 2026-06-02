@@ -2740,15 +2740,19 @@ function drawSystem(nowSec){
     const effType=effectivePlanetType(p.type,ct);
 
     if(effType===null){
-      // Уничтожена — обломочное облако на орбите
-      const pr=4;
-      sc.fillStyle='rgba(190,100,50,0.45)';
-      for(let i=0;i<6;i++){
-        const da=ang+i*Math.PI/3;
-        sc.beginPath(); sc.arc(px+Math.cos(da)*pr*2,py+Math.sin(da)*pr*2,lw*1.8,0,Math.PI*2); sc.fill();
-      }
-      sc.fillStyle='rgba(220,130,60,0.25)';
-      sc.beginPath(); sc.arc(px,py,pr*2.5,0,Math.PI*2); sc.fill();
+      // Bare core — stripped metallic remnant
+      const pr = p._params ? (3 + (p._params.coreMass/100)*4) : 4;
+      // heat glow
+      const hg = sc.createRadialGradient(px,py,0,px,py,pr*3.5);
+      hg.addColorStop(0,'rgba(255,140,40,0.35)'); hg.addColorStop(1,'rgba(255,80,0,0)');
+      sc.beginPath(); sc.arc(px,py,pr*3.5,0,Math.PI*2); sc.fillStyle=hg; sc.fill();
+      // metallic body
+      const cg = sc.createRadialGradient(px-pr*0.35,py-pr*0.35,pr*0.1,px,py,pr);
+      cg.addColorStop(0,'#d4c4a0'); cg.addColorStop(0.5,'#8c6830'); cg.addColorStop(1,'#3c2010');
+      sc.beginPath(); sc.arc(px,py,pr,0,Math.PI*2); sc.fillStyle=cg; sc.fill();
+      // faint debris ring
+      sc.strokeStyle='rgba(180,120,60,0.35)'; sc.lineWidth=lw*0.8;
+      sc.beginPath(); sc.arc(px,py,pr*2.2,0,Math.PI*2); sc.stroke();
       continue;
     }
 
@@ -3077,7 +3081,7 @@ function showPlanetInfo(planet){
 
   let typeLabel = planet.type.replace(/_/g,' ').toUpperCase();
   if(effType === null)
-    typeLabel += ' → DESTROYED';
+    typeLabel += ' → BARE CORE';
   else if(effType !== planet.type)
     typeLabel += ' → ' + effType.replace(/_/g,' ').toUpperCase();
 
@@ -3110,19 +3114,20 @@ function hidePlanetInfo(){
 // ── Planet Resource Panel ────────────────────────────────────────────────
 
 
+// bases index: [lava, rocky, ice, gas_giant, bare_core]
 const RES_DEFS = [
-  {cat:'BASE',   id:'silicates',  label:'SILICATES',      bases:[9500,9400,1500,    0], var:400, inf:true,  color:'#7788aa'},
-  {cat:'BASE',   id:'water_ice',  label:'WATER ICE',      bases:[   0,2800,9700,  500], var:600, inf:false, color:'#2277cc'},
-  {cat:'BASE',   id:'iron',       label:'IRON',           bases:[3000,2600, 300,    0], var:700, inf:false, color:'#aa6633'},
-  {cat:'METALS', id:'refract',    label:'REFRACTORIES',   bases:[1500,2300,  50,    0], var:500, inf:false, color:'#cc9944'},
-  {cat:'METALS', id:'rare_light', label:'RARE METALS',    bases:[1000,1800,  30,    0], var:400, inf:false, color:'#88ccaa'},
-  {cat:'METALS', id:'platinoids', label:'PLATINOIDS',     bases:[1100, 700,  20,    0], var:300, inf:false, color:'#ddcc66'},
-  {cat:'FUEL',   id:'hydrogen',   label:'HYDROGEN',       bases:[   0,3000,8000,10000], var:500, inf:true,  color:'#55aacc'},
-  {cat:'FUEL',   id:'deuterium',  label:'DEUTERIUM',      bases:[   0,1200,1800,  600], var:400, inf:false, color:'#3399bb'},
-  {cat:'FUEL',   id:'helium3',    label:'HELIUM-3',       bases:[   0, 200, 100, 1500], var:200, inf:false, color:'#99ccff'},
-  {cat:'GAS',    id:'noble_gas',  label:'NOBLE GASES',    bases:[ 200, 600,  50, 3000], var:300, inf:false, color:'#6688aa'},
-  {cat:'GAS',    id:'volc_gas',   label:'VOLCANIC GASES', bases:[4500, 900,1200,    0], var:600, inf:false, color:'#aa6655'},
-  {cat:'NUCLEAR',id:'radioact',   label:'RADIOACTIVES',   bases:[2800,1800, 120,    0], var:500, inf:false, color:'#88cc55'},
+  {cat:'BASE',   id:'silicates',  label:'SILICATES',      bases:[9500,9400,1500,    0,  600], var:400, inf:true,  color:'#7788aa'},
+  {cat:'BASE',   id:'water_ice',  label:'WATER ICE',      bases:[   0,2800,9700,  500,    0], var:600, inf:false, color:'#2277cc'},
+  {cat:'BASE',   id:'iron',       label:'IRON',           bases:[3000,2600, 300,    0, 8800], var:500, inf:false, color:'#aa6633'},
+  {cat:'METALS', id:'refract',    label:'REFRACTORIES',   bases:[1500,2300,  50,    0, 7200], var:400, inf:false, color:'#cc9944'},
+  {cat:'METALS', id:'rare_light', label:'RARE METALS',    bases:[1000,1800,  30,    0, 5500], var:350, inf:false, color:'#88ccaa'},
+  {cat:'METALS', id:'platinoids', label:'PLATINOIDS',     bases:[1100, 700,  20,    0, 6800], var:300, inf:false, color:'#ddcc66'},
+  {cat:'FUEL',   id:'hydrogen',   label:'HYDROGEN',       bases:[   0,3000,8000,10000,    0], var:500, inf:true,  color:'#55aacc'},
+  {cat:'FUEL',   id:'deuterium',  label:'DEUTERIUM',      bases:[   0,1200,1800,  600,    0], var:400, inf:false, color:'#3399bb'},
+  {cat:'FUEL',   id:'helium3',    label:'HELIUM-3',       bases:[   0, 200, 100, 1500,    0], var:200, inf:false, color:'#99ccff'},
+  {cat:'GAS',    id:'noble_gas',  label:'NOBLE GASES',    bases:[ 200, 600,  50, 3000,    0], var:300, inf:false, color:'#6688aa'},
+  {cat:'GAS',    id:'volc_gas',   label:'VOLCANIC GASES', bases:[4500, 900,1200,    0,    0], var:600, inf:false, color:'#aa6655'},
+  {cat:'NUCLEAR',id:'radioact',   label:'RADIOACTIVES',   bases:[2800,1800, 120,    0, 4800], var:400, inf:false, color:'#88cc55'},
 ];
 RES_DEFS.forEach((d, i) => d.idx = i);
 
@@ -3377,12 +3382,12 @@ function showPlanetResPanel(planet) {
   // MINERAL RESOURCES
   const CATS   = ['BASE','METALS','FUEL','GAS','NUCLEAR'];
   const CLABELS= {BASE:'BASE MATERIALS', METALS:'RARE METALS', FUEL:'FUEL & ISOTOPES', GAS:'GASES', NUCLEAR:'NUCLEAR'};
-  const TIDX   = {lava:0, rocky:1, ice:2, gas_giant:3};
+  const TIDX   = {lava:0, rocky:1, ice:2, gas_giant:3, bare_core:4};
+  const resEffType = effType ?? 'bare_core';
   for (const cat of CATS) {
     html += `<div class="prp-section">${CLABELS[cat]}</div>`;
     for (const d of RES_DEFS.filter(r => r.cat === cat)) {
-      if (!effType) { html += prpBar(d.label, 0, 10000, d.color); continue; }
-      let base = d.bases[TIDX[effType] ?? 1];
+      let base = d.bases[TIDX[resEffType] ?? 1];
       if (d.id === 'helium3' && (effType === 'rocky' || effType === 'lava') && atm.pressure < 20)
         base = Math.min(10000, base + Math.round((1 - orbitNorm) * 1500));
       const val = Math.max(0, Math.min(10000, base + Math.round((resRand(gc, orb, d.idx) - 0.5) * 2 * d.var)));
