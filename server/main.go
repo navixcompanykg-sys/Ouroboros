@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -498,6 +499,49 @@ func handleRegistryStream(w http.ResponseWriter, r *http.Request) {
 }
 
 // ============================================================
+// SCAN HANDLER
+// ============================================================
+
+func handleScan(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		return
+	}
+
+	var raw json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if err := os.MkdirAll("scans", 0755); err != nil {
+		http.Error(w, "cannot create scans dir", http.StatusInternalServerError)
+		return
+	}
+
+	var meta struct {
+		Tick int `json:"tick"`
+	}
+	json.Unmarshal(raw, &meta)
+
+	ts := time.Now().Format("20060102_150405")
+	fname := fmt.Sprintf("scan_%s_tick%04d.json", ts, meta.Tick)
+	fpath := filepath.Join("scans", fname)
+
+	pretty, _ := json.MarshalIndent(raw, "", "  ")
+	if err := os.WriteFile(fpath, pretty, 0644); err != nil {
+		http.Error(w, "cannot write scan file", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Galaxy scan saved: %s", fpath)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "file": fname})
+}
+
+// ============================================================
 // SYSTEM VIEW
 // ============================================================
 
@@ -757,6 +801,16 @@ func main() {
 	http.HandleFunc("/registry/stream", handleRegistryStream)
 	http.HandleFunc("/registry", func(w http.ResponseWriter, r *http.Request) {
 		handleRegistryGet(w, r)
+	})
+
+	// Galaxy scan
+	http.HandleFunc("/scan", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost, http.MethodOptions:
+			handleScan(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
 	})
 
 	// System view

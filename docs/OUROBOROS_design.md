@@ -70,6 +70,7 @@ server/
 | `POST` | `/registry/death` | Patch записи по `star_id`; автоматически обрезает мёртвые до **5000** |
 | `POST` | `/registry/reset` | Очищает реестр (`[]`) |
 | `GET` | `/system/{id}` | Данные планетарной системы (генерация + дельта из файла) |
+| `POST` | `/scan` | Принимает JSON-статистику от клиента, сохраняет в `scans/scan_YYYYMMDD_HHMMSS_tick{N}.json` |
 
 ---
 
@@ -2265,7 +2266,58 @@ function preloadAssets() {
 
 ---
 
-## 43. КОНТРОЛЬНЫЙ СПИСОК РЕАЛИЗАЦИИ
+## 43. ГАЛАКТИЧЕСКИЙ СКАНЕР (⊞ SCAN)
+
+### Назначение
+Инструмент разработки и отладки. Собирает статистику по всем звёздам и планетам галактики за один проход на клиенте, отправляет на сервер, сохраняет в файл.
+
+### Кнопка
+`<button id="btn-scan" onclick="scanGalaxy()">⊞ SCAN</button>` — в шапке симуляции. Блокируется на время работы, восстанавливается в `finally`.
+
+### Клиентский процесс (`scanGalaxy()`)
+1. Итерирует все звёзды (`objects.filter(isStar)`)
+2. Для каждой звезды вызывает `buildScanSystemData(star)` → список планет
+3. Для каждой планеты вычисляет: `computePlanetParams`, `computeAtmosphere`, `computeSurfTemp`, `computeSurfaceRad`, `computeLifeBirthAge`, `lifeAlive`
+4. Накапливает `summary` (агрегаты без детальных данных по планетам)
+5. POST `/scan` → файл
+
+### Структура `summary`
+```json
+{
+  "stars_total": 1965,
+  "stars_by_type": { "red_dwarf": 1602, ... },
+  "planets_total": 9426,
+  "planets_by_type": { "lava": 3040, "rocky": 2411, ... },
+  "planets_eff_type": { "lava": 2506, "rocky": 2394, ... },
+  "planets_with_life": 4423,
+  "planets_life_alive": 4405,
+  "planets_life_extinct": 18,
+  "planets_in_hab_zone": 4412,
+  "water_dist": { "0-9": 3037, "30-39": 1945, ... },
+  "pressure_dist": { "0-9": 552, "70-100": 4312, ... },
+  "life_miss_reasons": {
+    "bad_type": 4869,
+    "low_water": 0,
+    "bad_pressure": 0,
+    "bad_temp": 112,
+    "radiation": 0,
+    "no_zone": 22
+  }
+}
+```
+
+### Серверная часть (`handleScan`, `POST /scan`)
+- Принимает JSON, парсит поле `tick` для имени файла
+- Создаёт директорию `scans/` если нет
+- Сохраняет: `scans/scan_YYYYMMDD_HHMMSS_tick{NNNN}.json`
+- Старые файлы не удаляются — каждый скан новый файл
+
+### Производительность
+`computeRAD(star)` вызывается **один раз на звезду** (не на планету), результат кешируется в `starRad` на время итерации планет.
+
+---
+
+## 44. КОНТРОЛЬНЫЙ СПИСОК РЕАЛИЗАЦИИ
 
 ### Этап 1 — MVP визуализации ✅
 
@@ -2305,7 +2357,17 @@ function preloadAssets() {
 
 ### Этап 3 — Ресурсы и экономика
 
-- [ ] `baseResources(planetType, genCode)` — ресурсы по типу и коду
+- [x] Панель ресурсов планеты (клик по планете в system view) — атмосфера, жизнь, минералы, биогенные
+- [x] `computeAtmosphere()` — давление, N₂ (детерминированно)
+- [x] `computeSurfTemp()` — поверхностная температура (звезда × орбита × парник)
+- [x] `computeSurfaceRad()` — поверхностная радиация с экранированием атмосферы
+- [x] `computeLifeBirthAge()` — рождение жизни (streak 3 тика, условия по surfTemp/pressure/water)
+- [x] Наследование жизни на white dwarf — симуляция фазы предшественника, дормантное состояние
+- [x] `computeLifeActivity()` — активность жизни 0–1, множитель биогенных ресурсов
+- [x] Биогенные ресурсы (BIOMASS, PHOSPHATES, CARBONATES, BITUMENS) — логарифмический рост × activity
+- [x] Ископаемые ресурсы при вымершей жизни — полный накопленный объём без множителя
+- [x] Кнопка **⊞ SCAN** — галактический сканер, сохраняет статистику в `scans/`
+- [ ] `baseResources(planetType, genCode)` — минеральные ресурсы как API (сейчас только UI)
 - [ ] Производство построек и потребление ресурсов
 - [ ] Механика добычи, очереди
 
