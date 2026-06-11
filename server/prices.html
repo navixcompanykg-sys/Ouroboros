@@ -84,15 +84,15 @@ input.unconfirmed{border-color:rgba(255,204,68,.4);}
   <div id="nav">
     <div style="padding:14px 14px 8px;font-size:9px;letter-spacing:3px;color:var(--accent);text-transform:uppercase;">OUROBOROS</div>
     <div class="nav-section">Справочник</div>
-    <div class="nav-link" onclick="scrollTo('sec-res')">Сырьё</div>
-    <div class="nav-link" onclick="scrollTo('sec-comp')">Компоненты</div>
-    <div class="nav-link" onclick="scrollTo('sec-misc')">Прочее</div>
+    <div class="nav-link" onclick="navTo('sec-res')">Сырьё</div>
+    <div class="nav-link" onclick="navTo('sec-comp')">Компоненты</div>
+    <div class="nav-link" onclick="navTo('sec-misc')">Прочее</div>
     <div class="nav-section">Постройки</div>
-    <div class="nav-link" onclick="scrollTo('sec-build')">Здания</div>
+    <div class="nav-link" onclick="navTo('sec-build')">Здания</div>
     <div class="nav-section">Корабли</div>
-    <div class="nav-link" onclick="scrollTo('sec-hull')">Каркасы (на 1 у.е.)</div>
-    <div class="nav-link" onclick="scrollTo('sec-mod')">Модули</div>
-    <div class="nav-link" onclick="scrollTo('sec-weap')">Вооружение</div>
+    <div class="nav-link" onclick="navTo('sec-hull')">Каркасы (на 1 у.е.)</div>
+    <div class="nav-link" onclick="navTo('sec-mod')">Модули</div>
+    <div class="nav-link" onclick="navTo('sec-weap')">Вооружение</div>
     <div style="margin-top:20px;padding:0 14px;">
       <a href="/" style="font-size:10px;color:var(--muted);">← Галактика</a>
     </div>
@@ -342,8 +342,10 @@ function setStatus(msg, cls) {
   el.className = cls;
 }
 
-function scrollTo(id) {
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+function navTo(id) {
+  const el   = document.getElementById(id);
+  const main = document.getElementById('main');
+  if (el && main) main.scrollTop = el.offsetTop - 16;
 }
 
 // ── INIT ────────────────────────────────────────────────
