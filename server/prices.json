@@ -1,0 +1,186 @@
+{
+  "resources": {
+    "silicates":   { "name": "Силикаты",              "mass": 8,  "price": 1,  "confirmed": true },
+    "water_ice":   { "name": "Водяной лёд",           "mass": 5,  "price": 1,  "confirmed": false },
+    "iron":        { "name": "Железо",                "mass": 12, "price": 3,  "confirmed": true },
+    "refract":     { "name": "Тугоплавкие металлы",   "mass": 10, "price": 5,  "confirmed": false },
+    "rare_light":  { "name": "Редкоземельные металлы","mass": 14, "price": 7,  "confirmed": true },
+    "platinoids":  { "name": "Платиноиды",            "mass": 16, "price": 9,  "confirmed": true },
+    "hydrogen":    { "name": "Водород",               "mass": 2,  "price": 1,  "confirmed": true },
+    "deuterium":   { "name": "Дейтерий",              "mass": 3,  "price": 8,  "confirmed": false },
+    "helium3":     { "name": "Гелий-3",               "mass": 1,  "price": 12, "confirmed": false },
+    "noble_gas":   { "name": "Благородные газы",      "mass": 3,  "price": 3,  "confirmed": false },
+    "volc_gas":    { "name": "Вулканические газы",    "mass": 4,  "price": 2,  "confirmed": false },
+    "radioact":    { "name": "Радиоактивные элементы","mass": 18, "price": 15, "confirmed": false },
+    "biomass":     { "name": "Дикая биомасса",        "mass": 5,  "price": 3,  "confirmed": false },
+    "phosphates":  { "name": "Фосфаты",               "mass": 8,  "price": 4,  "confirmed": false },
+    "carbonates":  { "name": "Карбонаты",             "mass": 6,  "price": 3,  "confirmed": true },
+    "bitumens":    { "name": "Битумы",                "mass": 7,  "price": 2,  "confirmed": true }
+  },
+  "components": {
+    "chem_reagents": { "name": "Химические реагенты",        "mass": 5,  "price": 70,   "level": 1, "effort": 1,
+      "recipe": { "volc_gas": 6, "noble_gas": 3, "water_ice": 2 } },
+    "biosynth":      { "name": "Биосинтетика",               "mass": 4,  "price": 120,  "level": 1, "effort": 2,
+      "recipe": { "biomass": 8, "water_ice": 5, "phosphates": 4, "carbonates": 3 } },
+    "chem_fuel":     { "name": "Химическое топливо",         "mass": 6,  "price": 45,   "level": 1, "effort": 2,
+      "recipe": { "hydrogen": 7, "water_ice": 4, "chem_reagents": 2 } },
+    "polymers":      { "name": "Полимеры",                   "mass": 4,  "price": 150,  "level": 1, "effort": 3,
+      "recipe": { "bitumens": 6, "volc_gas": 3, "chem_reagents": 2 } },
+    "metal_struct":  { "name": "Металлоконструкции",         "mass": 15, "price": 50,   "level": 1, "effort": 3,
+      "recipe": { "iron": 8, "silicates": 4 } },
+    "cable":         { "name": "Кабельная продукция",        "mass": 8,  "price": 250,  "level": 2, "effort": 4,
+      "recipe": { "rare_light": 5, "polymers": 4, "iron": 3 } },
+    "power_el":      { "name": "Элементы электропитания",    "mass": 7,  "price": 300,  "level": 2, "effort": 5,
+      "recipe": { "rare_light": 4, "chem_reagents": 3, "platinoids": 3, "radioact": 2 } },
+    "hq_alloys":     { "name": "Высококачественные сплавы",  "mass": 16, "price": 380,  "level": 2, "effort": 6,
+      "recipe": { "refract": 6, "rare_light": 4, "platinoids": 3, "metal_struct": 3 } },
+    "weapons_ammo":  { "name": "Оружие и боеприпасы",        "mass": 13, "price": 600,  "level": 3, "effort": 7,
+      "recipe": { "metal_struct": 5, "hq_alloys": 4, "chem_reagents": 4, "radioact": 3 } },
+    "ind_equip":     { "name": "Промышленное оборудование",  "mass": 20, "price": 200,  "level": 3, "effort": 8,
+      "recipe": { "metal_struct": 5, "refract": 4, "iron": 3 } },
+    "electronics":   { "name": "Электроника",                "mass": 3,  "price": 800,  "level": 3, "effort": 9,
+      "recipe": { "rare_light": 5, "hq_alloys": 4, "platinoids": 4, "cable": 3, "noble_gas": 3 } },
+    "nuclear_comp":  { "name": "Ядерные компоненты",         "mass": 18, "price": 1400, "level": 4, "effort": 10,
+      "recipe": { "hq_alloys": 5, "radioact": 5, "electronics": 4, "deuterium": 4, "helium3": 3 } }
+  },
+  "buildings": {
+    "housing": {
+      "name": "Жилые кварталы", "formula": "fixed_1to1",
+      "recipe":      { "metal_struct": 8, "polymers": 4, "cable": 4, "power_el": 2, "ind_equip": 1 },
+      "maintenance": { "metal_struct": 1, "polymers": 1, "chem_reagents": 1 }
+    },
+    "domes": {
+      "name": "Защитные купола", "formula": "fixed_1to1",
+      "recipe":      { "metal_struct": 6, "hq_alloys": 6, "electronics": 4, "power_el": 4, "cable": 4, "ind_equip": 2 },
+      "maintenance": { "hq_alloys": 1, "power_el": 1, "chem_reagents": 1, "cable": 1 }
+    },
+    "food_factory": {
+      "name": "Пищевое производство", "formula": "fixed_1to1",
+      "recipe":      { "ind_equip": 5, "metal_struct": 6, "hq_alloys": 3, "electronics": 3, "cable": 3, "chem_reagents": 2 },
+      "maintenance": { "chem_reagents": 2, "electronics": 1, "polymers": 1, "metal_struct": 1 }
+    },
+    "plantation": {
+      "name": "Плантации", "formula": "base_x_n_x_1.5",
+      "recipe":      { "metal_struct": 5, "ind_equip": 3, "biosynth": 4, "chem_reagents": 3 },
+      "maintenance": { "biosynth": 2, "chem_reagents": 1, "metal_struct": 1 }
+    },
+    "mine": {
+      "name": "Горнодобывающий комплекс", "formula": "base_x_n_x_1.5",
+      "recipe":      { "metal_struct": 6, "ind_equip": 3, "hq_alloys": 2, "electronics": 1 },
+      "maintenance": {}
+    },
+    "drill": {
+      "name": "Буровая установка", "formula": "base_x_n_x_1.5",
+      "recipe":      { "metal_struct": 5, "ind_equip": 3, "chem_reagents": 3, "cable": 2, "electronics": 1 },
+      "maintenance": {}
+    },
+    "atmo_proc": {
+      "name": "Атмосферный процессор", "formula": "base_x_n_x_1.5",
+      "recipe":      { "metal_struct": 4, "ind_equip": 2, "hq_alloys": 2, "cable": 3, "electronics": 2 },
+      "maintenance": {}
+    },
+    "bio_extract": {
+      "name": "Биоэкстрактор", "formula": "base_x_n_x_1.5",
+      "recipe":      { "metal_struct": 3, "ind_equip": 2, "chem_reagents": 3, "biosynth": 3, "cable": 1, "electronics": 1 },
+      "maintenance": {}
+    },
+    "chem_plant": {
+      "name": "Химический завод", "formula": "base_x_n_x_1.5",
+      "recipe":      { "metal_struct": 5, "ind_equip": 2, "chem_reagents": 5, "cable": 2, "electronics": 1, "polymers": 2 },
+      "maintenance": {}
+    },
+    "metal_plant": {
+      "name": "Металлургический комплекс", "formula": "base_x_n_x_1.5",
+      "recipe":      { "metal_struct": 8, "ind_equip": 4, "hq_alloys": 3, "cable": 2, "electronics": 1 },
+      "maintenance": {}
+    },
+    "hitech_plant": {
+      "name": "Высокотехнологичный завод", "formula": "base_x_n_x_1.5",
+      "recipe":      { "metal_struct": 4, "ind_equip": 3, "hq_alloys": 5, "cable": 4, "electronics": 4 },
+      "maintenance": {}
+    },
+    "heavy_plant": {
+      "name": "Тяжёлый завод", "formula": "base_x_n_x_1.5",
+      "recipe":      { "metal_struct": 6, "ind_equip": 5, "hq_alloys": 4, "cable": 3, "electronics": 2 },
+      "maintenance": {}
+    },
+    "hydro_station": {
+      "name": "Водородная станция", "formula": "base_x_n_x_1.5",
+      "recipe":      { "silicates": 18, "carbonates": 8, "bitumens": 3, "iron": 9, "metal_struct": 6, "cable": 3 },
+      "maintenance": { "hydrogen": 10 }
+    },
+    "atomic_station": {
+      "name": "Атомная станция", "formula": "base_x_n_x_1.5",
+      "recipe":      { "silicates": 30, "carbonates": 12, "bitumens": 6, "iron": 12, "metal_struct": 15, "hq_alloys": 9, "cable": 8, "electronics": 5, "nuclear_comp": 10, "power_el": 5 },
+      "maintenance": { "power_el": 1, "hq_alloys": 1 }
+    },
+    "hydro_power": {
+      "name": "Гидростанция", "formula": "base_x_n_x_1.5",
+      "recipe":      { "silicates": 120, "carbonates": 45, "bitumens": 18, "iron": 53, "metal_struct": 27, "ind_equip": 6 },
+      "maintenance": { "metal_struct": 1 }
+    },
+    "solar_station": {
+      "name": "Зелёная энергетика", "formula": "base_x_n_x_1.5",
+      "recipe":      { "silicates": 15, "carbonates": 6, "bitumens": 3, "metal_struct": 6, "hq_alloys": 5, "rare_light": 8, "platinoids": 10, "cable": 12 },
+      "maintenance": { "rare_light": 1, "chem_reagents": 1 }
+    },
+    "batteries": {
+      "name": "Планетарные батареи", "formula": "base_x_n_x_1.5",
+      "recipe":      { "silicates": 25, "carbonates": 10, "bitumens": 5, "metal_struct": 10, "hq_alloys": 8, "weapons_ammo": 6, "electronics": 4, "cable": 4, "power_el": 3 },
+      "maintenance": { "weapons_ammo": 1, "chem_reagents": 1 }
+    },
+    "shipyard": {
+      "name": "Верфь", "formula": "base_x_n_x_1.5",
+      "recipe":      { "silicates": 35, "carbonates": 14, "bitumens": 7, "iron": 10, "metal_struct": 15, "hq_alloys": 8, "ind_equip": 6, "cable": 5, "electronics": 3, "power_el": 3 },
+      "maintenance": { "ind_equip": 1, "metal_struct": 1 }
+    },
+    "cryptofarm": {
+      "name": "Криптоферма", "formula": "base_x_n_x_1.5",
+      "recipe":      { "silicates": 10, "carbonates": 4, "bitumens": 2, "metal_struct": 5, "electronics": 6, "cable": 5, "power_el": 4, "rare_light": 5 },
+      "maintenance": { "electronics": 1, "chem_reagents": 1 }
+    },
+    "warehouse": {
+      "name": "Склад", "formula": "base_x_n_x_1.5",
+      "recipe":      { "silicates": 40, "carbonates": 15, "bitumens": 10, "iron": 20, "metal_struct": 12, "ind_equip": 4 },
+      "maintenance": { "metal_struct": 1 }
+    }
+  },
+  "ship_hull_per_ue": {
+    "iron": 10, "carbonates": 5, "bitumens": 3, "metal_struct": 2, "hq_alloys": 1
+  },
+  "modules": {
+    "engine":              { "name": "Двигатель",               "recipe": { "hq_alloys": 2, "ind_equip": 2, "cable": 1, "power_el": 1 } },
+    "shield":              { "name": "Силовой щит",             "recipe": { "electronics": 2, "power_el": 2, "cable": 2, "platinoids": 10 } },
+    "thick_hull":          { "name": "Утолщённый корпус",       "recipe": { "hq_alloys": 3, "metal_struct": 5, "iron": 20 } },
+    "life_support":        { "name": "Система жизнеобеспечения","recipe": { "electronics": 1, "biosynth": 3, "polymers": 2, "chem_reagents": 3, "cable": 1, "power_el": 2 } },
+    "battery_mod":         { "name": "Аккумуляторная",          "recipe": { "platinoids": 20, "power_el": 4, "cable": 2, "rare_light": 10 } },
+    "solar_panels":        { "name": "Солнечные панели",        "recipe": { "platinoids": 15, "cable": 4, "power_el": 2, "rare_light": 10 } },
+    "cargo_hold":          { "name": "Грузовой отсек",          "recipe": { "metal_struct": 5, "iron": 20, "carbonates": 10, "bitumens": 5, "polymers": 1 } },
+    "colony_module":       { "name": "Колониальный модуль",     "recipe": { "electronics": 1, "biosynth": 4, "polymers": 3, "metal_struct": 5, "chem_reagents": 5, "cable": 2 } },
+    "mining_equip":        { "name": "Шахтное оборудование",    "recipe": { "ind_equip": 5, "hq_alloys": 2, "metal_struct": 5, "chem_reagents": 3 } },
+    "hangar":              { "name": "Ангар",                   "recipe": { "metal_struct": 10, "hq_alloys": 3, "ind_equip": 4, "electronics": 1, "cable": 2 } },
+    "teleport":            { "name": "Телепорт-модуль",         "recipe": { "electronics": 5, "nuclear_comp": 2, "rare_light": 20, "platinoids": 15, "power_el": 5, "cable": 3 } },
+    "weapon_slot":         { "name": "Место под орудия",        "recipe": { "metal_struct": 8, "hq_alloys": 1 } },
+    "construction_mod":    { "name": "Строительный модуль",     "recipe": { "ind_equip": 6, "hq_alloys": 2, "metal_struct": 8, "electronics": 1 } },
+    "hyperdrive":          { "name": "Гиперсветовой модуль",    "recipe": { "nuclear_comp": 2, "hq_alloys": 3, "electronics": 2, "cable": 2, "power_el": 2 } },
+    "atomic_reactor":      { "name": "Атомный реактор",         "recipe": { "nuclear_comp": 3, "hq_alloys": 2, "metal_struct": 5, "cable": 2, "power_el": 2 } },
+    "production_mod":      { "name": "Производственный модуль", "recipe": { "ind_equip": 4, "hq_alloys": 2, "electronics": 1, "metal_struct": 5, "chem_reagents": 3 } },
+    "radar":               { "name": "Радар",                   "recipe": { "electronics": 2, "cable": 2, "rare_light": 10 } },
+    "zeus_lightning":      { "name": "Молнии Зевса",            "recipe": { "weapons_ammo": 5, "electronics": 1, "power_el": 2 } },
+    "computing_block":     { "name": "Вычислительный блок",     "recipe": { "electronics": 3, "cable": 1, "rare_light": 10 } },
+    "docking_bay":         { "name": "Стыковочный dok",         "recipe": { "metal_struct": 8, "hq_alloys": 1, "ind_equip": 2, "cable": 2 } }
+  },
+  "weapons": {
+    "bomb":        { "name": "Бомбовое",        "recipe": { "weapons_ammo": 1 } },
+    "plasma":      { "name": "Плазменное",      "recipe": { "weapons_ammo": 1, "power_el": 2, "cable": 1 } },
+    "kinetic":     { "name": "Кинетическое",    "recipe": { "weapons_ammo": 3 } },
+    "laser":       { "name": "Лазерное",        "recipe": { "weapons_ammo": 1, "electronics": 2, "power_el": 2 } },
+    "rocket":      { "name": "Ракетное",        "recipe": { "weapons_ammo": 4, "electronics": 1 } },
+    "fighters":    { "name": "Истребители",     "recipe": { "weapons_ammo": 4, "electronics": 1, "cable": 2 } },
+    "bombers":     { "name": "Бомбардировщики", "recipe": { "weapons_ammo": 5, "electronics": 1, "cable": 2 } }
+  },
+  "misc": {
+    "food":        { "name": "Пища",        "mass": 3, "price": 5,  "confirmed": false },
+    "cryptotoken": { "name": "Криптотокен", "mass": 0, "price": 1,  "confirmed": true }
+  }
+}

@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>OUROBOROS — Цены и составы</title>
+<style>
+:root {
+  --bg:#0a0d12; --panel:#111620; --border:#1e2a3a; --border2:#2a3a4a;
+  --accent:#00c896; --blue:#4488ff; --gold:#ffcc44; --red:#ff6644; --purple:#bb88ff;
+  --text:#c8d8e8; --muted:#5a7080; --mono:'Courier New',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12px;}
+a{color:var(--accent);text-decoration:none;}
+/* layout */
+#wrap{display:flex;height:100vh;}
+#nav{width:200px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:12px 0;}
+#main{flex:1;overflow-y:auto;padding:24px 28px;}
+/* nav */
+.nav-section{padding:4px 14px 2px;font-size:9px;letter-spacing:3px;color:var(--muted);text-transform:uppercase;margin-top:12px;}
+.nav-link{display:block;padding:5px 14px;color:var(--text);opacity:.7;cursor:pointer;transition:all .15s;font-size:11px;}
+.nav-link:hover,.nav-link.active{opacity:1;color:var(--accent);background:rgba(0,200,150,.06);}
+/* header */
+h1{font-size:10px;letter-spacing:4px;color:var(--accent);text-transform:uppercase;margin-bottom:2px;}
+.subtitle{color:var(--muted);font-size:11px;margin-bottom:24px;}
+/* section */
+.section{margin-bottom:40px;}
+.sec-title{font-size:9px;letter-spacing:3px;color:var(--blue);text-transform:uppercase;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+/* tables */
+table{width:100%;border-collapse:collapse;margin-bottom:16px;}
+th{text-align:left;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:5px 8px;border-bottom:1px solid var(--border);}
+td{padding:4px 8px;border-bottom:1px solid rgba(30,42,58,.5);vertical-align:top;}
+tr:hover td{background:rgba(0,200,150,.03);}
+/* inputs */
+input[type=number],input[type=text]{
+  background:rgba(255,255,255,.04);border:1px solid var(--border2);
+  color:var(--text);font-family:var(--mono);font-size:12px;
+  padding:3px 6px;border-radius:2px;width:100%;
+  transition:border-color .15s;
+}
+input[type=number]{text-align:right;width:72px;}
+input:focus{outline:none;border-color:var(--accent);}
+input.unconfirmed{border-color:rgba(255,204,68,.4);}
+/* recipe */
+.recipe-wrap{display:flex;flex-direction:column;gap:3px;}
+.recipe-row{display:flex;align-items:center;gap:6px;}
+.recipe-row select{
+  background:rgba(255,255,255,.04);border:1px solid var(--border2);
+  color:var(--text);font-family:var(--mono);font-size:11px;
+  padding:2px 4px;border-radius:2px;flex:1;min-width:0;
+}
+.recipe-row select:focus{outline:none;border-color:var(--accent);}
+.recipe-row input[type=number]{width:56px;flex-shrink:0;}
+.btn-del{background:none;border:none;color:var(--red);cursor:pointer;font-size:14px;line-height:1;padding:0 3px;opacity:.6;}
+.btn-del:hover{opacity:1;}
+.btn-add{background:rgba(0,200,150,.08);border:1px solid rgba(0,200,150,.2);color:var(--accent);
+  cursor:pointer;font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:2px;margin-top:3px;}
+.btn-add:hover{background:rgba(0,200,150,.15);}
+/* badges */
+.tag{display:inline-block;padding:1px 5px;border-radius:2px;font-size:9px;letter-spacing:1px;text-transform:uppercase;}
+.tag-raw{background:rgba(68,136,255,.1);color:var(--blue);border:1px solid rgba(68,136,255,.2);}
+.tag-comp{background:rgba(0,200,150,.1);color:var(--accent);border:1px solid rgba(0,200,150,.2);}
+.tag-fixed{background:rgba(187,136,255,.1);color:var(--purple);border:1px solid rgba(187,136,255,.2);}
+.tag-linear{background:rgba(255,204,68,.1);color:var(--gold);border:1px solid rgba(255,204,68,.2);}
+.unconf-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--gold);margin-left:4px;vertical-align:middle;}
+/* save bar */
+#savebar{position:fixed;bottom:0;left:200px;right:0;background:rgba(10,13,18,.95);
+  border-top:1px solid var(--border);padding:10px 28px;display:flex;align-items:center;gap:16px;z-index:100;}
+#btn-save{background:var(--accent);color:#000;border:none;font-family:var(--mono);font-size:11px;
+  letter-spacing:2px;padding:8px 24px;border-radius:3px;cursor:pointer;font-weight:bold;}
+#btn-save:hover{background:#00e8b0;}
+#save-status{font-size:11px;color:var(--muted);}
+#save-status.ok{color:var(--accent);}
+#save-status.err{color:var(--red);}
+#main{padding-bottom:60px;}
+/* price display */
+.price-val{color:var(--gold);}
+.mass-val{color:var(--blue);}
+.col-name{min-width:180px;}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="nav">
+    <div style="padding:14px 14px 8px;font-size:9px;letter-spacing:3px;color:var(--accent);text-transform:uppercase;">OUROBOROS</div>
+    <div class="nav-section">Справочник</div>
+    <div class="nav-link" onclick="scrollTo('sec-res')">Сырьё</div>
+    <div class="nav-link" onclick="scrollTo('sec-comp')">Компоненты</div>
+    <div class="nav-link" onclick="scrollTo('sec-misc')">Прочее</div>
+    <div class="nav-section">Постройки</div>
+    <div class="nav-link" onclick="scrollTo('sec-build')">Здания</div>
+    <div class="nav-section">Корабли</div>
+    <div class="nav-link" onclick="scrollTo('sec-hull')">Каркасы (на 1 у.е.)</div>
+    <div class="nav-link" onclick="scrollTo('sec-mod')">Модули</div>
+    <div class="nav-link" onclick="scrollTo('sec-weap')">Вооружение</div>
+    <div style="margin-top:20px;padding:0 14px;">
+      <a href="/" style="font-size:10px;color:var(--muted);">← Галактика</a>
+    </div>
+  </div>
+
+  <div id="main">
+    <h1>OUROBOROS</h1>
+    <div class="subtitle">Цены, масса и состав — полный редактор &nbsp;<span style="color:var(--gold);font-size:10px;">● жёлтый = не подтверждено</span></div>
+    <div id="content"></div>
+  </div>
+</div>
+
+<div id="savebar">
+  <button id="btn-save" onclick="saveData()">💾 СОХРАНИТЬ</button>
+  <span id="save-status">Загрузка…</span>
+</div>
+
+<script>
+let DATA = {};
+
+// All ingredient options for recipe selects
+function allIngredients() {
+  const opts = [];
+  if (!DATA.resources) return opts;
+  for (const [id, r] of Object.entries(DATA.resources))
+    opts.push({ id, name: r.name, group: 'Сырьё' });
+  for (const [id, c] of Object.entries(DATA.components))
+    opts.push({ id, name: c.name, group: 'Компонент' });
+  return opts;
+}
+
+function makeSelect(selected) {
+  const ingredients = allIngredients();
+  let html = '<select>';
+  let lastGroup = '';
+  for (const ing of ingredients) {
+    if (ing.group !== lastGroup) {
+      if (lastGroup) html += '</optgroup>';
+      html += `<optgroup label="${ing.group}">`;
+      lastGroup = ing.group;
+    }
+    html += `<option value="${ing.id}"${ing.id === selected ? ' selected' : ''}>${ing.name}</option>`;
+  }
+  if (lastGroup) html += '</optgroup>';
+  html += '</select>';
+  return html;
+}
+
+function recipeEditor(recipe, prefix) {
+  let html = `<div class="recipe-wrap" id="${prefix}">`;
+  for (const [ing, qty] of Object.entries(recipe || {})) {
+    html += recipeRow(ing, qty);
+  }
+  html += `</div><button class="btn-add" onclick="addIngredient('${prefix}')">+ ингредиент</button>`;
+  return html;
+}
+
+function recipeRow(ing, qty) {
+  return `<div class="recipe-row">${makeSelect(ing)}<input type="number" value="${qty}" min="0" style="width:56px"><button class="btn-del" onclick="this.parentElement.remove()">×</button></div>`;
+}
+
+function addIngredient(prefix) {
+  const wrap = document.getElementById(prefix);
+  const div = document.createElement('div');
+  div.innerHTML = recipeRow('silicates', 1);
+  wrap.appendChild(div.firstChild);
+}
+
+function getRecipe(prefix) {
+  const wrap = document.getElementById(prefix);
+  if (!wrap) return {};
+  const recipe = {};
+  for (const row of wrap.querySelectorAll('.recipe-row')) {
+    const sel = row.querySelector('select');
+    const inp = row.querySelector('input[type=number]');
+    if (sel && inp && inp.value > 0) recipe[sel.value] = parseInt(inp.value);
+  }
+  return recipe;
+}
+
+// ── RENDER ──────────────────────────────────────────────
+
+function render() {
+  let html = '';
+
+  // ── Сырьё ──
+  html += `<div class="section" id="sec-res"><div class="sec-title">Сырьё (16 видов)</div>`;
+  html += `<table><tr><th class="col-name">Название</th><th>ID</th><th>Масса (у.м.)</th><th>Цена (у.ц.)</th><th>Подтв.</th></tr>`;
+  for (const [id, r] of Object.entries(DATA.resources)) {
+    const unc = !r.confirmed ? ' unconfirmed' : '';
+    html += `<tr>
+      <td>${r.name}${!r.confirmed ? '<span class="unconf-dot"></span>' : ''}</td>
+      <td><span class="tag tag-raw">${id}</span></td>
+      <td><input type="number" class="res-mass${unc}" data-id="${id}" data-field="mass" value="${r.mass}" min="0"></td>
+      <td><input type="number" class="res-price price-val${unc}" data-id="${id}" data-field="price" value="${r.price}" min="0"></td>
+      <td><input type="checkbox" data-id="${id}" data-field="confirmed" ${r.confirmed ? 'checked' : ''} onchange="DATA.resources['${id}'].confirmed=this.checked"></td>
+    </tr>`;
+  }
+  html += `</table></div>`;
+
+  // ── Компоненты ──
+  html += `<div class="section" id="sec-comp"><div class="sec-title">Компоненты (12 видов)</div>`;
+  html += `<table><tr><th class="col-name">Название</th><th>ID</th><th>Лвл</th><th>Затр.</th><th>Масса</th><th>Цена</th><th>Состав (рецепт)</th></tr>`;
+  for (const [id, c] of Object.entries(DATA.components)) {
+    const prefix = 'recipe_comp_' + id;
+    html += `<tr>
+      <td>${c.name}</td>
+      <td><span class="tag tag-comp">${id}</span></td>
+      <td><input type="number" data-section="components" data-id="${id}" data-field="level" value="${c.level}" min="1" max="4"></td>
+      <td><input type="number" data-section="components" data-id="${id}" data-field="effort" value="${c.effort}" min="1" max="10"></td>
+      <td><input type="number" data-section="components" data-id="${id}" data-field="mass" value="${c.mass}" min="0"></td>
+      <td><input type="number" data-section="components" data-id="${id}" data-field="price" value="${c.price}" min="0"></td>
+      <td>${recipeEditor(c.recipe, prefix)}</td>
+    </tr>`;
+  }
+  html += `</table></div>`;
+
+  // ── Прочее ──
+  html += `<div class="section" id="sec-misc"><div class="sec-title">Прочее</div>`;
+  html += `<table><tr><th class="col-name">Название</th><th>ID</th><th>Масса</th><th>Цена</th><th>Подтв.</th></tr>`;
+  for (const [id, m] of Object.entries(DATA.misc)) {
+    const unc = !m.confirmed ? ' unconfirmed' : '';
+    html += `<tr>
+      <td>${m.name}${!m.confirmed ? '<span class="unconf-dot"></span>' : ''}</td>
+      <td><span class="tag tag-raw">${id}</span></td>
+      <td><input type="number" class="${unc}" data-section="misc" data-id="${id}" data-field="mass" value="${m.mass}" min="0"></td>
+      <td><input type="number" class="${unc}" data-section="misc" data-id="${id}" data-field="price" value="${m.price}" min="0"></td>
+      <td><input type="checkbox" data-section="misc" data-id="${id}" data-field="confirmed" ${m.confirmed ? 'checked' : ''} onchange="DATA.misc['${id}'].confirmed=this.checked"></td>
+    </tr>`;
+  }
+  html += `</table></div>`;
+
+  // ── Здания ──
+  html += `<div class="section" id="sec-build"><div class="sec-title">Здания (20 построек)</div>`;
+  html += `<table><tr><th class="col-name">Название</th><th>Формула</th><th>Рецепт постройки</th><th>Содержание/тик/ур.</th></tr>`;
+  for (const [id, b] of Object.entries(DATA.buildings)) {
+    const pr = 'recipe_build_' + id;
+    const pm = 'maint_build_' + id;
+    const fTag = b.formula === 'fixed_1to1'
+      ? `<span class="tag tag-fixed">1:1</span>`
+      : `<span class="tag tag-linear">Base×N×1.5</span>`;
+    html += `<tr>
+      <td>${b.name}</td>
+      <td>${fTag}</td>
+      <td>${recipeEditor(b.recipe, pr)}</td>
+      <td>${recipeEditor(b.maintenance, pm)}</td>
+    </tr>`;
+  }
+  html += `</table></div>`;
+
+  // ── Каркас корабля ──
+  html += `<div class="section" id="sec-hull"><div class="sec-title">Каркас корабля (компоненты на 1 у.е. размерности)</div>`;
+  html += `<p style="color:var(--muted);font-size:11px;margin-bottom:10px;">Стоимость = сумма компонентов × количество у.е. класса корабля</p>`;
+  html += `<div>${recipeEditor(DATA.ship_hull_per_ue, 'recipe_hull')}</div>`;
+  html += `</div>`;
+
+  // ── Модули ──
+  html += `<div class="section" id="sec-mod"><div class="sec-title">Корабельные модули (20 штук)</div>`;
+  html += `<table><tr><th class="col-name">Модуль</th><th>ID</th><th>Рецепт</th></tr>`;
+  for (const [id, m] of Object.entries(DATA.modules)) {
+    const prefix = 'recipe_mod_' + id;
+    html += `<tr>
+      <td>${m.name}</td>
+      <td><span class="tag tag-comp">${id}</span></td>
+      <td>${recipeEditor(m.recipe, prefix)}</td>
+    </tr>`;
+  }
+  html += `</table></div>`;
+
+  // ── Вооружение ──
+  html += `<div class="section" id="sec-weap"><div class="sec-title">Вооружение (устанавливается в слот «Место под орудия»)</div>`;
+  html += `<p style="color:var(--muted);font-size:11px;margin-bottom:10px;">Цена слота (780 у.ц.) добавляется к цене оружия.</p>`;
+  html += `<table><tr><th class="col-name">Тип</th><th>ID</th><th>Рецепт</th></tr>`;
+  for (const [id, w] of Object.entries(DATA.weapons)) {
+    const prefix = 'recipe_weap_' + id;
+    html += `<tr>
+      <td>${w.name}</td>
+      <td><span class="tag tag-raw">${id}</span></td>
+      <td>${recipeEditor(w.recipe, prefix)}</td>
+    </tr>`;
+  }
+  html += `</table></div>`;
+
+  document.getElementById('content').innerHTML = html;
+
+  // Wire up simple numeric/text inputs (non-recipe fields)
+  document.querySelectorAll('input[data-section]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const sec = inp.dataset.section;
+      const id  = inp.dataset.id;
+      const fld = inp.dataset.field;
+      const val = inp.type === 'checkbox' ? inp.checked : (inp.type === 'number' ? Number(inp.value) : inp.value);
+      DATA[sec][id][fld] = val;
+    });
+  });
+  document.querySelectorAll('input.res-mass,input.res-price').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const id  = inp.dataset.id;
+      const fld = inp.dataset.field;
+      DATA.resources[id][fld] = Number(inp.value);
+    });
+  });
+
+  setStatus('Данные загружены', '');
+}
+
+// ── COLLECT & SAVE ──────────────────────────────────────
+
+function collectRecipes() {
+  // Components
+  for (const id of Object.keys(DATA.components))
+    DATA.components[id].recipe = getRecipe('recipe_comp_' + id);
+  // Buildings
+  for (const id of Object.keys(DATA.buildings)) {
+    DATA.buildings[id].recipe      = getRecipe('recipe_build_' + id);
+    DATA.buildings[id].maintenance = getRecipe('maint_build_'  + id);
+  }
+  // Hull
+  DATA.ship_hull_per_ue = getRecipe('recipe_hull');
+  // Modules
+  for (const id of Object.keys(DATA.modules))
+    DATA.modules[id].recipe = getRecipe('recipe_mod_' + id);
+  // Weapons
+  for (const id of Object.keys(DATA.weapons))
+    DATA.weapons[id].recipe = getRecipe('recipe_weap_' + id);
+}
+
+async function saveData() {
+  collectRecipes();
+  setStatus('Сохраняю…', '');
+  try {
+    const resp = await fetch('/prices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(DATA, null, 2)
+    });
+    if (!resp.ok) throw new Error(await resp.text());
+    setStatus('✓ Сохранено', 'ok');
+  } catch(e) {
+    setStatus('✗ Ошибка: ' + e.message, 'err');
+  }
+}
+
+function setStatus(msg, cls) {
+  const el = document.getElementById('save-status');
+  el.textContent = msg;
+  el.className = cls;
+}
+
+function scrollTo(id) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── INIT ────────────────────────────────────────────────
+fetch('/prices.json').then(r => r.json()).then(data => {
+  DATA = data;
+  render();
+}).catch(e => {
+  setStatus('✗ Не удалось загрузить prices.json: ' + e.message, 'err');
+});
+</script>
+</body>
+</html>

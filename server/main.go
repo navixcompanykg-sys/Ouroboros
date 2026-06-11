@@ -243,8 +243,10 @@ func handleStatic(w http.ResponseWriter, r *http.Request) {
 		"/galaxy.html":   "text/html; charset=utf-8",
 		"/config.html":   "text/html; charset=utf-8",
 		"/registry.html": "text/html; charset=utf-8",
+		"/prices.html":   "text/html; charset=utf-8",
 		"/galaxy.json":   "application/json",
 		"/config.json":   "application/json",
+		"/prices.json":   "application/json",
 	}
 
 	ct, ok := allowed[path]
@@ -815,6 +817,37 @@ func main() {
 
 	// System view
 	http.HandleFunc("/system/", handleSystemGet)
+
+	// Prices editor
+	http.HandleFunc("/prices", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		if r.Method == http.MethodOptions {
+			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var raw json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		var check interface{}
+		if err := json.Unmarshal(raw, &check); err != nil {
+			http.Error(w, "invalid JSON structure", http.StatusBadRequest)
+			return
+		}
+		pretty, _ := json.MarshalIndent(check, "", "  ")
+		if err := os.WriteFile("prices.json", pretty, 0644); err != nil {
+			http.Error(w, "cannot save prices.json", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"ok":true}`)
+	})
 
 	// Static files
 	http.HandleFunc("/", handleStatic)
