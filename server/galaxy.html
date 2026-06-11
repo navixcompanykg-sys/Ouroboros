@@ -132,6 +132,70 @@
   .prp-life-dead{font-family:var(--mono);font-size:9px;color:#886644;padding:2px 0;}
   .prp-life-yes{font-family:var(--mono);font-size:9px;color:#44bb88;padding:2px 0;}
   .prp-life-detail{font-family:var(--mono);font-size:8px;color:var(--text);opacity:0.45;margin-top:2px;line-height:1.6;}
+
+  /* ══════════════════════════════════════════════════════════
+     PLANET UI OVERLAY
+  ══════════════════════════════════════════════════════════ */
+  #planet-ui{position:fixed;inset:0;z-index:600;background:rgba(4,6,16,0.97);
+    display:none;flex-direction:column;align-items:stretch;overflow:hidden;}
+  #planet-ui.open{display:flex;}
+
+  /* Top / bottom button bars */
+  .pui-bar{display:flex;justify-content:center;align-items:center;gap:8px;
+    padding:10px 24px;flex-shrink:0;background:rgba(6,10,24,0.9);
+    border-bottom:1px solid var(--border);}
+  .pui-bar.bottom{border-bottom:none;border-top:1px solid var(--border);}
+  .pui-btn{background:transparent;border:1px solid rgba(0,229,255,0.18);
+    color:rgba(200,220,255,0.7);font-family:var(--mono);font-size:9px;
+    letter-spacing:1.2px;padding:6px 14px;cursor:pointer;transition:all 0.15s;
+    white-space:nowrap;}
+  .pui-btn:hover{border-color:var(--accent2);color:var(--accent2);
+    background:rgba(0,229,255,0.06);}
+  .pui-btn.disabled{opacity:0.3;cursor:default;pointer-events:none;}
+
+  /* Main content area */
+  #pui-main{flex:1;display:flex;align-items:center;justify-content:center;
+    gap:0;overflow:hidden;position:relative;}
+
+  /* Left stats panel */
+  #pui-stats{width:220px;flex-shrink:0;padding:16px 20px;display:flex;
+    flex-direction:column;gap:0;align-self:center;}
+  .pui-stat-row{display:flex;justify-content:space-between;align-items:baseline;
+    padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);}
+  .pui-stat-row:last-child{border-bottom:none;}
+  .pui-stat-label{font-family:var(--mono);font-size:8px;color:var(--text);
+    opacity:0.5;letter-spacing:0.5px;}
+  .pui-stat-val{font-family:var(--mono);font-size:9px;color:var(--text-bright);
+    text-align:right;max-width:120px;}
+  .pui-stat-val.good{color:#44dd88;}
+  .pui-stat-val.warn{color:#ddaa33;}
+  .pui-stat-val.bad{color:#dd4422;}
+
+  /* Center: name + planet canvas */
+  #pui-center{flex-shrink:0;display:flex;flex-direction:column;align-items:center;
+    gap:14px;padding:0 30px;}
+  #pui-planet-name{font-family:var(--mono);font-size:14px;color:var(--text-bright);
+    letter-spacing:2px;text-align:center;}
+  #pui-planet-sub{font-family:var(--mono);font-size:9px;color:var(--accent);
+    opacity:0.55;letter-spacing:1.5px;text-align:center;margin-top:-8px;}
+  #pui-planet-canvas{border-radius:50%;display:block;}
+
+  /* Right orbital objects panel */
+  #pui-moons{width:130px;flex-shrink:0;align-self:center;position:relative;}
+  .pui-moon-title{font-family:var(--mono);font-size:8px;letter-spacing:2px;
+    color:var(--accent);opacity:0.5;text-align:center;margin-bottom:8px;}
+  #pui-moon-svg{display:block;margin:0 auto;}
+  .pui-moon-slot{cursor:default;}
+  .pui-moon-slot.occupied{cursor:pointer;}
+  .pui-moon-slot circle.moon-bg{fill:#0a0f1e;stroke:rgba(255,255,255,0.14);stroke-width:1;}
+  .pui-moon-slot.occupied circle.moon-bg{fill:#1a2540;stroke:rgba(100,160,255,0.5);stroke-width:1.5;}
+  .pui-moon-slot:hover circle.moon-bg{stroke:var(--accent2);stroke-width:1.5;}
+
+  /* Close button */
+  #pui-close{position:absolute;top:12px;right:16px;background:none;border:none;
+    color:var(--text);cursor:pointer;font-size:18px;opacity:0.3;z-index:10;
+    font-family:var(--mono);}
+  #pui-close:hover{opacity:1;color:var(--accent2);}
 </style>
 </head>
 <body>
@@ -150,10 +214,13 @@
   </div>
   <div class="sim-controls">
     <button class="grid-toggle" id="grid-btn">GRID</button>
-    <button class="sim-btn" id="btn-1s">▶ 1s</button>
-    <button class="sim-btn" id="btn-3s">▶ 3s</button>
-    <button class="sim-btn" id="btn-10s">▶ 10s</button>
-    <button class="sim-btn stop" id="btn-stop">■ STOP</button>
+    <button class="sim-btn" id="btn-1min">▶ 1 МИН</button>
+    <button class="sim-btn" id="btn-1h">▶ 1 ЧАС</button>
+    <button class="sim-btn" id="btn-1d">▶ 1 СУТКИ</button>
+    <button class="sim-btn" id="btn-1s">▶ 1с</button>
+    <button class="sim-btn" id="btn-3s">▶ 3с</button>
+    <button class="sim-btn" id="btn-10s">▶ 10с</button>
+    <button class="sim-btn stop" id="btn-stop">■ СТОП</button>
     <button class="ctrl-btn sim-btn" onclick="exportSnapshot()">💾 Export</button>
     <button class="sim-btn" id="btn-scan" onclick="scanGalaxy()">⊞ SCAN</button>
     <button class="sim-btn" onclick="window.open('/registry.html','_blank')">REGISTRY</button>
@@ -178,101 +245,101 @@
   <div class="sidebar">
     <!-- Galaxy -->
     <div class="panel">
-      <div class="panel-title">Galaxy</div>
-      <div class="stat-row"><span class="stat-label">Objects</span><span class="stat-value" id="st-total">—</span></div>
-      <div class="stat-row"><span class="stat-label">Total mass</span><span class="stat-value" id="st-mass">—</span></div>
-      <div class="stat-row"><span class="stat-label">Rotation</span><span class="stat-value" id="st-rot">—</span></div>
-      <div class="stat-row"><span class="stat-label">Return pool</span><span class="stat-value" id="st-pool">0</span></div>
-      <div class="stat-row"><span class="stat-label">Avg star radius</span><span class="stat-value" id="st-avg-r">—</span></div>
+      <div class="panel-title">Галактика</div>
+      <div class="stat-row"><span class="stat-label">Объекты</span><span class="stat-value" id="st-total">—</span></div>
+      <div class="stat-row"><span class="stat-label">Масса</span><span class="stat-value" id="st-mass">—</span></div>
+      <div class="stat-row"><span class="stat-label">Вращение</span><span class="stat-value" id="st-rot">—</span></div>
+      <div class="stat-row"><span class="stat-label">Пул возврата</span><span class="stat-value" id="st-pool">0</span></div>
+      <div class="stat-row"><span class="stat-label">Ср. радиус звезды</span><span class="stat-value" id="st-avg-r">—</span></div>
     </div>
     <!-- Simulation -->
     <div class="panel">
-      <div class="panel-title">Simulation</div>
-      <div class="stat-row"><span class="stat-label">Status</span><span class="stat-value" id="st-status">PAUSED</span></div>
-      <div class="stat-row"><span class="stat-label">Tick speed</span><span class="stat-value" id="st-speed">—</span></div>
-      <div class="stat-row"><span class="stat-label">Collisions total</span><span class="stat-value" id="st-mergers">0</span></div>
-      <div class="stat-row"><span class="stat-label">This tick</span><span class="stat-value" id="st-mtick">0</span></div>
+      <div class="panel-title">Симуляция</div>
+      <div class="stat-row"><span class="stat-label">Статус</span><span class="stat-value" id="st-status">ПАУЗА</span></div>
+      <div class="stat-row"><span class="stat-label">Скорость тика</span><span class="stat-value" id="st-speed">—</span></div>
+      <div class="stat-row"><span class="stat-label">Столкновений всего</span><span class="stat-value" id="st-mergers">0</span></div>
+      <div class="stat-row"><span class="stat-label">В этом тике</span><span class="stat-value" id="st-mtick">0</span></div>
     </div>
     <!-- Object counts -->
     <div class="panel">
-      <div class="panel-title">Object Types</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#ff6644"></div><span class="legend-label">Red dwarf</span><span class="legend-count" id="c-red_dwarf">—</span></div>
-      <div class="legend-item"><div class="legend-dot" style="background:#ffe066"></div><span class="legend-label">Yellow dwarf</span><span class="legend-count" id="c-yellow_dwarf">—</span></div>
-      <div class="legend-item"><div class="legend-dot" style="background:#a0c8ff"></div><span class="legend-label">Blue giant</span><span class="legend-count" id="c-blue_giant">—</span></div>
-      <div class="legend-item"><div class="legend-dot" style="background:#ddeeff"></div><span class="legend-label">White dwarf</span><span class="legend-count" id="c-white_dwarf">—</span></div>
-      <div class="legend-item"><div class="legend-dot" style="background:#aaffcc"></div><span class="legend-label">Neutron star</span><span class="legend-count" id="c-neutron_star">—</span></div>
-      <div class="legend-item"><div class="legend-dot" style="background:#bb44ff"></div><span class="legend-label">Black hole</span><span class="legend-count" id="c-black_hole">—</span></div>
-      <div class="legend-item"><div class="legend-dot" style="background:#ffcc44;border-radius:2px"></div><span class="legend-label">Formation</span><span class="legend-count" id="c-formation">—</span></div>
-      <div class="legend-item"><div class="legend-dot" style="background:#44ffcc;border-radius:2px"></div><span class="legend-label">Nebula</span><span class="legend-count" id="c-nebula">—</span></div>
-      <div class="legend-item"><div class="legend-dot" style="background:#8899aa;border-radius:1px"></div><span class="legend-label">Asteroid field</span><span class="legend-count" id="c-asteroid_field">—</span></div>
+      <div class="panel-title">Типы объектов</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ff6644"></div><span class="legend-label">Красный карлик</span><span class="legend-count" id="c-red_dwarf">—</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ffe066"></div><span class="legend-label">Жёлтый карлик</span><span class="legend-count" id="c-yellow_dwarf">—</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#a0c8ff"></div><span class="legend-label">Голубой гигант</span><span class="legend-count" id="c-blue_giant">—</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ddeeff"></div><span class="legend-label">Белый карлик</span><span class="legend-count" id="c-white_dwarf">—</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#aaffcc"></div><span class="legend-label">Нейтронная звезда</span><span class="legend-count" id="c-neutron_star">—</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#bb44ff"></div><span class="legend-label">Чёрная дыра</span><span class="legend-count" id="c-black_hole">—</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ffcc44;border-radius:2px"></div><span class="legend-label">Протозвезда</span><span class="legend-count" id="c-formation">—</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#44ffcc;border-radius:2px"></div><span class="legend-label">Туманность</span><span class="legend-count" id="c-nebula">—</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#8899aa;border-radius:1px"></div><span class="legend-label">Астероидный пояс</span><span class="legend-count" id="c-asteroid_field">—</span></div>
     </div>
     <!-- Deaths -->
     <div class="panel">
-      <div class="panel-title">Deaths</div>
-      <div class="stat-row"><span class="stat-label">Cooled (T≤10)</span><span class="stat-value" id="d-cool">0</span></div>
-      <div class="stat-row"><span class="stat-label">Overheated (T≥1000)</span><span class="stat-value" id="d-heat">0</span></div>
+      <div class="panel-title">Гибель звёзд</div>
+      <div class="stat-row"><span class="stat-label">Остыли (T≤10)</span><span class="stat-value" id="d-cool">0</span></div>
+      <div class="stat-row"><span class="stat-label">Перегрев (T≥1000)</span><span class="stat-value" id="d-heat">0</span></div>
     </div>
     <!-- Evolution -->
     <div class="panel">
-      <div class="panel-title">Evolution</div>
-      <div class="stat-row"><span class="stat-label">Red→Yellow</span><span class="stat-value" id="ev-ry">0</span></div>
-      <div class="stat-row"><span class="stat-label">Yellow→Blue</span><span class="stat-value" id="ev-yb">0</span></div>
-      <div class="stat-row"><span class="stat-label">Born from formation</span><span class="stat-value" id="ev-born">0</span></div>
-      <div class="stat-row"><span class="stat-label">Avg formations/tick</span><span class="stat-value" id="ev-form">0.00</span></div>
-      <div class="stat-row"><span class="stat-label">Avg return mass/tick</span><span class="stat-value" id="ev-ret">0.0</span></div>
-      <div class="stat-row"><span class="stat-label">Avg return obj/tick</span><span class="stat-value" id="ev-ret-obj">0.00</span></div>
-      <div class="stat-row"><span class="stat-label">Avg mass per return</span><span class="stat-value" id="ev-ret-avg">0.0</span></div>
-      <div class="stat-row"><span class="stat-label">Core injected (BG&lt;20)</span><span class="stat-value" id="ev-core">0</span></div>
+      <div class="panel-title">Эволюция</div>
+      <div class="stat-row"><span class="stat-label">Красный→Жёлтый</span><span class="stat-value" id="ev-ry">0</span></div>
+      <div class="stat-row"><span class="stat-label">Жёлтый→Голубой</span><span class="stat-value" id="ev-yb">0</span></div>
+      <div class="stat-row"><span class="stat-label">Рождено из туман.</span><span class="stat-value" id="ev-born">0</span></div>
+      <div class="stat-row"><span class="stat-label">Ср. протозвёзд/тик</span><span class="stat-value" id="ev-form">0.00</span></div>
+      <div class="stat-row"><span class="stat-label">Ср. масса возврата/тик</span><span class="stat-value" id="ev-ret">0.0</span></div>
+      <div class="stat-row"><span class="stat-label">Ср. объектов возврата/тик</span><span class="stat-value" id="ev-ret-obj">0.00</span></div>
+      <div class="stat-row"><span class="stat-label">Ср. масса на возврат</span><span class="stat-value" id="ev-ret-avg">0.0</span></div>
+      <div class="stat-row"><span class="stat-label">Инъекция ядра (ГГ&lt;20)</span><span class="stat-value" id="ev-core">0</span></div>
     </div>
     <!-- Collisions by type -->
     <div class="panel">
-      <div class="panel-title">Collisions</div>
-      <div class="stat-row"><span class="stat-label">Cloud×Cloud</span><span class="stat-value" id="col-cc">0</span></div>
-      <div class="stat-row"><span class="stat-label">Cloud×Star</span><span class="stat-value" id="col-cs">0</span></div>
-      <div class="stat-row"><span class="stat-label">Star×Star</span><span class="stat-value" id="col-ss">0</span></div>
-      <div class="stat-row"><span class="stat-label">Star×BH</span><span class="stat-value" id="col-sb">0</span></div>
-      <div class="stat-row"><span class="stat-label">BH×BH</span><span class="stat-value" id="col-bb">0</span></div>
-      <div class="stat-row"><span class="stat-label">Cloud×BH</span><span class="stat-value" id="col-cb">0</span></div>
+      <div class="panel-title">Столкновения</div>
+      <div class="stat-row"><span class="stat-label">Туман.×Туман.</span><span class="stat-value" id="col-cc">0</span></div>
+      <div class="stat-row"><span class="stat-label">Туман.×Звезда</span><span class="stat-value" id="col-cs">0</span></div>
+      <div class="stat-row"><span class="stat-label">Звезда×Звезда</span><span class="stat-value" id="col-ss">0</span></div>
+      <div class="stat-row"><span class="stat-label">Звезда×ЧД</span><span class="stat-value" id="col-sb">0</span></div>
+      <div class="stat-row"><span class="stat-label">ЧД×ЧД</span><span class="stat-value" id="col-bb">0</span></div>
+      <div class="stat-row"><span class="stat-label">Туман.×ЧД</span><span class="stat-value" id="col-cb">0</span></div>
     </div>
     <!-- Stars avg temp -->
     <div class="panel">
-      <div class="panel-title">Avg Temperature</div>
-      <div class="stat-row"><span class="stat-label">Red dwarf</span><span class="stat-value" id="t-rd">—</span></div>
-      <div class="stat-row"><span class="stat-label">Yellow dwarf</span><span class="stat-value" id="t-yd">—</span></div>
-      <div class="stat-row"><span class="stat-label">Blue giant</span><span class="stat-value" id="t-bg">—</span></div>
-      <div class="stat-row"><span class="stat-label">Neutron star</span><span class="stat-value" id="t-ns">—</span></div>
+      <div class="panel-title">Средняя температура</div>
+      <div class="stat-row"><span class="stat-label">Красный карлик</span><span class="stat-value" id="t-rd">—</span></div>
+      <div class="stat-row"><span class="stat-label">Жёлтый карлик</span><span class="stat-value" id="t-yd">—</span></div>
+      <div class="stat-row"><span class="stat-label">Голубой гигант</span><span class="stat-value" id="t-bg">—</span></div>
+      <div class="stat-row"><span class="stat-label">Нейтронная звезда</span><span class="stat-value" id="t-ns">—</span></div>
     </div>
     <!-- Avg Lifespan -->
     <div class="panel">
-      <div class="panel-title">Avg Lifespan (ticks)</div>
-      <div class="stat-row"><span class="stat-label">Red dwarf</span><span class="stat-value" id="life-rd">—</span></div>
-      <div class="stat-row"><span class="stat-label">Yellow dwarf</span><span class="stat-value" id="life-yd">—</span></div>
-      <div class="stat-row"><span class="stat-label">Blue giant</span><span class="stat-value" id="life-bg">—</span></div>
-      <div class="stat-row"><span class="stat-label">White dwarf</span><span class="stat-value" id="life-wd">—</span></div>
-      <div class="stat-row"><span class="stat-label">Neutron star</span><span class="stat-value" id="life-ns">—</span></div>
+      <div class="panel-title">Ср. продолжительность жизни (тиков)</div>
+      <div class="stat-row"><span class="stat-label">Красный карлик</span><span class="stat-value" id="life-rd">—</span></div>
+      <div class="stat-row"><span class="stat-label">Жёлтый карлик</span><span class="stat-value" id="life-yd">—</span></div>
+      <div class="stat-row"><span class="stat-label">Голубой гигант</span><span class="stat-value" id="life-bg">—</span></div>
+      <div class="stat-row"><span class="stat-label">Белый карлик</span><span class="stat-value" id="life-wd">—</span></div>
+      <div class="stat-row"><span class="stat-label">Нейтронная звезда</span><span class="stat-value" id="life-ns">—</span></div>
     </div>
     <!-- Velocity Stats -->
     <div class="panel">
-      <div class="panel-title">Velocity Stats</div>
-      <div class="stat-row"><span class="stat-label">Avg |v| stars</span><span class="stat-value" id="vel-avg">—</span></div>
-      <div class="stat-row"><span class="stat-label">Avg ω stars</span><span class="stat-value" id="vel-omega">—</span></div>
-      <div class="stat-row"><span class="stat-label">Max |v| star</span><span class="stat-value" id="vel-max">—</span></div>
-      <div class="stat-row"><span class="stat-label">Avg |v| clouds</span><span class="stat-value" id="vel-cloud">—</span></div>
+      <div class="panel-title">Скорости</div>
+      <div class="stat-row"><span class="stat-label">Ср. |v| звёзд</span><span class="stat-value" id="vel-avg">—</span></div>
+      <div class="stat-row"><span class="stat-label">Ср. ω звёзд</span><span class="stat-value" id="vel-omega">—</span></div>
+      <div class="stat-row"><span class="stat-label">Макс. |v| звезды</span><span class="stat-value" id="vel-max">—</span></div>
+      <div class="stat-row"><span class="stat-label">Ср. |v| туманностей</span><span class="stat-value" id="vel-cloud">—</span></div>
     </div>
     <!-- П10: Neutron Stars -->
     <div class="panel">
-      <div class="panel-title">Neutron Stars</div>
-      <div class="stat-row"><span class="stat-label">Born total</span><span class="stat-value" id="ns-born">0</span></div>
-      <div class="stat-row"><span class="stat-label">Died cooled</span><span class="stat-value" id="ns-cool">0</span></div>
-      <div class="stat-row"><span class="stat-label">Died overheated</span><span class="stat-value" id="ns-heat">0</span></div>
-      <div class="stat-row"><span class="stat-label">Died mass≥2000 (→BH)</span><span class="stat-value" id="ns-mass">0</span></div>
-      <div class="stat-row"><span class="stat-label">Died collision</span><span class="stat-value" id="ns-coll">0</span></div>
-      <div class="stat-row"><span class="stat-label">Avg lifespan</span><span class="stat-value" id="ns-age">—</span></div>
+      <div class="panel-title">Нейтронные звёзды</div>
+      <div class="stat-row"><span class="stat-label">Рождено всего</span><span class="stat-value" id="ns-born">0</span></div>
+      <div class="stat-row"><span class="stat-label">Погибло (остывание)</span><span class="stat-value" id="ns-cool">0</span></div>
+      <div class="stat-row"><span class="stat-label">Погибло (перегрев)</span><span class="stat-value" id="ns-heat">0</span></div>
+      <div class="stat-row"><span class="stat-label">Погибло масса≥2000 (→ЧД)</span><span class="stat-value" id="ns-mass">0</span></div>
+      <div class="stat-row"><span class="stat-label">Погибло (столкновение)</span><span class="stat-value" id="ns-coll">0</span></div>
+      <div class="stat-row"><span class="stat-label">Ср. продолжительность</span><span class="stat-value" id="ns-age">—</span></div>
     </div>
     <!-- П11: Black Holes -->
     <div class="panel">
-      <div class="panel-title">Black Holes</div>
-      <div class="stat-row"><span class="stat-label">Born total</span><span class="stat-value" id="bh-born">0</span></div>
+      <div class="panel-title">Чёрные дыры</div>
+      <div class="stat-row"><span class="stat-label">Рождено всего</span><span class="stat-value" id="bh-born">0</span></div>
     </div>
   </div>
 </div>
@@ -281,41 +348,41 @@
 <!-- ── System View overlay ─────────────────────────────── -->
 <div id="sys-overlay">
   <div id="sys-header">
-    <button id="sys-back">← Galaxy</button>
+    <button id="sys-back">← Галактика</button>
     <div>
       <div id="sys-star-name">—</div>
       <div id="sys-star-gen">—</div>
     </div>
     <div class="sys-controls">
-      <button class="sys-sim-btn stop-btn" id="sysb-stop">■ STOP</button>
-      <button class="sys-sim-btn" id="sysb-slow">MIN/S</button>
-      <button class="sys-sim-btn active" id="sysb-normal">HR/S</button>
-      <button class="sys-sim-btn" id="sysb-fast">DAY/S</button>
-      <button class="sys-grid-btn" id="sysb-grid">GRID</button>
+      <button class="sys-sim-btn stop-btn" id="sysb-stop">■ СТОП</button>
+      <button class="sys-sim-btn" id="sysb-slow">МИН/С</button>
+      <button class="sys-sim-btn active" id="sysb-normal">ЧАС/С</button>
+      <button class="sys-sim-btn" id="sysb-fast">СУТКИ/С</button>
+      <button class="sys-grid-btn" id="sysb-grid">СЕТКА</button>
     </div>
-    <div id="sys-hint">ESC / ← &nbsp;·&nbsp; scroll zoom &nbsp;·&nbsp; drag pan &nbsp;·&nbsp; dblclick reset view &nbsp;·&nbsp; click planet — resources</div>
+    <div id="sys-hint">ESC / ← &nbsp;·&nbsp; колесо — зум &nbsp;·&nbsp; тяни — пан &nbsp;·&nbsp; дбл.клик — сброс вида &nbsp;·&nbsp; клик — ресурсы &nbsp;·&nbsp; дбл.клик планеты — открыть</div>
     <span id="sys-zoom-label">1.0×</span>
   </div>
   <canvas id="sys-canvas"></canvas>
   <div id="sys-stats">
-    <div class="sys-env-title">ENVIRONMENT</div>
+    <div class="sys-env-title">СРЕДА ЗВЕЗДЫ</div>
     <div class="sys-env-row">
       <div class="sys-env-head">
-        <span class="sys-env-label">TEMP</span>
+        <span class="sys-env-label">ТЕМП</span>
         <span><span class="sys-env-val" id="ss-temp-val">0</span><span class="sys-env-max"> / 1000</span></span>
       </div>
       <div class="sys-env-bar-wrap"><div class="sys-env-bar" id="ss-temp-bar" style="width:0%"></div></div>
     </div>
     <div class="sys-env-row">
       <div class="sys-env-head">
-        <span class="sys-env-label">RADIATION</span>
+        <span class="sys-env-label">РАДИАЦИЯ</span>
         <span><span class="sys-env-val" id="ss-rad-val">0</span><span class="sys-env-max"> / 100</span></span>
       </div>
       <div class="sys-env-bar-wrap"><div class="sys-env-bar" id="ss-rad-bar" style="width:0%;background:#2a7fff"></div></div>
     </div>
     <div class="sys-env-row">
       <div class="sys-env-head">
-        <span class="sys-env-label">METEOR</span>
+        <span class="sys-env-label">МЕТЕОРЫ</span>
         <span><span class="sys-env-val" id="ss-met-val">0</span><span class="sys-env-max"> / 100</span></span>
       </div>
       <div class="sys-env-bar-wrap"><div class="sys-env-bar" id="ss-met-bar" style="width:0%;background:#7a6040"></div></div>
@@ -324,7 +391,7 @@
   <!-- ── Planet Resource Panel (click) ────────────────────── -->
   <div id="planet-res-panel">
     <div class="prp-header">
-      <span class="prp-htitle">PLANET RESOURCES</span>
+      <span class="prp-htitle">РЕСУРСЫ ПЛАНЕТЫ</span>
       <button class="prp-close" id="prp-close">✕</button>
     </div>
     <div class="prp-subhead"><div id="prp-subtitle">—</div></div>
@@ -332,32 +399,109 @@
   </div>
   <!-- ── Planet info panel ─────────────────────────────────── -->
   <div id="sys-planet-info">
-    <div class="sys-pi-title">PLANET</div>
+    <div class="sys-pi-title">ПЛАНЕТА</div>
     <div class="sys-pi-subtitle" id="spi-type">—</div>
     <div class="sys-env-row">
-      <div class="sys-env-head"><span class="sys-env-label">GRAVITY</span><span class="sys-env-val" id="spi-grav">—</span></div>
+      <div class="sys-env-head"><span class="sys-env-label">ГРАВИТАЦИЯ</span><span class="sys-env-val" id="spi-grav">—</span></div>
       <div class="sys-env-bar-wrap"><div class="sys-env-bar" id="spi-bar-grav" style="width:0%;background:#6688cc"></div></div>
     </div>
     <div class="sys-env-row">
-      <div class="sys-env-head"><span class="sys-env-label">RADIUS</span><span class="sys-env-val" id="spi-radius">—</span></div>
+      <div class="sys-env-head"><span class="sys-env-label">РАДИУС</span><span class="sys-env-val" id="spi-radius">—</span></div>
       <div class="sys-env-bar-wrap"><div class="sys-env-bar" id="spi-bar-radius" style="width:0%;background:#4499aa"></div></div>
     </div>
     <div class="sys-env-row">
-      <div class="sys-env-head"><span class="sys-env-label">MASS</span><span class="sys-env-val" id="spi-mass">—</span></div>
+      <div class="sys-env-head"><span class="sys-env-label">МАССА</span><span class="sys-env-val" id="spi-mass">—</span></div>
       <div class="sys-env-bar-wrap"><div class="sys-env-bar" id="spi-bar-mass" style="width:0%;background:#558844"></div></div>
     </div>
     <div class="sys-env-row">
-      <div class="sys-env-head"><span class="sys-env-label">CORE MASS</span><span class="sys-env-val" id="spi-core">—</span></div>
+      <div class="sys-env-head"><span class="sys-env-label">МАССА ЯДРА</span><span class="sys-env-val" id="spi-core">—</span></div>
       <div class="sys-env-bar-wrap"><div class="sys-env-bar" id="spi-bar-core" style="width:0%;background:#886644"></div></div>
     </div>
     <div class="sys-env-row">
-      <div class="sys-env-head"><span class="sys-env-label">WATER</span><span class="sys-env-val" id="spi-water">—</span></div>
+      <div class="sys-env-head"><span class="sys-env-label">ВОДА</span><span class="sys-env-val" id="spi-water">—</span></div>
       <div class="sys-env-bar-wrap"><div class="sys-env-bar" id="spi-bar-water" style="width:0%;background:#2266aa"></div></div>
     </div>
     <div class="sys-env-row">
-      <div class="sys-env-head"><span class="sys-env-label">CORE TEMP</span><span class="sys-env-val" id="spi-ctemp">—</span></div>
+      <div class="sys-env-head"><span class="sys-env-label">ТЕМП. ЯДРА</span><span class="sys-env-val" id="spi-ctemp">—</span></div>
       <div class="sys-env-bar-wrap"><div class="sys-env-bar" id="spi-bar-ctemp" style="width:0%;background:#cc4422"></div></div>
     </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     PLANET UI OVERLAY
+══════════════════════════════════════════════════════════ -->
+<div id="planet-ui">
+  <button id="pui-close">✕</button>
+
+  <!-- Top buttons: port / shipyard / warehouse / market / admin -->
+  <div class="pui-bar top">
+    <button class="pui-btn disabled" data-pui="spaceport">КОСМОДРОМ</button>
+    <button class="pui-btn disabled" data-pui="shipyard">ВЕРФЬ</button>
+    <button class="pui-btn disabled" data-pui="warehouse">СКЛАД</button>
+    <button class="pui-btn disabled" data-pui="market">ТОРГОВАЯ БИРЖА</button>
+    <button class="pui-btn disabled" data-pui="admin">АДМИНИСТРАЦИЯ</button>
+  </div>
+
+  <!-- Main area -->
+  <div id="pui-main">
+    <!-- Left: stats -->
+    <div id="pui-stats">
+      <div class="pui-stat-row">
+        <span class="pui-stat-label">ИГРОКИ НА ПЛАНЕТЕ</span>
+        <span class="pui-stat-val" id="pui-s-players">0</span>
+      </div>
+      <div class="pui-stat-row">
+        <span class="pui-stat-label">НАСЕЛЕНИЕ</span>
+        <span class="pui-stat-val" id="pui-s-population">—</span>
+      </div>
+      <div class="pui-stat-row">
+        <span class="pui-stat-label">ЭКОЛОГИЯ</span>
+        <span class="pui-stat-val" id="pui-s-ecology">—</span>
+      </div>
+      <div class="pui-stat-row">
+        <span class="pui-stat-label">ПИЩЕВЫЕ РЕСУРСЫ</span>
+        <span class="pui-stat-val" id="pui-s-food">—</span>
+      </div>
+      <div class="pui-stat-row">
+        <span class="pui-stat-label">РАДИАЦИЯ</span>
+        <span class="pui-stat-val" id="pui-s-radiation">—</span>
+      </div>
+      <div class="pui-stat-row">
+        <span class="pui-stat-label">ДАВЛЕНИЕ</span>
+        <span class="pui-stat-val" id="pui-s-pressure">—</span>
+      </div>
+      <div class="pui-stat-row">
+        <span class="pui-stat-label">ГРАВИТАЦИЯ</span>
+        <span class="pui-stat-val" id="pui-s-gravity">—</span>
+      </div>
+      <div class="pui-stat-row">
+        <span class="pui-stat-label">АТМОСФЕРА</span>
+        <span class="pui-stat-val" id="pui-s-atmo">—</span>
+      </div>
+    </div>
+
+    <!-- Center: planet name + visual -->
+    <div id="pui-center">
+      <div id="pui-planet-name">—</div>
+      <div id="pui-planet-sub">—</div>
+      <canvas id="pui-planet-canvas" width="220" height="220"></canvas>
+    </div>
+
+    <!-- Right: orbital slots (moons / stations) -->
+    <div id="pui-moons">
+      <div class="pui-moon-title">ОРБИТА</div>
+      <svg id="pui-moon-svg" width="120" height="300" viewBox="0 0 120 300"></svg>
+    </div>
+  </div>
+
+  <!-- Bottom buttons: economy / defense / development / government / science -->
+  <div class="pui-bar bottom">
+    <button class="pui-btn disabled" data-pui="economy">МИН. ЭКОНОМИКИ</button>
+    <button class="pui-btn disabled" data-pui="defense">МИН. ОБОРОНЫ</button>
+    <button class="pui-btn disabled" data-pui="development">МИН. РАЗВИТИЯ</button>
+    <button class="pui-btn disabled" data-pui="government">ПРАВИТЕЛЬСТВО</button>
+    <button class="pui-btn disabled" data-pui="science">МИН. НАУКИ</button>
   </div>
 </div>
 
@@ -2472,28 +2616,40 @@ async function jumpToTick(target) {
 // ============================================================
 // SIMULATION CONTROLS
 // ============================================================
+// Единый таймер: ms → интервал в мс, label → подпись скорости
+const SIM_SPEEDS = [
+  { ms: 60000,  id: 'btn-1min',  label: '1 мин/тик'  },
+  { ms: 3600000,id: 'btn-1h',    label: '1 час/тик'   },
+  { ms: 86400000,id:'btn-1d',    label: '1 сутки/тик' },
+  { ms: 1000,   id: 'btn-1s',    label: '1 с/тик'     },
+  { ms: 3000,   id: 'btn-3s',    label: '3 с/тик'     },
+  { ms: 10000,  id: 'btn-10s',   label: '10 с/тик'    },
+];
+
+let _simSpeedBeforePlanet = null; // сохранённая скорость перед входом в планету
+
 function startSim(ms) {
   stopSim();
-  simIntervalMs=ms;
-  tickStartReal=performance.now();
-  simTimer=setInterval(runTick,ms);
-  document.getElementById('st-status').textContent='RUNNING';
-  document.getElementById('st-speed').textContent=(ms/1000)+'s/tick';
-  document.querySelectorAll('.sim-btn').forEach(b=>b.classList.remove('active'));
-  const ids={1000:'btn-1s',3000:'btn-3s',10000:'btn-10s'};
-  if(ids[ms]) document.getElementById(ids[ms]).classList.add('active');
+  simIntervalMs = ms;
+  tickStartReal = performance.now();
+  simTimer = setInterval(runTick, ms);
+  document.getElementById('st-status').textContent = 'ЗАПУЩЕНО';
+  const sp = SIM_SPEEDS.find(s => s.ms === ms);
+  document.getElementById('st-speed').textContent = sp ? sp.label : (ms/1000)+'с/тик';
+  document.querySelectorAll('.sim-btn').forEach(b => b.classList.remove('active'));
+  if (sp) document.getElementById(sp.id).classList.add('active');
 }
 function stopSim() {
-  if(simTimer){clearInterval(simTimer);simTimer=null;}
-  document.getElementById('st-status').textContent='PAUSED';
-  document.getElementById('st-speed').textContent='—';
-  document.querySelectorAll('.sim-btn').forEach(b=>b.classList.remove('active'));
+  if (simTimer) { clearInterval(simTimer); simTimer = null; }
+  document.getElementById('st-status').textContent = 'ПАУЗА';
+  document.getElementById('st-speed').textContent = '—';
+  document.querySelectorAll('.sim-btn').forEach(b => b.classList.remove('active'));
 }
 
-document.getElementById('btn-1s').addEventListener('click',()=>startSim(1000));
-document.getElementById('btn-3s').addEventListener('click',()=>startSim(3000));
-document.getElementById('btn-10s').addEventListener('click',()=>startSim(10000));
-document.getElementById('btn-stop').addEventListener('click',stopSim);
+SIM_SPEEDS.forEach(s => {
+  document.getElementById(s.id).addEventListener('click', () => startSim(s.ms));
+});
+document.getElementById('btn-stop').addEventListener('click', stopSim);
 document.getElementById('grid-btn').addEventListener('click',()=>{showGrid=!showGrid;document.getElementById('grid-btn').classList.toggle('on',showGrid);draw();});
 document.getElementById('btn-cfg').addEventListener('click',()=>window.open('/config.html','_blank'));
 document.getElementById('btn-generate').addEventListener('click',async()=>{
@@ -3052,8 +3208,29 @@ window.addEventListener('mouseup',()=>{
 });
 
 // Двойной клик на канвасе системы — сброс вида
-sysCanvas.addEventListener('dblclick',()=>{
-  if(sysData||formData) resetSysView();
+// dblclick на canvas системы: по планете → Planet UI, иначе → сброс вида
+sysCanvas.addEventListener('dblclick', e => {
+  if (!sysData && !formData) return;
+  // Проверяем попадание по планете
+  if (sysData && sysData.planets.length) {
+    const rect = sysCanvas.getBoundingClientRect();
+    const W = sysCanvas.width, H = sysCanvas.height;
+    const size = Math.min(W, H);
+    const sx = (e.clientX - rect.left - (W/2 + sysPanX)) / sysZoom;
+    const sy = (e.clientY - rect.top  - (H/2 + sysPanY)) / sysZoom;
+    for (let i = 0; i < sysData.planets.length; i++) {
+      const pl  = sysData.planets[i];
+      const ang = planetAngleDeg(pl.orbit_index, sysData.gen_code, sysData.star_id, sysSimTime, pl.period_sec) * Math.PI / 180;
+      const orb = sysOrbitRadius(pl.orbit_index, size);
+      const d   = Math.hypot(sx - orb*Math.cos(ang), sy - orb*Math.sin(ang));
+      const pr  = pl._params ? (4 + (pl._params.radius/100)*10) : 7;
+      if (d < Math.max(pr * 2.8, 14)) {
+        openPlanetUI(pl);
+        return; // не сбрасываем вид
+      }
+    }
+  }
+  resetSysView();
 });
 
 // Кнопки скорости симуляции системы
@@ -3734,6 +3911,361 @@ async function scanGalaxy() {
     btn.disabled = false;
   }
 }
+
+// ============================================================
+// PLANET UI
+// ============================================================
+
+const puiOverlay = document.getElementById('planet-ui');
+const puiCanvas  = document.getElementById('pui-planet-canvas');
+const puiCtx     = puiCanvas.getContext('2d');
+
+// Deterministic moon count from planet type + orbit + gen_code
+const PUI_MAX_MOONS = {
+  gas_giant:4, ice:3, rocky:2, lava:1, bare_core:0,
+  // effective types mapped from visual
+};
+const PUI_MAX_MOONS_TYPE = {
+  gas_giant:11, ice:9, rocky:4, lava:1, bare_core:0,
+};
+
+function puiMoonCount(planet, gc) {
+  const effT = planet._params ? effectivePlanetType(planet.type, planet._params.coreTemp) : planet.type;
+  if (!effT) return 0;
+  const max = PUI_MAX_MOONS_TYPE[effT] ?? 2;
+  if (max === 0) return 0;
+  // simple LCG deterministic from orbit + gc seed
+  let gcN = 0; for (const c of (gc||'0')) { const d=parseInt(c); if(!isNaN(d)) gcN=gcN*10+d; }
+  let rng = ((planet.orbit_index * 1000003 + gcN) * 1664525 + 1013904223) & 0x7fffffff;
+  rng = (rng * 1664525 + 1013904223) & 0x7fffffff;
+  const base = rng % (max + 1);
+  // bonus for heavy planets
+  const mass = planet._params ? planet._params.mass : 1;
+  const bonus = mass > 2.0 ? (rng % 2) : 0;
+  // penalty for inner orbits
+  const penalty = planet.orbit_index < 4 ? Math.floor((4 - planet.orbit_index) / 2) : 0;
+  return Math.max(0, Math.min(11, base + bonus - penalty));
+}
+
+// Moon slot positions: two vertical `)` arcs side by side forming a crescent
+function puiMoonSlotPositions() {
+  const slots = [];
+  const cy = 150;
+
+  // Inner arc (5 slots): right half of ellipse, ±80° from horizontal
+  const n1 = 5, cx1 = 26, rx1 = 20, ry1 = 114, sw1 = Math.PI * 0.445;
+  for (let i = 0; i < n1; i++) {
+    const t = -sw1 + i * (2 * sw1 / (n1 - 1));
+    slots.push({ x: cx1 + rx1 * Math.cos(t), y: cy + ry1 * Math.sin(t) });
+  }
+
+  // Outer arc (6 slots): right half of ellipse, ±85° from horizontal
+  const n2 = 6, cx2 = 56, rx2 = 26, ry2 = 130, sw2 = Math.PI * 0.47;
+  for (let i = 0; i < n2; i++) {
+    const t = -sw2 + i * (2 * sw2 / (n2 - 1));
+    slots.push({ x: cx2 + rx2 * Math.cos(t), y: cy + ry2 * Math.sin(t) });
+  }
+
+  return slots;
+}
+
+// Draw orbital slots into the SVG
+function puiRenderMoons(moonCount) {
+  const svg = document.getElementById('pui-moon-svg');
+  const positions = puiMoonSlotPositions();
+  const R = 9; // slot circle radius
+  svg.innerHTML = '';
+  positions.forEach((pos, i) => {
+    const occupied = i < moonCount;
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('class', 'pui-moon-slot' + (occupied ? ' occupied' : ''));
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('class', 'moon-bg');
+    circle.setAttribute('cx', pos.x.toFixed(1));
+    circle.setAttribute('cy', pos.y.toFixed(1));
+    circle.setAttribute('r', R);
+    g.appendChild(circle);
+    if (occupied) {
+      // natural moon indicator dot
+      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot.setAttribute('cx', pos.x.toFixed(1));
+      dot.setAttribute('cy', pos.y.toFixed(1));
+      dot.setAttribute('r', 3.5);
+      dot.setAttribute('fill', 'rgba(160,180,200,0.7)');
+      g.appendChild(dot);
+    }
+    svg.appendChild(g);
+  });
+}
+
+// Draw planet on canvas
+function puiDrawPlanet(effType, params) {
+  const W = puiCanvas.width, H = puiCanvas.height;
+  puiCtx.clearRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2, r = W * 0.42;
+
+  if (!effType) {
+    // Bare core / destroyed
+    const cg = puiCtx.createRadialGradient(cx - r*0.3, cy - r*0.3, r*0.05, cx, cy, r);
+    cg.addColorStop(0, '#c0a060'); cg.addColorStop(0.5, '#6a4820'); cg.addColorStop(1, '#1c0c06');
+    puiCtx.beginPath(); puiCtx.arc(cx, cy, r, 0, Math.PI*2);
+    puiCtx.fillStyle = cg; puiCtx.fill();
+    return;
+  }
+
+  const PLANET_DRAW = {
+    rocky:     { c1:'#8aaa80', c2:'#4a5e44', c3:'#1a2214' },
+    lava:      { c1:'#ee6622', c2:'#aa2200', c3:'#220800' },
+    ice:       { c1:'#b8d8ee', c2:'#6a9ab8', c3:'#1a3050' },
+    gas_giant: { c1:'#e8b860', c2:'#a07030', c3:'#2a1a06' },
+    bare_core: { c1:'#c0a060', c2:'#6a4820', c3:'#1c0c06' },
+  };
+  const v = PLANET_DRAW[effType] || { c1:'#8888aa', c2:'#44445a', c3:'#111120' };
+
+  // Glow
+  const glow = puiCtx.createRadialGradient(cx, cy, r*0.5, cx, cy, r*1.4);
+  glow.addColorStop(0, v.c1 + '30'); glow.addColorStop(1, v.c1 + '00');
+  puiCtx.beginPath(); puiCtx.arc(cx, cy, r*1.4, 0, Math.PI*2);
+  puiCtx.fillStyle = glow; puiCtx.fill();
+
+  // Planet body
+  const body = puiCtx.createRadialGradient(cx - r*0.3, cy - r*0.35, r*0.05, cx, cy, r);
+  body.addColorStop(0, v.c1); body.addColorStop(0.5, v.c2); body.addColorStop(1, v.c3);
+  puiCtx.beginPath(); puiCtx.arc(cx, cy, r, 0, Math.PI*2);
+  puiCtx.fillStyle = body; puiCtx.fill();
+
+  // Bands for gas giant
+  if (effType === 'gas_giant') {
+    puiCtx.save();
+    puiCtx.beginPath(); puiCtx.arc(cx, cy, r, 0, Math.PI*2); puiCtx.clip();
+    const bands = [0.22, 0.36, 0.50, 0.64, 0.78];
+    bands.forEach((frac, i) => {
+      const by = cy - r + frac * r * 2;
+      const bw = r * (0.12 + (i % 2) * 0.04);
+      const bg = puiCtx.createLinearGradient(0, by - bw, 0, by + bw);
+      bg.addColorStop(0, 'rgba(0,0,0,0)');
+      bg.addColorStop(0.5, i%2===0 ? 'rgba(255,200,100,0.18)' : 'rgba(80,50,20,0.22)');
+      bg.addColorStop(1, 'rgba(0,0,0,0)');
+      puiCtx.fillStyle = bg;
+      puiCtx.fillRect(cx - r, by - bw, r*2, bw*2);
+    });
+    puiCtx.restore();
+  }
+
+  // Lava cracks
+  if (effType === 'lava') {
+    puiCtx.save();
+    puiCtx.beginPath(); puiCtx.arc(cx, cy, r, 0, Math.PI*2); puiCtx.clip();
+    puiCtx.strokeStyle = 'rgba(255,120,20,0.55)';
+    puiCtx.lineWidth = 1.5;
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      puiCtx.beginPath();
+      puiCtx.moveTo(cx, cy);
+      puiCtx.lineTo(cx + Math.cos(a)*r*0.85, cy + Math.sin(a)*r*0.85);
+      puiCtx.stroke();
+    }
+    puiCtx.restore();
+  }
+
+  // Ice polar caps
+  if (effType === 'ice') {
+    puiCtx.save();
+    puiCtx.beginPath(); puiCtx.arc(cx, cy, r, 0, Math.PI*2); puiCtx.clip();
+    const topCap = puiCtx.createRadialGradient(cx, cy - r*0.7, 0, cx, cy - r*0.7, r*0.55);
+    topCap.addColorStop(0, 'rgba(220,240,255,0.65)'); topCap.addColorStop(1, 'rgba(220,240,255,0)');
+    puiCtx.fillStyle = topCap; puiCtx.fillRect(cx-r, cy-r, r*2, r);
+    const botCap = puiCtx.createRadialGradient(cx, cy + r*0.7, 0, cx, cy + r*0.7, r*0.45);
+    botCap.addColorStop(0, 'rgba(220,240,255,0.55)'); botCap.addColorStop(1, 'rgba(220,240,255,0)');
+    puiCtx.fillStyle = botCap; puiCtx.fillRect(cx-r, cy, r*2, r);
+    puiCtx.restore();
+  }
+
+  // Rocky patches / continents
+  if (effType === 'rocky') {
+    puiCtx.save();
+    puiCtx.beginPath(); puiCtx.arc(cx, cy, r, 0, Math.PI*2); puiCtx.clip();
+    const patches = [{dx:-0.2,dy:-0.1,rp:0.32},{dx:0.15,dy:0.25,rp:0.22},{dx:-0.3,dy:0.3,rp:0.18}];
+    patches.forEach(p => {
+      const pg = puiCtx.createRadialGradient(cx+p.dx*r, cy+p.dy*r, 0, cx+p.dx*r, cy+p.dy*r, p.rp*r);
+      pg.addColorStop(0, 'rgba(120,160,100,0.35)'); pg.addColorStop(1, 'rgba(120,160,100,0)');
+      puiCtx.fillStyle = pg; puiCtx.fillRect(cx-r, cy-r, r*2, r*2);
+    });
+    puiCtx.restore();
+  }
+
+  // Atmosphere rim glow
+  const rim = puiCtx.createRadialGradient(cx, cy, r*0.88, cx, cy, r*1.08);
+  rim.addColorStop(0, 'rgba(0,0,0,0)');
+  rim.addColorStop(0.5, v.c1 + '22');
+  rim.addColorStop(1, 'rgba(0,0,0,0)');
+  puiCtx.beginPath(); puiCtx.arc(cx, cy, r*1.08, 0, Math.PI*2);
+  puiCtx.fillStyle = rim; puiCtx.fill();
+
+  // Edge shadow
+  const shadow = puiCtx.createRadialGradient(cx + r*0.25, cy + r*0.2, r*0.4, cx, cy, r);
+  shadow.addColorStop(0, 'rgba(0,0,0,0)'); shadow.addColorStop(1, 'rgba(0,0,0,0.55)');
+  puiCtx.beginPath(); puiCtx.arc(cx, cy, r, 0, Math.PI*2);
+  puiCtx.fillStyle = shadow; puiCtx.fill();
+}
+
+// Compute food resources label from life + params
+function puiFoodLabel(lifeAlive, activity, effType) {
+  if (effType === 'bare_core' || effType === 'lava') return { text: 'Нет · 0 ед/тик', cls: 'bad' };
+  if (!lifeAlive) return { text: 'Нет · 0 ед/тик', cls: 'bad' };
+  // Природный лимит пищи: activity [0..1] → [0..20] ед/тик
+  const foodPerTick = Math.round(activity * 20);
+  const a = activity * 100;
+  let label;
+  if (a >= 65) label = 'Изобильные';
+  else if (a >= 40) label = 'Богатые';
+  else if (a >= 20) label = 'Умеренные';
+  else if (a >= 8)  label = 'Скудные';
+  else              label = 'Следовые';
+  const cls = a >= 40 ? 'good' : a >= 20 ? '' : a >= 8 ? 'warn' : 'bad';
+  return { text: `${label} · ${foodPerTick} ед/тик`, cls };
+}
+
+// Compute ecology % from life stage
+function puiEcologyValue(lifeAlive, activity, effType) {
+  if (!lifeAlive || effType === 'bare_core' || effType === 'lava') return { text: '0%', cls: 'bad' };
+  const pct = Math.round(40 + activity * 60);
+  const cls = pct >= 70 ? 'good' : pct >= 40 ? 'warn' : 'bad';
+  return { text: pct + '%', cls };
+}
+
+// Radiation label
+function puiRadLabel(surfRad) {
+  if (surfRad >= 70) return { text: surfRad.toFixed(0) + ' · Летальная', cls: 'bad' };
+  if (surfRad >= 40) return { text: surfRad.toFixed(0) + ' · Высокая', cls: 'warn' };
+  if (surfRad >= 15) return { text: surfRad.toFixed(0) + ' · Умеренная', cls: 'warn' };
+  return { text: surfRad.toFixed(0) + ' · Низкая', cls: 'good' };
+}
+
+// Atmosphere composition label
+function puiAtmoLabel(atm, o2) {
+  if (atm.pressure <= 2) return { text: 'Вакуум', cls: 'bad' };
+  if (atm.pressure >= 80) return { text: 'Губительное', cls: 'bad' };
+  const parts = [];
+  if (atm.nitrogen > 10) parts.push('N₂');
+  if (o2 >= 18) parts.push('O₂');
+  else if (o2 >= 5) parts.push('O₂↓');
+  if (parts.length === 0) parts.push('Инертная');
+  return { text: parts.join('-') + ' ' + atm.pressure.toFixed(0) + 'атм', cls: o2 >= 18 ? 'good' : '' };
+}
+
+function puiSetStat(id, text, cls) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'pui-stat-val' + (cls ? ' ' + cls : '');
+}
+
+const PLANET_TYPE_RU = {
+  rocky:      'Каменистая',
+  lava:       'Лавовая',
+  ice:        'Ледяная',
+  gas_giant:  'Газовый гигант',
+  ocean:      'Океанская',
+  frozen:     'Замёрзшая',
+  toxic:      'Токсичная',
+  desert:     'Пустынная',
+  bare_core:  'Голое ядро',
+  destroyed:  'Уничтожена',
+};
+function planetTypeRu(t) {
+  return PLANET_TYPE_RU[t] || (t || 'Неизвестная').replace(/_/g,' ');
+}
+
+function openPlanetUI(planet) {
+  if (!sysData) return;
+  const star     = objects.find(o => o.id === sysData.star_id);
+  const p        = planet._params || computePlanetParams(planet, sysData, star);
+  const effType  = effectivePlanetType(planet.type, p.coreTemp);
+  const orb      = planet.orbit_index;
+  const orbitNorm = orb / 35;
+  const gc       = sysData.gen_code || '000000000';
+  const st       = sysData.star_type || 'yellow_dwarf';
+  const starTemp = star ? star.temp : 150;
+  const starAge  = star ? (star.age || 0) : 0;
+
+  const startTemp    = CFG['T_'  + ST_CFG[st]] ?? 200;
+  const dtVal        = CFG['DT_' + ST_CFG[st]] ?? -1;
+  const starLifespan = dtVal < 0 ? Math.ceil((startTemp - 10) / Math.abs(dtVal)) : 80;
+
+  const atm     = computeAtmosphere(p, effType, starTemp, orbitNorm, gc, orb);
+  const starRad  = star ? computeRAD(star) : 50;
+  const surfRad  = computeSurfaceRad(starRad, orbitNorm, atm.pressure);
+  const surfTemp = computeSurfTemp(starTemp, orbitNorm, atm.pressure);
+  const isWD     = st === 'white_dwarf';
+  const lifeBirthAge = computeLifeBirthAge(planet, sysData, star);
+  const lifeAlive = lifeBirthAge !== null
+    && (effType === 'rocky' || effType === 'ice')
+    && p.water >= 20 && atm.pressure >= 5 && atm.pressure <= 80
+    && (isWD || (surfTemp >= 8 && surfTemp <= 80))
+    && surfRad < 70;
+  const o2 = computeOxygen(p, atm.pressure, lifeAlive ? lifeBirthAge : null, starAge, starLifespan);
+  const activity = lifeAlive ? computeLifeActivity(surfTemp, atm.pressure, p.water, surfRad, isWD) : 0;
+
+  // Name: "StarName #N"
+  const sname = starName(sysData.star_id);
+  document.getElementById('pui-planet-name').textContent = `${sname} #${orb + 1}`;
+  document.getElementById('pui-planet-sub').textContent = planetTypeRu(effType);
+
+  // Stats
+  puiSetStat('pui-s-players', '0', '');
+  puiSetStat('pui-s-population', 'Необитаема', 'bad');
+
+  const eco = puiEcologyValue(lifeAlive, activity, effType);
+  puiSetStat('pui-s-ecology', eco.text, eco.cls);
+
+  const food = puiFoodLabel(lifeAlive, activity, effType);
+  puiSetStat('pui-s-food', food.text, food.cls);
+
+  const rad = puiRadLabel(surfRad);
+  puiSetStat('pui-s-radiation', rad.text, rad.cls);
+
+  const pressCls = atm.pressure <= 5 ? 'bad' : atm.pressure >= 80 ? 'bad' : atm.pressure >= 20 ? 'good' : 'warn';
+  puiSetStat('pui-s-pressure', atm.pressure.toFixed(1) + ' атм', pressCls);
+
+  const gravCls = p.gravity < 0.4 ? 'warn' : p.gravity > 2.5 ? 'bad' : 'good';
+  puiSetStat('pui-s-gravity', p.gravity.toFixed(2) + ' g', gravCls);
+
+  const atmoL = puiAtmoLabel(atm, o2);
+  puiSetStat('pui-s-atmo', atmoL.text, atmoL.cls);
+
+  // Planet visual
+  puiDrawPlanet(effType, p);
+
+  // Moons
+  const moonCount = puiMoonCount(planet, gc);
+  puiRenderMoons(moonCount);
+
+  // Переключаем галактический тик на «1 мин/тик» при входе в планету
+  _simSpeedBeforePlanet = simTimer ? simIntervalMs : null;
+  startSim(60000);
+
+  puiOverlay.classList.add('open');
+}
+
+function closePlanetUI() {
+  puiOverlay.classList.remove('open');
+  // Восстанавливаем скорость, которая была до входа в планету
+  if (_simSpeedBeforePlanet !== null) {
+    startSim(_simSpeedBeforePlanet);
+  } else {
+    stopSim();
+  }
+  _simSpeedBeforePlanet = null;
+}
+
+document.getElementById('pui-close').addEventListener('click', closePlanetUI);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && puiOverlay.classList.contains('open')) {
+    closePlanetUI();
+    e.stopImmediatePropagation();
+  }
+});
+
 </script>
 </body>
 </html>
