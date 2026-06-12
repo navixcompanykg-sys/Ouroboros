@@ -1867,12 +1867,66 @@ const pr = p._params ? (4 + (p._params.radius / 100) * 10) : pv.r;
 
 | Бар | Описание | Цвет |
 |---|---|---|
-| GRAVITY | Поверхностная гравитация | Blue→Orange (≥40%) →Red (≥70%) |
-| RADIUS | Планетарный радиус | `#4499aa` |
-| MASS | Полная масса планеты | `#558844` |
-| CORE MASS | Размер твёрдого ядра | Orange (≥70%) |
-| WATER | Содержание воды/льда | Cyan (≥60%) |
-| CORE TEMP | Температура ядра | Blue→Orange (≥40%)→Red (≥70%) |
+| ГРАВИТАЦИЯ | Поверхностная гравитация | Blue→Orange (≥40%) →Red (≥70%) |
+| РАДИУС | Планетарный радиус | `#4499aa` |
+| МАССА | Полная масса планеты | `#558844` |
+| МАССА ЯДРА | Размер твёрдого ядра | Orange (≥70%) |
+| ВОДА | Содержание воды/льда | Cyan (≥60%) |
+| ТЕМП. ЯДРА | Температура ядра | Blue→Orange (≥40%)→Red (≥70%) |
+
+#### Planet UI overlay (`#planet-ui`)
+
+Открывается двойным кликом по планете в системном виде. Полноэкранный оверлей поверх system view.
+
+**Структура (flex-column):**
+```
+┌─────────────────────────────────────────────────────────┐
+│ [КОСМОДРОМ] [ВЕРФЬ] [СКЛАД] [ТОРГОВАЯ БИРЖА] [АДМИНИСТРАЦИЯ]  ← .pui-bar.top
+├────────────────┬───────────────────┬────────────────────┤
+│  #pui-stats    │   #pui-center     │   #pui-moons       │
+│  (левая колонка│   название +      │   ОРБИТА           │
+│  220px)        │   canvas 220×220  │   SVG объекты      │
+├────────────────┴───────────────────┴────────────────────┤
+│  #pui-surface — полоса типов поверхности                 │
+├─────────────────────────────────────────────────────────┤
+│ [МИН. ЭКОНОМИКИ] [МИН. ОБОРОНЫ] [МИН. РАЗВИТИЯ] [ПРАВИТЕЛЬСТВО] [МИН. НАУКИ]
+└─────────────────────────────────────────────────────────┘
+```
+
+**Левая панель `#pui-stats` — строки параметров:**
+
+| Параметр | ID | Цветовая шкала |
+|---|---|---|
+| ИГРОКИ НА ПЛАНЕТЕ | `pui-s-players` | — |
+| НАСЕЛЕНИЕ | `pui-s-population` | bad/good |
+| ЭКОЛОГИЯ | `pui-s-ecology` | good/warn/bad |
+| ПИЩЕВЫЕ РЕСУРСЫ | `pui-s-food` | good/warn/bad |
+| РАДИАЦИЯ | `pui-s-radiation` | good/warn/bad |
+| ДАВЛЕНИЕ | `pui-s-pressure` | good/warn/bad |
+| ГРАВИТАЦИЯ | `pui-s-gravity` | good/warn/bad |
+| АТМОСФЕРА | `pui-s-atmo` | good/warn/bad |
+| ТОКСИЧНОСТЬ | `pui-s-toxic` | good (безопасная) / warn (умеренная/опасная) / bad (критическая) |
+
+Порог токсичности: безопасная < 20, умеренная 20–39, опасная 40–59, критическая ≥ 60.
+
+**Полоса поверхности `#pui-surface`:**
+
+Компактная горизонтальная полоска между main-блоком и нижними кнопками. Содержит:
+- Заголовок: `ПОВЕРХНОСТЬ [АРХЕТИП] · N у.е.`
+- Цветная составная полоска (пропорциональные сегменты по типам поверхности)
+- Легенда: метка + % для каждого присутствующего типа
+
+| Тип | Цвет |
+|---|---|
+| МОРЯ | `#2266bb` |
+| ЛЁД | `#88bbdd` |
+| ГОРЫ | `#887766` |
+| ПУСТЫНИ | `#cc9944` |
+| ТУНДРА | `#5588aa` |
+| ЛЕСА | `#336633` |
+| РАВНИНЫ | `#665544` |
+
+Архетипы (если один тип доминирует): ВОДНЫЙ МИР (≥65% моря), ЛЕДЯНОЙ МИР (≥55% лёд), ПУСТЫННЫЙ МИР (≥45% пустыни), ГОРНЫЙ МИР (≥35% горы), ЛЕСНОЙ МИР (≥35% леса).
 
 ### 34.5 Каскадная трансформация планет (CORE_TEMP > 100)
 
@@ -1919,8 +1973,25 @@ function effectivePlanetType(base, coreTemp) {
 |---|---|---|
 | Лавовая | Силикат, Металлическое железо | Тугоплавкие (S3 ≥ 6) |
 | Каменистая | Силикат, Металлическое железо | Платиноиды (S4 ≥ 7), Биогенные (S6 ≤ 2) |
-| Ледяная | Водяной лёд, Дейтерий | Инертные газы (S5 ≥ 6) |
+| Ледяная | Водяной лёд (`water_ice`), Дейтерий | Инертные газы (S5 ≥ 6); металлы (бурение каменного ядра) |
 | Газовый гигант | Водород, Гелий-3 | Изотопные газы (S5 ≥ 8) |
+
+#### Ребаланс ледяных планет
+
+Ледяные планеты **не удерживают свободный водород** (лёгкий газ улетает в открытый космос). Базовые значения:
+
+| Ресурс | До | После | Причина |
+|---|---|---|---|
+| `hydrogen` | 8 000 | 400 | Ледяная планета не накапливает свободный H₂ |
+| `iron` | 300 | 3 000 | Бурение каменного ядра |
+| `refract` | 50 | 2 000 | Тугоплавкие металлы в ядре |
+| `rare_light` | 30 | 1 500 | Редкоземельные в ядре |
+| `platinoids` | 20 | 1 100 | Платиноиды в ядре |
+| `deuterium` | 1 800 | 1 800 | Оставлен без изменений (изотоп, интересен для геймплея) |
+
+#### Вода как ресурс
+
+`water_ice` — перевозимый ресурс (масса груза = 5). Отдельной сущности «жидкая вода» нет: транспортировка всегда в виде льда, хранение на складе — тоже. В системном виде отображается как `ВОДЯНОЙ ЛЁД`.
 
 ---
 
@@ -2194,68 +2265,80 @@ function drawPlanet(ctx, x, y, planet) {
 
 `RADIATION` и `METEOR` вычисляются через `computeRAD(star)` / `computeMA(star)` — те же функции, что и в тултипе галактической карты. Источник данных — текущее состояние объекта звезды в `objects[]`.
 
-### 39.7 Синхронизация времени с галактикой
+### 39.7 Единый таймер и синхронизация времени
 
-**Принцип:** `sysSimTime` не накапливается от реального времени независимо. Он вычисляется из галактического `tick` с плавной интерполяцией между тиками.
+**Принцип:** в игре существует **один таймер** для всех уровней (галактика, система, планета). Кнопки переключения скорости на любом уровне вызывают единую функцию `startSim(ms)`, которая одновременно задаёт и интервал галактического тика, и скорость вращения планет в системном виде.
 
 ```javascript
-// Глобальные переменные
-let tickStartReal = 0;   // performance.now() в начале текущего тика
-let simIntervalMs = 1000; // текущий интервал тика (1000 / 3000 / 10000 мс)
+const ORBIT_SPEED_FACTOR = 360;
+// При 1s/тик: sysSimSpeed = 1 * 360 = 360 у/с → внутренняя планета ~18°/с
+// При 10s/тик: sysSimSpeed = 10 * 360 = 3600 у/с → та же 18°/с за 10 реальных секунд
+// Визуальная скорость орбит остаётся константной при любой скорости тика.
 
-// В runTick():
-tickStartReal = performance.now();
-
-// В startSim(ms):
-simIntervalMs = ms;
-tickStartReal = performance.now();
-
-// В renderSysLoop():
-if (sysSimRunning) {
-  if (simTimer !== null) {
-    // Галактика идёт: интерполяция между тиками (60 fps плавно)
-    const frac = Math.min(1, (performance.now() - tickStartReal) / simIntervalMs);
-    sysSimTime = (tick + frac) * sysSimSpeed;
-  } else {
-    // Галактика на паузе: планеты замирают в позиции текущего тика
-    sysSimTime = tick * sysSimSpeed;
-  }
+function startSim(ms) {
+  stopSim();
+  simIntervalMs = ms;
+  sysSimSpeed = ORBIT_SPEED_FACTOR * 1000 / ms;
+  sysSimRunning = true;
+  _sysAnimLastReal = 0;
+  tickStartReal = performance.now();
+  simTimer = setInterval(runTick, ms);
+  // обновить UI: статус, активные кнопки галактики и системного вида
 }
-// sysSimRunning = false (кнопка STOP): sysSimTime не меняется
 ```
+
+**Накопление `sysSimTime`** (в `renderSysLoop`) — аккумулируется по реальному delta-времени, чтобы не было скачков позиции при смене скорости:
+
+```javascript
+if (sysSimRunning) {
+  const now = performance.now();
+  if (_sysAnimLastReal > 0) sysSimTime += (now - _sysAnimLastReal) / 1000 * sysSimSpeed;
+  _sysAnimLastReal = now;
+} else {
+  _sysAnimLastReal = 0;
+}
+```
+
+**При открытии системного вида** — инициализация из текущего тика:
+```javascript
+sysSimTime = tick * sysSimSpeed;
+_sysAnimLastReal = 0;
+```
+
+**При смене скорости** — `startSim(ms)` сбрасывает `_sysAnimLastReal = 0`, поэтому дельта обнуляется и позиция планет не прыгает.
 
 **Следствия:**
 
-| Состояние галактики | Поведение планет |
+| Состояние | Поведение планет |
 |---|---|
-| Запущена (1s/тик) | Плавно вращаются, скорость определяется `sysSimSpeed` |
-| Запущена (10s/тик) | Вращаются медленнее (пропорционально) |
-| Пауза | Замирают в позиции текущего тика |
-| Кнопка STOP (системный вид) | Заморожены на любом моменте |
+| Запущена (любая скорость) | Плавно вращаются с постоянной визуальной скоростью |
+| Пауза (STOP) | Замирают в текущей позиции |
+| Смена скорости | Плавно продолжают из текущей позиции (без скачка) |
 
-**Кнопки скорости системного вида** (`sysSimSpeed`):
+**Кнопки скорости** — одинаковый набор на галактическом и системном уровнях:
 
-| Кнопка | `sysSimSpeed` | Значение |
-|---|---|---|
-| MIN/S | 60 | 60 сек планетного времени / тик |
-| HR/S | 3600 | 3600 сек / тик (по умолчанию) |
-| DAY/S | 86400 | 86400 сек / тик |
-| STOP | 0 | `sysSimRunning = false` |
-
-При открытии системы (`openSystemView`): `sysSimTime = tick × sysSimSpeed` — планеты сразу показываются в позиции, соответствующей текущему тику.
+| Кнопка | `ms` | `sysSimSpeed` | Скорость планет |
+|---|---|---|---|
+| 1с | 1 000 | 360 | максимальная (базовая) |
+| 3с | 3 000 | 120 | в 3× медленнее |
+| 10с | 10 000 | 36 | в 10× медленнее |
+| 1 МИН | 60 000 | 6 | заметное замедление |
+| 1 ЧАС | 3 600 000 | 0.1 | почти неподвижны |
+| 1 СУТКИ | 86 400 000 | 0.004 | заморожены |
 
 ### 39.8 Анимационный цикл (текущая реализация)
 
 ```javascript
+let _sysAnimLastReal = 0;   // performance.now() на прошлом кадре
+
 function renderSysLoop() {
-  if (!sysData) return;
+  if (!sysData && !formData) return;
   if (sysSimRunning) {
-    if (simTimer !== null) {
-      const frac = Math.min(1, (performance.now() - tickStartReal) / simIntervalMs);
-      sysSimTime = (tick + frac) * sysSimSpeed;
-    } else {
-      sysSimTime = tick * sysSimSpeed;
-    }
+    const now = performance.now();
+    if (_sysAnimLastReal > 0) sysSimTime += (now - _sysAnimLastReal) / 1000 * sysSimSpeed;
+    _sysAnimLastReal = now;
+  } else {
+    _sysAnimLastReal = 0;
   }
   drawSystem(sysSimTime);
   if (++_sysStatFrame % 8 === 0) updateSysStats();
@@ -2325,7 +2408,275 @@ function preloadAssets() {
 
 ---
 
-## 43. ГАЛАКТИЧЕСКИЙ СКАНЕР (⊞ SCAN)
+## 43. ТИПЫ ПОВЕРХНОСТИ ПЛАНЕТ
+
+### 43.1 Назначение
+
+Поверхность планеты делится на 7 типов в условных единицах (у.е.): **МОРЯ, ЛЁД, ГОРЫ, ПУСТЫНИ, ТУНДРА, ЛЕСА, РАВНИНЫ**. Общий объём поверхности пропорционален радиусу планеты: `total = max(10, round(radius × 10))` — диапазон ~10–1000 у.е.
+
+Типы поверхности влияют на:
+- биогенные ресурсы (`bioSurfFactor`)
+- активность жизни (`surfaceActivityFactor`)
+- токсичность (зависит от геологической активности)
+
+### 43.2 Функция `computeSurface`
+
+**Входные данные:** параметры планеты `p`, эффективный тип `effType`, температура поверхности `surfTemp`, флаг `lifeAlive`, активность жизни `activity`, gen_code `gc`, индекс орбиты `orb`.
+
+Возвращает объект `surf` или `null` для gas_giant.
+
+```javascript
+function computeSurface(p, effType, surfTemp, lifeAlive, activity, gc, orb) {
+  if (!effType || effType === 'gas_giant') return null;
+
+  const totalUnits = Math.max(10, Math.round(p.radius * 10)); // 10–1000 у.е.
+  const wFrac  = p.water / 100;          // доля воды
+  const tect   = p.coreMass / 100;       // тектоническая активность
+  const freeze = clamp((10 - surfTemp) / 15, 0, 1);    // мороз
+  const warm   = clamp((surfTemp - 5) / 20, 0, 1);     // тепло
+  const hot    = clamp((surfTemp - 25) / 35, 0, 1);    // жара (начало с 25°, не с 35°)
+  const cold   = clamp((20 - surfTemp) / 20, 0, 1);    // холод (начало с 20°, не с 15°)
+  const dry    = Math.max(0, 1 - wFrac * 2.5);         // сухость (при воде < 40% — есть пустыни)
+
+  // Псевдослучайные вариации из gen_code (детерминировано)
+  const sv    = k => (parseInt(gc[(orb + k) % 9]) || 0) / 9;
+  const noise = k => 0.88 + sv(k) * 0.24;   // [0.88, 1.12]
+
+  // Водяные типы
+  let iceFrac = wFrac * freeze * noise(0);
+  let seaFrac = wFrac * warm * (1 - freeze * 0.75) * noise(1);
+  const wSum = iceFrac + seaFrac;
+  if (wSum > wFrac) { iceFrac = iceFrac/wSum*wFrac; seaFrac = seaFrac/wSum*wFrac; }
+
+  const landFrac = 1 - iceFrac - seaFrac;
+
+  // Сухопутные типы
+  let mountFrac  = landFrac * tect * 0.45 * noise(2);
+  // Пустыни: от жары ИЛИ от сухости (low water при любой температуре)
+  const desertDriver = Math.min(1, hot * (1 - wFrac * 0.5) + dry * 0.55);
+  let desertFrac = landFrac * desertDriver * 0.70 * noise(3);
+  let tundraFrac = landFrac * cold * (1 - wFrac * 0.35) * 0.55 * noise(4);
+  // Леса — зависят от активности жизни (три-пасс: только при lifeAlive)
+  let forestFrac = lifeAlive ? landFrac * activity * warm * 0.70 * noise(5) : 0;
+
+  // Нормализация суши
+  const landUsed = mountFrac + desertFrac + tundraFrac + forestFrac;
+  if (landUsed > landFrac) {
+    const sc = landFrac / landUsed;
+    mountFrac *= sc; desertFrac *= sc; tundraFrac *= sc; forestFrac *= sc;
+  }
+  const plainsFrac = Math.max(0, landFrac - mountFrac - desertFrac - tundraFrac - forestFrac);
+
+  const u = f => Math.max(0, Math.round(f * totalUnits));
+  const surf = {
+    total: totalUnits,
+    sea: u(seaFrac), ice: u(iceFrac), mountains: u(mountFrac),
+    deserts: u(desertFrac), tundra: u(tundraFrac), forests: u(forestFrac), plains: u(plainsFrac),
+  };
+
+  // Архетип — если один тип доминирует
+  const pct = f => f / totalUnits;
+  if      (pct(surf.sea)       >= 0.65) surf.archetype = 'ВОДНЫЙ МИР';
+  else if (pct(surf.ice)       >= 0.55) surf.archetype = 'ЛЕДЯНОЙ МИР';
+  else if (pct(surf.deserts)   >= 0.45) surf.archetype = 'ПУСТЫННЫЙ МИР';
+  else if (pct(surf.mountains) >= 0.35) surf.archetype = 'ГОРНЫЙ МИР';
+  else if (pct(surf.forests)   >= 0.35) surf.archetype = 'ЛЕСНОЙ МИР';
+  else surf.archetype = null;
+
+  return surf;
+}
+```
+
+### 43.3 Три-пасс вычисление (разрыв циклической зависимости)
+
+`computeSurface` использует `activity` для расчёта лесов. `computeLifeActivity` использует `surf` для `surfaceActivityFactor`. Это создаёт циклическую зависимость. Решение — три прохода:
+
+```javascript
+// 1. Поверхность без лесов (lifeAlive=false, activity=0)
+const baseSurf   = computeSurface(p, effType, surfTemp, false, 0, gc, orb);
+// 2. Токсичность (зависит от атмосферы, не от лесов)
+const toxicity   = computeToxicity(p, effType, atm, o2, gc, orb);
+// 3. Активность жизни (использует baseSurf для surfaceActivityFactor)
+const activity   = lifeAlive ? computeLifeActivity(..., baseSurf, toxicity) : 0;
+// 4. Финальная поверхность с лесами
+const surf       = computeSurface(p, effType, surfTemp, lifeAlive, activity, gc, orb);
+```
+
+### 43.4 Влияние поверхности на биогенные ресурсы (`bioSurfFactor`)
+
+Множитель 0.1–2.0, применяется к базовому значению. **Кап `maxVal` не применяется** — итоговый ресурс может превышать базовый максимум на богатых планетах:
+
+```javascript
+function bioSurfFactor(id, surf) {
+  if (!surf) return 1.0;
+  const T = surf.total || 1;
+  switch (id) {
+    case 'biomass':    return clamp((surf.forests * 2.5 + surf.plains) / T * 2, 0.1, 2.0);
+    case 'phosphates': return clamp((surf.sea * 1.8 + surf.plains * 0.4) / T * 2, 0.1, 2.0);
+    case 'carbonates': return clamp((surf.sea + surf.plains + surf.tundra) / T * 2, 0.1, 2.0);
+    case 'bitumens':   return clamp((surf.plains + surf.sea*0.5 + surf.mountains*0.3) / T * 2, 0.1, 2.0);
+    default: return 1.0;
+  }
+}
+// Итоговый ресурс: val = round(base * surfMult) — без ограничения сверху
+// Бар в UI ограничен 100% визуально, но число показывает реальное значение
+```
+
+| Ресурс | Лучшие поверхности | Худшие |
+|---|---|---|
+| BIOMASS | Леса × 2.5, Равнины | Пустыни, Лёд |
+| PHOSPHATES | Моря × 1.8, Равнины | Горы, Тундра |
+| CARBONATES | Моря, Равнины, Тундра | Пустыни, Горы |
+| BITUMENS | Равнины, Моря × 0.5, Горы × 0.3 | Леса, Тундра |
+
+### 43.5 Влияние поверхности на активность жизни (`surfaceActivityFactor`)
+
+Множитель 0.4–1.4:
+
+```javascript
+function surfaceActivityFactor(surf) {
+  if (!surf) return 1.0;
+  const T = surf.total || 1;
+  const favorable   = (surf.sea * 0.7 + surf.plains + surf.tundra * 0.25) / T;
+  const unfavorable = (surf.deserts + surf.mountains * 0.3) / T;
+  return clamp(0.6 + favorable - unfavorable * 0.5, 0.4, 1.4);
+}
+```
+
+| Поверхность | Влияние |
+|---|---|
+| Моря × 0.7 + Равнины | Благоприятны (+) |
+| Тундра × 0.25 | Слабо благоприятна |
+| Пустыни × 0.5 | Неблагоприятны (−) |
+| Горы × 0.3 × 0.5 | Слабо неблагоприятны |
+
+---
+
+## 44. ТОКСИЧНОСТЬ ПЛАНЕТ
+
+### 44.1 Назначение
+
+**Естественная токсичность** — параметр 0–100, отражающий опасность природной среды планеты для живых организмов и колонистов. Не путать с промышленным загрязнением (планируется отдельно).
+
+### 44.2 Функция `computeToxicity`
+
+```javascript
+function computeToxicity(p, effType, atm, o2, gc, orb) {
+  if (!effType) return 0;
+
+  // Базовый уровень по типу планеты
+  const BASE = { lava: 65, rocky: 12, ice: 5, gas_giant: 35, bare_core: 8 };
+  const base = BASE[effType] ?? 12;
+
+  // Вулканические газы (зависит от геологической активности и температуры ядра)
+  const volc  = atm.geoActivity * (p.coreTemp / 200) * 38;
+
+  // Штрафы за атмосферу
+  const o2pen = o2 < 5 ? 22 : o2 < 15 ? 10 : 0;     // нехватка кислорода
+  const prpen = atm.pressure > 70 ? 12 : atm.pressure > 50 ? 5 : 0;  // давление
+
+  // Детерминированный шум из gen_code
+  const noise = (resRand(gc, orb, 50) - 0.5) * 20;   // ±10
+
+  return clamp(Math.round(base + volc + o2pen + prpen + noise), 0, 100);
+}
+```
+
+### 44.3 Компоненты токсичности
+
+| Компонент | Макс. вклад | Условие |
+|---|---|---|
+| Базовый (тип планеты) | 65 (лавовая) | Фиксирован по типу |
+| Вулканические газы | ~38+ | `geoActivity × coreTemp/200 × 38` |
+| Нехватка O₂ | +22 | O₂ < 5% |
+| Давление | +12 | Давление > 70 атм |
+| Шум | ±10 | Детерминирован из gen_code |
+
+### 44.4 Базовый уровень по типу
+
+| Тип | База | Логика |
+|---|---|---|
+| `lava` | 65 | Высокая вулканика, токсичные газы |
+| `gas_giant` | 35 | Сильное давление, H₂S |
+| `rocky` | 12 | Умеренная геология |
+| `bare_core` | 8 | Нет атмосферы — нечему отравлять |
+| `ice` | 5 | Низкая активность |
+
+### 44.5 Влияние токсичности на жизнь
+
+Токсичность входит в `computeLifeActivity` как штрафной множитель:
+
+```javascript
+const toxFactor = Math.max(0.08, 1 - Math.max(0, tox - 15) / 100 * 1.2);
+// tox=0:  factor=1.0  (нет штрафа)
+// tox=15: factor=1.0  (порог безопасности)
+// tox=40: factor=0.70
+// tox=70: factor=0.34
+// tox=100: factor=0.08 (минимум — жизнь практически подавлена)
+```
+
+### 44.6 Будущее расширение (промышленная токсичность)
+
+В будущих версиях токсичность будет складываться из двух слоёв:
+- **Естественная** — `computeToxicity` (реализована)
+- **Промышленная** — добавляется производством и ростом населения поверх естественного уровня
+
+---
+
+## 44.7 ФУНКЦИЯ `computeLifeActivity`
+
+**Подпись:** `computeLifeActivity(surfTemp, pressure, water, surfRad, isWD, surf, toxicity, lifeAge)`
+
+Возвращает значение **0.0–1.0**. Превышение 1.0 невозможно.
+
+```javascript
+function computeLifeActivity(surfTemp, pressure, water, surfRad, isWD, surf, toxicity, lifeAge) {
+  // --- Фактор возраста: логарифмический рост, halfLife = 50 тиков ---
+  // lifeAge=0 → 0 | lifeAge=10 → 0.27 | lifeAge=25 → 0.41 | lifeAge=50 → 0.50
+  // lifeAge=150 → 0.75 | lifeAge=350 → 0.875 | lifeAge=∞ → 1.0
+  const ageFactor = (lifeAge > 0)
+    ? Math.min(1, Math.log(1 + lifeAge / 50) / Math.log(2))
+    : 0;
+
+  // --- Потенциал условий (0.0–1.0) ---
+  const tFactor = Math.max(0, 1 - Math.pow((surfTemp - 35) / 40, 2)); // пик ~35°
+  const pFactor = pressure < 5 ? 0 : clamp(Math.min(pressure-5, 80-pressure) / 25, 0, 1);
+  const wFactor = Math.min(1, water / 50);
+  const rFactor = Math.max(0, 1 - surfRad / 100);
+  const base    = tFactor * 0.4 + pFactor * 0.25 + wFactor * 0.2 + rFactor * 0.15;
+
+  const sFactor   = surfaceActivityFactor(surf);   // 0.4–1.4, из §43.5
+  const tox       = toxicity ?? 0;
+  const toxFactor = Math.max(0.08, 1 - Math.max(0, tox - 15) / 100 * 1.2);
+
+  // Потенциал ограничен 1.0 ДО применения ageFactor
+  const potential = Math.min(1.0, base * sFactor * toxFactor);
+  const result    = potential * ageFactor;
+
+  // WD: дормантная жизнь почти неактивна
+  return isWD ? result * Math.max(0.03, surfTemp / 40) : result;
+}
+```
+
+#### Таблица роста активности (идеальные условия, potential=1.0)
+
+| Возраст жизни (тиков) | ageFactor | Активность |
+|---|---|---|
+| 0 | 0.00 | 0% |
+| 10 | 0.27 | 27% |
+| 25 | 0.41 | 41% |
+| 50 | 0.50 | 50% |
+| 100 | 0.63 | 63% |
+| 200 | 0.75 | 75% |
+| 350 | 0.83 | 83% |
+| 700 | 0.91 | 91% |
+| 1500 | 0.96 | 96% |
+
+На планете со средними условиями (potential=0.7) итоговая активность умножается: тик 50 → 35%, тик 200 → 52%.
+
+---
+
+## 46. ГАЛАКТИЧЕСКИЙ СКАНЕР (⊞ SCAN)
 
 ### Назначение
 Инструмент разработки и отладки. Собирает статистику по всем звёздам и планетам галактики за один проход на клиенте, отправляет на сервер, сохраняет в файл.
@@ -2426,7 +2777,18 @@ function preloadAssets() {
 - [x] Биогенные ресурсы (BIOMASS, PHOSPHATES, CARBONATES, BITUMENS) — логарифмический рост × activity
 - [x] Ископаемые ресурсы при вымершей жизни — полный накопленный объём без множителя
 - [x] Кнопка **⊞ SCAN** — галактический сканер, сохраняет статистику в `scans/`
+- [x] **Единый таймер** — `startSim(ms)` управляет и тиком галактики, и скоростью орбит (`ORBIT_SPEED_FACTOR = 360`); кнопки скоростей на всех уровнях одинаковые
+- [x] **Типы поверхности** — `computeSurface` → 7 типов (моря, лёд, горы, пустыни, тундра, леса, равнины) + архетипы планет
+- [x] **Биогенные ресурсы зависят от поверхности** — `bioSurfFactor` (×0.1–×2.0 по типам поверхности)
+- [x] **Активность жизни зависит от поверхности** — `surfaceActivityFactor` (×0.4–×1.4)
+- [x] **Три-пасс вычисление** — разрыв циклической зависимости surface↔activity↔surface
+- [x] **Токсичность планет** — `computeToxicity` (0–100): вулканика + атмосфера + шум из gen_code
+- [x] **Токсичность влияет на жизнь** — `toxFactor` в `computeLifeActivity` (порог 15, мин. 0.08)
+- [x] **Ребаланс ледяных планет** — водород 8000→400, металлы значительно увеличены (буровое ядро)
+- [x] **Planet UI: ТОКСИЧНОСТЬ** — новая строка в `#pui-stats` с цветовой шкалой
+- [x] **Planet UI: полоса ПОВЕРХНОСТЬ** — `#pui-surface` с цветной составной полоской и легендой
 - [ ] `baseResources(planetType, genCode)` — минеральные ресурсы как API (сейчас только UI)
+- [ ] Промышленная токсичность (производство + население поверх естественной)
 - [ ] Производство построек и потребление ресурсов (см. `docs/TZEconomy.md`)
 - [ ] Механика добычи, очереди
 
