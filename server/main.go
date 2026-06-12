@@ -238,6 +238,23 @@ func handleStatic(w http.ResponseWriter, r *http.Request) {
 		path = "/galaxy.html"
 	}
 
+	// Serve ui/ modules as JS
+	if strings.HasPrefix(path, "/ui/") {
+		if strings.Contains(path, "..") {
+			http.NotFound(w, r)
+			return
+		}
+		data, err := os.ReadFile("." + path)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write(data)
+		return
+	}
+
 	// Only serve known files for security
 	allowed := map[string]string{
 		"/galaxy.html":   "text/html; charset=utf-8",
