@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>УРОБОРОС — Карта сектора</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap');
+  :root {
+    --bg:#04060f; --panel-bg:rgba(6,12,28,0.92); --border:rgba(60,130,200,0.18);
+    --accent:#2a7fff; --accent2:#00e5ff; --text:#8baac8; --text-bright:#cce4ff;
+    --mono:'Share Tech Mono',monospace; --sans:'Rajdhani',sans-serif;
+    --gold:#ffcf6b;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;}
+  html,body{height:100%;overflow:hidden;background:#000;}
+  body{font-family:var(--sans);color:var(--text);display:flex;align-items:center;justify-content:center;gap:18px;}
+
+  #screen{position:relative;flex-shrink:0;
+    width:min(92vw, 400px, calc(94vh * 390 / 844));
+    aspect-ratio:390/844;
+    background:var(--bg);overflow:hidden;
+    border-radius:34px;border:2px solid #14161e;
+    box-shadow:0 0 0 1px rgba(255,255,255,0.03), 0 20px 60px rgba(0,0,0,0.7);
+    display:flex;flex-direction:column;}
+
+  /* ── админ-панель сервера: ВНЕ экрана телефона — игрок этого не видит ──
+     В финальной игре доступна только с аккаунта администратора сервера. ── */
+  #admin{flex-shrink:0;width:150px;padding:12px;border:1px dashed rgba(255,100,68,0.4);
+    background:rgba(20,8,8,0.5);display:none;}
+  @media (min-width:620px){ #admin{display:block;} }
+  #admin h3{font-family:var(--mono);font-size:8px;letter-spacing:1px;color:#ff8060;margin-bottom:2px;}
+  #admin .admin-note{font-family:var(--mono);font-size:6.5px;color:#ff8060;opacity:.7;line-height:1.5;margin-bottom:12px;}
+  #admin .admin-group{margin-bottom:14px;}
+  #admin .admin-label{font-family:var(--mono);font-size:7px;letter-spacing:1px;color:var(--text);opacity:.6;margin-bottom:5px;}
+  #admin .admin-btn{display:block;width:100%;text-align:left;background:var(--panel-bg);border:1px solid var(--border);
+    color:var(--text-bright);font-family:var(--mono);font-size:8.5px;padding:6px 8px;margin-bottom:3px;cursor:pointer;}
+  #admin .admin-btn.active{border-color:#ff8060;color:#ff8060;background:rgba(255,100,68,0.08);}
+  #admin .admin-btn:active{border-color:#ff8060;}
+
+  /* ── шапка: строка МЕНЮ / название / своего сектора ────────────────── */
+  header{flex-shrink:0;height:32px;display:flex;align-items:center;justify-content:space-between;
+    padding:0 10px;border-bottom:1px solid var(--border);z-index:10;line-height:1.3;}
+  #btn-back{font-family:var(--mono);font-size:7px;letter-spacing:1px;color:var(--accent2);cursor:pointer;}
+  #hdr-title{font-family:var(--mono);font-size:8px;letter-spacing:2px;color:var(--accent2);}
+  #btn-own-sector{font-family:var(--mono);font-size:6.5px;letter-spacing:.5px;color:var(--text);opacity:.7;cursor:pointer;text-align:right;}
+
+  /* ── верхняя строка из 3 панелей: список / выбранный объект / миникарта ── */
+  #top-row{flex-shrink:0;display:flex;gap:4px;padding:5px 6px;border-bottom:1px solid var(--border);z-index:10;}
+  #top-row > div{background:var(--panel-bg);border:1px solid var(--border);padding:5px 6px;overflow:hidden;}
+  #tr-objects{flex:1.1;position:relative;padding-left:10px !important;}
+  #tr-slider{position:absolute;left:5px;top:6px;bottom:6px;width:1px;background:var(--border);}
+  #tr-slider::after{content:'';position:absolute;left:-1.5px;top:0;width:4px;height:10px;background:var(--accent2);}
+  #tr-objects .tr-title{font-family:var(--mono);font-size:6px;letter-spacing:1px;color:var(--accent);opacity:.8;margin-bottom:3px;}
+  .tr-obj-row{font-family:var(--mono);font-size:6.5px;color:var(--text-bright);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:1px 0;}
+  #tr-selected{flex:1.4;}
+  #tr-selected .tr-title{font-family:var(--sans);font-weight:600;font-size:9px;color:var(--text-bright);margin-bottom:3px;}
+  #tr-selected-rows{font-family:var(--mono);font-size:6.3px;color:var(--text);line-height:1.65;}
+  #tr-selected-rows b{color:var(--accent2);font-weight:400;}
+  #tr-minimap{flex:0.8;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  #tr-minimap .tr-title{font-family:var(--mono);font-size:6px;letter-spacing:1px;color:var(--accent);opacity:.8;margin-bottom:3px;align-self:flex-start;}
+  #tr-minimap-box{width:100%;aspect-ratio:1/1;border:1px solid var(--border);position:relative;background:rgba(0,229,255,0.04);}
+  #tr-minimap-box::after{content:'';position:absolute;left:50%;top:50%;width:5px;height:5px;border-radius:50%;
+    background:var(--accent2);transform:translate(-50%,-50%);box-shadow:0 0 4px var(--accent2);}
+
+  /* ── карта: квадратное окно, по центру доступного места ─────────────── */
+  #map-outer{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px;min-height:0;}
+  #map-wrap{position:relative;width:100%;aspect-ratio:1/1;max-height:100%;}
+  #map{width:100%;height:100%;display:block;touch-action:none;cursor:grab;}
+  #map.panning{cursor:grabbing;}
+  .zone-line{fill:none;stroke:var(--border);stroke-width:1;}
+  .zone-line.stable{stroke:rgba(255,207,107,0.28);}
+  .zone-num{font-family:var(--mono);font-size:7px;fill:var(--text);opacity:.5;}
+  .zone-num.stable{fill:var(--gold);opacity:.8;}
+  .assemble-ring{fill:none;stroke:var(--gold);stroke-width:2.2;stroke-dasharray:5 4;opacity:.85;pointer-events:none;}
+
+  .obj{cursor:pointer;}
+  .obj-star{stroke-width:0.6;}
+  .obj-neb{mix-blend-mode:screen;}
+  .obj-ast{opacity:.7;}
+  .obj-bh-ring{fill:none;stroke-width:0.6;opacity:.35;}
+  .obj-stable{filter:drop-shadow(0 0 4px currentColor);}
+  .obj-neutron-core{fill:#ffffff;}
+  .obj-selected{stroke:#fff !important;stroke-width:1.2 !important;}
+
+  /* ── список планет выбранной звезды (внутри #tr-selected) ─────────────── */
+  #tr-planets{margin-top:4px;border-top:1px solid var(--border);padding-top:4px;display:none;max-height:44px;overflow-y:auto;}
+  .ip-row{display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:6.3px;color:var(--text-bright);padding:1px 0;}
+  .ip-type{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+  .ip-name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .ip-faction{width:6px;height:6px;flex-shrink:0;border-radius:1px;}
+
+  /* ── списки флотов/колоний под картой ──────────────────────────────── */
+  #side-lists{flex-shrink:0;display:flex;gap:4px;padding:4px 6px;z-index:10;}
+  #side-lists > div{flex:1;background:var(--panel-bg);border:1px solid var(--border);padding:4px 6px;}
+  #side-lists .sl-title{font-family:var(--mono);font-size:6px;letter-spacing:1px;color:var(--accent);opacity:.8;margin-bottom:2px;}
+  .sl-row{font-family:var(--mono);font-size:6.5px;color:var(--text-bright);padding:1px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;}
+  .sl-row.active{color:var(--accent2);}
+
+  /* ── нижняя панель: назад / статус флота / смена флота / лететь ───────── */
+  #bottom-bar{flex-shrink:0;display:flex;align-items:stretch;gap:4px;padding:6px 8px;
+    border-top:1px solid var(--border);background:var(--panel-bg);z-index:10;}
+  #bb-back{width:34px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(255,60,60,0.12);border:1.5px solid #ff4d4d;color:#ff4d4d;font-size:14px;cursor:pointer;}
+  #bb-prev,#bb-next{width:38px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+    border:1.2px solid #ff4d4d;color:#ff4d4d;font-size:13px;cursor:pointer;background:rgba(255,60,60,0.06);}
+  #bb-status{flex:1;border:1px solid var(--accent);padding:3px 6px;overflow:hidden;}
+  #bb-status .bs-title{font-family:var(--mono);font-size:6px;letter-spacing:.5px;color:var(--accent);opacity:.85;}
+  #bb-status .bs-name{font-family:var(--sans);font-weight:600;font-size:9px;color:var(--text-bright);}
+  #bb-status .bs-sub{font-family:var(--mono);font-size:6px;color:var(--text);opacity:.75;}
+  #bb-fly{width:42px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(60,255,140,0.12);border:1.5px solid #3cff8c;color:#3cff8c;font-size:16px;cursor:pointer;}
+  #bb-back:active,#bb-fly:active,#bb-prev:active,#bb-next:active{filter:brightness(1.3);}
+
+  /* ── тост ───────────────────────────────────────────────── */
+  #toast{position:absolute;left:50%;bottom:64px;transform:translateX(-50%) translateY(10px);
+    background:var(--panel-bg);border:1px solid var(--accent2);color:var(--accent2);
+    font-family:var(--mono);font-size:9px;letter-spacing:.5px;padding:7px 12px;z-index:60;
+    max-width:80%;text-align:center;line-height:1.5;
+    opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+<div id="screen">
+
+  <header>
+    <div id="btn-back">☰ МЕНЮ</div>
+    <div id="hdr-title">СЕКТОР ГАЛАКТИКИ</div>
+    <div id="btn-own-sector">КАРТА СВОЕГО<br>СЕКТОРА</div>
+  </header>
+
+  <div id="top-row">
+    <div id="tr-objects">
+      <div id="tr-slider"></div>
+      <div class="tr-title">ОБЪЕКТЫ СЕКТОРА</div>
+      <div id="tr-obj-rows"></div>
+    </div>
+    <div id="tr-selected">
+      <div class="tr-title" id="ts-name">—</div>
+      <div id="tr-selected-rows">выберите объект на карте</div>
+      <div id="tr-planets"></div>
+    </div>
+    <div id="tr-minimap">
+      <div class="tr-title">МИНИКАРТА</div>
+      <div id="tr-minimap-box"></div>
+    </div>
+  </div>
+
+  <div id="map-outer">
+    <div id="map-wrap">
+      <svg id="map" viewBox="0 0 300 300" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+  </div>
+
+  <div id="side-lists">
+    <div id="fleet-list-panel">
+      <div class="sl-title">ФЛОТЫ</div>
+      <div id="fleet-rows"></div>
+    </div>
+    <div id="colony-list-panel">
+      <div class="sl-title">КОЛОНИИ</div>
+      <div id="colony-rows"></div>
+    </div>
+  </div>
+
+  <div id="bottom-bar">
+    <div id="bb-back" title="Назад к кораблю">←</div>
+    <div id="bb-prev">◀</div>
+    <div id="bb-status">
+      <div class="bs-title">ФЛОТ · КОМАНДНЫЙ КОРАБЛЬ</div>
+      <div class="bs-name" id="bs-name">—</div>
+      <div class="bs-sub" id="bs-sub">—</div>
+    </div>
+    <div id="bb-next">▶</div>
+    <div id="bb-fly" title="Лететь к выделенному объекту">▶</div>
+  </div>
+
+  <div id="toast"></div>
+
+</div>
+
+<div id="admin">
+  <h3>АДМИН-ПАНЕЛЬ СЕРВЕРА</h3>
+  <div class="admin-note">Вне экрана телефона — игрок этого не видит. В финале доступно только с аккаунта администратора сервера.</div>
+  <div class="admin-group">
+    <div class="admin-label">УСКОРЕНИЕ ВРЕМЕНИ</div>
+    <div class="admin-btn" data-spm="12">1 мес = 12 сек (медленно)</div>
+    <div class="admin-btn active" data-spm="4">1 мес = 4 сек</div>
+    <div class="admin-btn" data-spm="1">1 мес = 1 сек (быстро)</div>
+    <div class="admin-btn" data-spm="0">пауза</div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════════
+// ГЕОМЕТРИЯ (по модели пользователя): галактика (чёрная) — целиком не видна.
+// Видимое игроку окно (зелёный квадрат) — плоская квадратная сетка 120×120,
+// вырезанная где-то в галактике. Круг перелётов (красный) — 100 клетей,
+// обычная евклидова окружность вокруг центрального мира ВНУТРИ этого окна.
+//
+// Истинный центр галактики находится далеко ЗА пределами окна (below),
+// поэтому границы зон рисуются как дуги очень большого радиуса — почти
+// прямые, но с лёгким естественным изгибом («округлые орбиты»), без
+// схождения в клин/веер с острой вершиной.
+// ══════════════════════════════════════════════════════════════════════════
+const MAX_R = 120;      // радиальная ось окна (клети), 0 = ближе к центру галактики, 120 = дальний рубеж
+const HALF_W = 60;      // половина ширины окна (клети) по дуговой оси
+const TRUE_R0 = 280;    // расстояние от истинного центра галактики до ближнего (r=0) края окна
+const PXPU = 300 / MAX_R; // пикселей на клеть (viewBox 300×300)
+const APEX_X = 150, APEX_Y = 300 + TRUE_R0*PXPU; // вершина истинной окружности — далеко под окном
+
+function toXY(r, x){ // r: 0..120 (радиус), x: 0..120 (дуга)
+  const trueR = TRUE_R0 + r;
+  const theta = (x - HALF_W) / trueR; // локальный маленький угол — сохраняет ширину окна почти постоянной
+  const truePx = trueR * PXPU;
+  return { x: APEX_X + truePx * Math.sin(theta), y: APEX_Y - truePx * Math.cos(theta) };
+}
+
+// ── фракции и их цвета ────────────────────────────────────────────────
+const FACTIONS = {
+  technocracy: { name:'Технократия',         color:'#4fd1ff' },
+  tradefed:    { name:'Торговая федерация',  color:'#ffd24f' },
+  monarchy:    { name:'Монархия',            color:'#c084fc' },
+  miners:      { name:'Рудокопы',            color:'#ff8c42' },
+  pirates:     { name:'Пираты',              color:'#ff4d6d' },
+  smugglers:   { name:'Контрабандисты',      color:'#9aa0a8' },
+  rebels:      { name:'Повстанцы',           color:'#4dff88' },
+  none:        { name:'Независимая',         color:'#3a4256' },
+};
+
+// ── типы планет для заглушки списка (archive/docs/OUROBOROS_design.md) ──
+const PLANET_TYPES = [
+  { key:'rocky',  name:'Каменистая',  color:'#a99274' },
+  { key:'lava',   name:'Лавовая',     color:'#ff5a3c' },
+  { key:'ice',    name:'Ледяная',     color:'#bfe8ff' },
+  { key:'gas',    name:'Газ. гигант', color:'#e0c088' },
+  { key:'ocean',  name:'Океанская',   color:'#3aa0ff' },
+  { key:'toxic',  name:'Токсичная',   color:'#8fdb5c' },
+  { key:'desert', name:'Пустынная',   color:'#e0b45c' },
+  { key:'core',   name:'Голое ядро',  color:'#6a6f7a' },
+];
+
+// ── 12 зон (ТЗ.md §2.1 / §2.2) ───────────────────────────────────────────
+// density — явный параметр плотности газа/пыли (туманности + астероидные поля)
+// для КАЖДОЙ зоны. Кривая монотонно спадает от центра галактики (зона 1) к краю
+// (зона 12), с локальным подъёмом на зоне 5 («туманностей и астероидов много»,
+// §2.2 ТЗ.md). Максимальный шаг между соседями — 0.3, поэтому переходы плавные.
+//
+// ВАЖНО: стабильная зона Империи (6–8) НЕ исключена из правил генерации и не
+// является «дырой» — раньше там стояло 0.5 против 2.5 у зоны 5 (пятикратный
+// обрыв, стабильные миры оказывались беднее всех соседей). Теперь 6–8 просто
+// лежат на общей спадающей кривой: плотнее, чем край галактики, реже, чем хаос.
+const ZONES = [
+  { id:1,  rotates:true,  months:1,  stars:7,  density:3.0, bhW:3,   starW:{red:5, yellow:5, blue:30, white:0,  neutron:60} },
+  { id:2,  rotates:true,  months:2,  stars:8,  density:2.9, bhW:2.5, starW:{red:5, yellow:5, blue:30, white:0,  neutron:60} },
+  { id:3,  rotates:true,  months:3,  stars:9,  density:2.6, bhW:1.2, starW:{red:30,yellow:30,blue:20, white:0,  neutron:20} },
+  { id:4,  rotates:true,  months:4,  stars:9,  density:2.5, bhW:1,   starW:{red:30,yellow:30,blue:20, white:0,  neutron:20} },
+  { id:5,  rotates:true,  months:5,  stars:7,  density:2.7, bhW:0.8, starW:{red:15,yellow:15,blue:25, white:10, neutron:35} },
+  { id:6,  rotates:false, months:0,  stars:9,  density:2.3, bhW:0,   starW:{red:35,yellow:50,blue:0,  white:15, neutron:0}  },
+  { id:7,  rotates:false, months:0,  stars:10, density:2.0, bhW:0,   starW:{red:35,yellow:50,blue:0,  white:15, neutron:0}  },
+  { id:8,  rotates:false, months:0,  stars:10, density:1.8, bhW:0,   starW:{red:35,yellow:50,blue:0,  white:15, neutron:0}  },
+  { id:9,  rotates:true,  months:9,  stars:9,  density:1.5, bhW:0,   starW:{red:40,yellow:10,blue:0,  white:50, neutron:0}  },
+  { id:10, rotates:true,  months:10, stars:8,  density:1.3, bhW:0,   starW:{red:40,yellow:10,blue:0,  white:50, neutron:0}  },
+  { id:11, rotates:true,  months:11, stars:8,  density:1.1, bhW:0,   starW:{red:40,yellow:10,blue:0,  white:50, neutron:0}  },
+  { id:12, rotates:true,  months:12, stars:7,  density:0.9, bhW:0,   starW:{red:40,yellow:10,blue:0,  white:50, neutron:0}  },
+];
+// туманности и астероидные поля берут долю от общей плотности зоны
+ZONES.forEach(z=>{ z.nebW = z.density; z.astW = z.density; });
+// Чёрные дыры — намеренно НЕ сглажены: по лору (§2.2/§2.9 ТЗ.md) они есть только
+// в хаосе и полосе колонизации, а в стабильной зоне Империи и на краю их нет вовсе.
+ZONES.forEach((z,i)=>{ z.r0 = i*10; z.r1 = (i+1)*10; }); // 12 зон × 10 клетей = 120
+
+const NEB_TOTAL = 150, AST_TOTAL = 250, BH_TOTAL = 8;
+const sumW = key => ZONES.reduce((s,z)=>s+z[key],0);
+const NEB_SUM = sumW('nebW'), AST_SUM = sumW('astW'), BH_SUM = sumW('bhW');
+
+const STAR_COLORS = {
+  red:'rgb(255,100,68)', yellow:'rgb(255,224,102)', blue:'rgb(160,200,255)',
+  white:'rgb(210,235,255)', neutron:'rgb(180,255,210)'
+};
+const STAR_NAMES = {
+  red:'Красный карлик', yellow:'Жёлтый карлик', blue:'Синий гигант',
+  white:'Белый карлик', neutron:'Нейтронная звезда'
+};
+
+function pickWeighted(weights){
+  const entries = Object.entries(weights).filter(([,w])=>w>0);
+  const total = entries.reduce((s,[,w])=>s+w,0);
+  let r = Math.random()*total;
+  for(const [k,w] of entries){ if(r<w) return k; r-=w; }
+  return entries[entries.length-1][0];
+}
+
+// ── 4 стабильных мира Империи, каждый в цвете своей фракции (ТЗ.md §2.3/§2.9) ──
+// Расположены по своим четвертям ширины карты (x: 0–120 → квадранты по 30),
+// центральный мир (Технократия) — всегда точно посредине карты (x=60).
+// Остаются в зонах 6–8 (r=50–80) — иначе разваливается вся структура зон §2.2/§2.9.
+const STABLE_WORLDS = [
+  { zone:6, r:55, x:15,  faction:'tradefed',    role:'vassal'  }, // левая четверть
+  { zone:8, r:78, x:105, faction:'miners',      role:'vassal'  }, // правая четверть
+  { zone:8, r:78, x:60,  faction:'monarchy',    role:'vassal'  }, // нижняя (дальняя) четверть, по центру x
+  { zone:7, r:65, x:60,  faction:'technocracy', role:'capital' }, // всегда строго посредине
+];
+const CENTRAL_WORLD = STABLE_WORLDS.find(w=>w.role==='capital');
+
+// ══════════════════════════════════════════════════════════════════════════
+// ЗАСЕВ: карта буквально поделена на 12×12 = 144 клетки (12 радиальных зон ×
+// 12 столбцов по дуге, 10×10 клетей каждая). Каждая клетка должна получить
+// объекты — это твёрдое правило, а не «куда попадёт случайное число».
+// Рукава (по аналогии с архивом, §4.8) — не зона исключительности, а лишь
+// ВЕС при распределении между 12 столбцами зоны: у столбцов рядом с рукавом
+// доля объектов выше, но ни один столбец не остаётся без доли вовсе.
+// ══════════════════════════════════════════════════════════════════════════
+const ARMS = [
+  { x0:15, slope: 0.55 },
+  { x0:55, slope:-0.35 },
+  { x0:95, slope: 0.40 },
+];
+function gaussianJitter(spread){
+  // сумма двух равномерных случайных величин даёт колоколообразное распределение
+  return ((Math.random()+Math.random()-1)) * spread;
+}
+function armWeight(zone, col){
+  const r = (zone.r0+zone.r1)/2;
+  const cellMidX = col*10 + 5;
+  let minDist = 999;
+  ARMS.forEach(arm=>{
+    let ax = arm.x0 + arm.slope*r; ax = ((ax%120)+120)%120;
+    let d = Math.abs(cellMidX-ax); d = Math.min(d, 120-d);
+    minDist = Math.min(minDist, d);
+  });
+  return Math.exp(-minDist/25) + 0.22; // +0.22 — база, гарантирует ненулевую долю любому столбцу
+}
+function cellX(col){ return col*10 + Math.random()*10; } // случайная точка внутри своей клетки по дуге
+
+function shuffledCols(){
+  const cols = Array.from({length:12}, (_,i)=>i);
+  for(let i=cols.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [cols[i],cols[j]]=[cols[j],cols[i]]; }
+  return cols;
+}
+// Для редких объектов (звёзды/ЧД, обычно меньше 12 на зону) — раздать по РАЗНЫМ
+// столбцам без повтора, с весом к рукавам (не чистая случайность, но без дублей).
+function assignDistinctColumns(n, zone){
+  const weights = Array.from({length:12}, (_,c)=>({c, w:armWeight(zone,c)*(0.6+Math.random()*0.8)}));
+  weights.sort((a,b)=>b.w-a.w);
+  return weights.slice(0, Math.min(n,12)).map(o=>o.c);
+}
+// Для многочисленных объектов (туманности/астероиды) — раздать по ВСЕМ 12 столбцам
+// пропорционально весу рукавов, остаток — по наибольшим дробным частям (без пустых клеток).
+function weightedColumnCounts(n, zone){
+  const weights = Array.from({length:12}, (_,c)=>armWeight(zone,c));
+  const total = weights.reduce((a,b)=>a+b,0);
+  const raw = weights.map(w=> n*w/total);
+  const counts = raw.map(Math.floor);
+  let assigned = counts.reduce((a,b)=>a+b,0);
+  const order = raw.map((v,i)=>({i, frac:v-Math.floor(v)})).sort((a,b)=>b.frac-a.frac);
+  for(let k=0; k<n-assigned; k++) counts[order[k%12].i]++;
+  return counts; // counts[col]
+}
+
+// ── минимальное расстояние между «точечными» объектами (звёзды/ЧД) на экране,
+// чтобы на мобильном экране их можно было выделить по отдельности ─────────
+const placedPoints = [];
+const MIN_SEP_PX = 15;
+function farEnough(r,x){
+  const p = toXY(r,x);
+  for(const q of placedPoints){
+    const dx=p.x-q.x, dy=p.y-q.y;
+    if(dx*dx+dy*dy < MIN_SEP_PX*MIN_SEP_PX) return false;
+  }
+  return true;
+}
+function seedPointInCol(zone, col){
+  let r, x;
+  for(let attempt=0; attempt<20; attempt++){
+    r = zoneR(zone); x = cellX(col);
+    if(farEnough(r,x)) break;
+  }
+  placedPoints.push(toXY(r,x));
+  return { r, x };
+}
+
+// ── туманности/астероиды: кластеры мелких «клочков», не сплошные фигуры ──
+function makeCluster(area, n, puffFrac){
+  const parts = [];
+  for(let i=0;i<n;i++){
+    const partArea = (area/n) * (0.7+Math.random()*0.6);
+    const r = Math.sqrt(partArea/Math.PI) * puffFrac;
+    const angle = Math.random()*Math.PI*2;
+    const dist = Math.sqrt(area/Math.PI) * Math.random() * 0.85;
+    parts.push({ dx: Math.cos(angle)*dist, dy: Math.sin(angle)*dist, r });
+  }
+  return parts;
+}
+
+function randomPlanets(){
+  const n = 2 + Math.floor(Math.random()*4);
+  const facKeys = Object.keys(FACTIONS);
+  const list = [];
+  for(let i=0;i<n;i++){
+    const t = PLANET_TYPES[Math.floor(Math.random()*PLANET_TYPES.length)];
+    const owner = Math.random()<0.55 ? 'none' : facKeys[Math.floor(Math.random()*facKeys.length)];
+    list.push({ type:t, owner });
+  }
+  return list;
+}
+
+// ── генерация объектов: карта поделена на 12×12 «секторов» (12 радиальных
+// зон × 12 клеток по 10 на дуговой оси). Число объектов по радиусу следует
+// нормальному распределению вокруг середины своей зоны (не жёсткий обрез на
+// границе) — плотность плавно нарастает к центру зоны и спадает к соседям,
+// вместо резкого скачка на стыке зон. По дуговой оси — рукава (seedX). ─────
+function zoneR(z){
+  const mid = (z.r0+z.r1)/2;
+  // Разброс 8 при полуширине зоны 5: объекты заметно заходят в соседние зоны,
+  // поэтому на стыке нет видимой границы — плотности зон перетекают друг в друга.
+  const rr = mid + gaussianJitter(8);
+  return Math.max(0, Math.min(120, rr));
+}
+
+let nextId = 1;
+const objects = [];
+
+// стабильные миры занимают место в сетке минимальных расстояний первыми —
+// обычные звёзды не будут генерироваться поверх них
+STABLE_WORLDS.forEach(w=>placedPoints.push(toXY(w.r, w.x)));
+
+ZONES.forEach(z=>{
+  const nStableInZone = STABLE_WORLDS.filter(w=>w.zone===z.id).length;
+
+  // звёзды — каждая в своём столбце (без повтора, вес к рукавам) — гарантирует разброс по клеткам
+  const nRegular = z.stars - nStableInZone;
+  assignDistinctColumns(nRegular, z).forEach(col=>{
+    const {r,x} = seedPointInCol(z, col);
+    objects.push({
+      id:nextId++, type:'star', starType:pickWeighted(z.starW),
+      r, x, zone:z.id, rotates:z.rotates, months:z.months,
+      planets: randomPlanets(),
+    });
+  });
+
+  // туманности — по всем 12 столбцам зоны, доля выше у рукавов, но нет пустых клеток
+  const nNeb = Math.round(NEB_TOTAL * z.nebW / NEB_SUM);
+  weightedColumnCounts(nNeb, z).forEach((count,col)=>{
+    for(let i=0;i<count;i++){
+      const area = 7+Math.random()*3;
+      const r = zoneR(z);
+      objects.push({
+        id:nextId++, type:'neb', size:area, puffs: makeCluster(area, 3+Math.round(Math.random()), 1.3),
+        r, x: cellX(col), zone:z.id, rotates:z.rotates, months:z.months,
+      });
+    }
+  });
+
+  // астероидные поля — аналогично, по всем 12 столбцам
+  const nAst = Math.round(AST_TOTAL * z.astW / AST_SUM);
+  weightedColumnCounts(nAst, z).forEach((count,col)=>{
+    for(let i=0;i<count;i++){
+      const area = 1+Math.random()*2;
+      const r = zoneR(z);
+      objects.push({
+        id:nextId++, type:'ast', size:area, puffs: makeCluster(area, 4+Math.round(Math.random()*2), 0.55),
+        r, x: cellX(col), zone:z.id, rotates:z.rotates, months:z.months,
+      });
+    }
+  });
+
+  // чёрные дыры — как звёзды, разные столбцы без повтора
+  const nBh = Math.round(BH_TOTAL * z.bhW / BH_SUM);
+  assignDistinctColumns(nBh, z).forEach(col=>{
+    const {r,x} = seedPointInCol(z, col);
+    objects.push({
+      id:nextId++, type:'bh', r, x, zone:z.id, rotates:true, months:z.months, chaotic:(z.id<=2),
+    });
+  });
+});
+STABLE_WORLDS.forEach(w=>{
+  objects.push({
+    id:nextId++, type:'star', starType:'stable', faction:w.faction,
+    r:w.r, x:w.x, zone:w.zone, rotates:false, months:0,
+    stable:true, name:FACTIONS[w.faction].name, role:w.role,
+    planets: randomPlanets(),
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// Рендер
+// ══════════════════════════════════════════════════════════════════════════
+const svg = document.getElementById('map');
+const SVGNS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs){
+  const e = document.createElementNS(SVGNS, tag);
+  for(const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+function drawDefs(){
+  const defs = el('defs',{});
+  const grad = el('radialGradient',{id:'nebGlow'});
+  grad.appendChild(el('stop',{offset:'0%','stop-color':'rgb(68,255,204)','stop-opacity':'0.65'}));
+  grad.appendChild(el('stop',{offset:'70%','stop-color':'rgb(68,255,204)','stop-opacity':'0.22'}));
+  grad.appendChild(el('stop',{offset:'100%','stop-color':'rgb(68,255,204)','stop-opacity':'0'}));
+  defs.appendChild(grad);
+  const ringGrad = el('radialGradient',{id:'assembleFill'});
+  ringGrad.appendChild(el('stop',{offset:'0%','stop-color':'#ffcf6b','stop-opacity':'0.10'}));
+  ringGrad.appendChild(el('stop',{offset:'80%','stop-color':'#ffcf6b','stop-opacity':'0.05'}));
+  ringGrad.appendChild(el('stop',{offset:'100%','stop-color':'#ffcf6b','stop-opacity':'0'}));
+  defs.appendChild(ringGrad);
+  svg.appendChild(defs);
+}
+
+// круг перелётов — 100 клетей от центрального мира, обычная евклидова окружность (ТЗ.md §2.3).
+// Рисуется дважды: мягкая заливка ПОД всеми объектами (видно, где «безопасно/доступно»),
+// и чёткий контур ПОВЕРХ всех объектов в конце (иначе тонкую пунктирную линию перекрывает карта).
+function assembleCircleAttrs(){
+  const c = toXY(CENTRAL_WORLD.r, CENTRAL_WORLD.x);
+  return { cx:c.x, cy:c.y, r:100*PXPU };
+}
+function drawAssembleFill(){
+  svg.appendChild(el('circle',{ ...assembleCircleAttrs(), fill:'url(#assembleFill)', stroke:'none' }));
+}
+function drawAssembleRing(){
+  svg.appendChild(el('circle',{ ...assembleCircleAttrs(), class:'assemble-ring' }));
+}
+
+function drawGrid(){
+  // границы зон — пологие дуги (истинный центр далеко под окном), БЕЗ схождения в клин
+  for(let k=0;k<=12;k++){
+    const r = k*10;
+    const p1 = toXY(r,0), pm = toXY(r,60), p2 = toXY(r,120);
+    const trueR = TRUE_R0 + r;
+    const rpx = trueR*PXPU;
+    const stable = k===5 || k===8;
+    // рисуем двумя полу-дугами через среднюю точку — устойчивее, чем одна большая дуга
+    svg.appendChild(el('path',{
+      class:'zone-line'+(stable?' stable':''),
+      d:`M ${p1.x},${p1.y} A ${rpx},${rpx} 0 0,1 ${pm.x},${pm.y} A ${rpx},${rpx} 0 0,1 ${p2.x},${p2.y}`
+    }));
+    if(k<12){
+      const mid = toXY(k*10 + 5, 4);
+      const zoneStable = ZONES[k].id>=6 && ZONES[k].id<=8;
+      const t = el('text',{class:'zone-num'+(zoneStable?' stable':''), x:mid.x, y:mid.y, 'text-anchor':'start'});
+      t.textContent = ZONES[k].id;
+      svg.appendChild(t);
+    }
+  }
+}
+
+function objRadiusPx(o){
+  if(o.type==='star') return o.stable ? 3.4 : 2.2;
+  if(o.type==='bh') return 1.8;
+  return 0;
+}
+
+function renderObject(o){
+  const p = toXY(o.r, o.x);
+  let node;
+  if(o.type==='star'){
+    const g = el('g',{class:'obj', 'data-id':o.id});
+    const rr = objRadiusPx(o);
+    const color = o.stable ? FACTIONS[o.faction].color : STAR_COLORS[o.starType];
+    g.appendChild(el('circle',{
+      class:'obj-star'+(o.stable?' obj-stable':''),
+      cx:p.x, cy:p.y, r:rr, fill:color, stroke: o.stable?'#fff':color, style:o.stable?`color:${color}`:'',
+    }));
+    if(o.starType==='neutron' && !o.stable){
+      g.appendChild(el('circle',{class:'obj-neutron-core', cx:p.x, cy:p.y, r:rr*0.35}));
+    }
+    if(o.stable){
+      g.appendChild(el('circle',{class:'obj-bh-ring', cx:p.x, cy:p.y, r:rr*2.4, stroke:color}));
+    }
+    node = g;
+  } else if(o.type==='bh'){
+    const g = el('g',{class:'obj', 'data-id':o.id});
+    g.appendChild(el('circle',{cx:p.x,cy:p.y,r:1.6, fill:'rgb(187,68,255)'}));
+    g.appendChild(el('circle',{class:'obj-bh-ring', cx:p.x,cy:p.y, r:3.6, stroke:'rgb(187,68,255)'}));
+    node = g;
+  } else if(o.type==='neb'){
+    const g = el('g',{class:'obj obj-neb', 'data-id':o.id});
+    o.puffs.forEach(pf=>{
+      const rpx = pf.r*PXPU, dxpx=pf.dx*PXPU, dypx=pf.dy*PXPU;
+      g.appendChild(el('circle',{cx:p.x+dxpx, cy:p.y+dypx, r:rpx, fill:'url(#nebGlow)'}));
+    });
+    node = g;
+  } else {
+    const g = el('g',{class:'obj obj-ast', 'data-id':o.id});
+    o.puffs.forEach(pf=>{
+      const rpx = pf.r*PXPU, dxpx=pf.dx*PXPU, dypx=pf.dy*PXPU;
+      g.appendChild(el('circle',{cx:p.x+dxpx, cy:p.y+dypx, r:rpx, fill:'rgb(136,153,170)'}));
+    });
+    node = g;
+  }
+  o._node = node;
+  svg.appendChild(node);
+}
+
+function updateObjectPos(o){
+  const p = toXY(o.r, o.x);
+  if(o.type==='neb' || o.type==='ast'){
+    const circles = o._node.querySelectorAll('circle');
+    o.puffs.forEach((pf,i)=>{
+      circles[i].setAttribute('cx', p.x+pf.dx*PXPU);
+      circles[i].setAttribute('cy', p.y+pf.dy*PXPU);
+    });
+  } else {
+    const circles = o._node.querySelectorAll('circle');
+    circles.forEach(c=>{ c.setAttribute('cx',p.x); c.setAttribute('cy',p.y); });
+  }
+}
+
+drawDefs();
+drawAssembleFill();
+drawGrid();
+objects.forEach(renderObject);
+drawAssembleRing(); // поверх всех объектов — иначе контур теряется под картой
+
+// ── тост ──────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+// ── панель информации об объекте (top-right) ────────────────────────────
+let selectedNode = null;
+function selectVisual(node){
+  if(selectedNode) selectedNode.querySelectorAll('circle').forEach(c=>c.classList.remove('obj-selected'));
+  selectedNode = node;
+  if(selectedNode) selectedNode.querySelectorAll('circle').forEach(c=>c.classList.add('obj-selected'));
+}
+
+function zoneStats(zoneId){
+  const inZone = objects.filter(o=>o.zone===zoneId);
+  const facs = new Set();
+  inZone.forEach(o=>{ if(o.stable) facs.add(o.faction); });
+  return { count:inZone.length, facs:[...facs] };
+}
+
+// ── путевые характеристики до объекта (заглушка — формулы условные, не из
+// ТЗ.md §2.7.4, реальная формула скорости/топлива там ещё не зафиксирована) ──
+function travelStats(o){
+  const dr = o.r - CENTRAL_WORLD.r, dx = o.x - CENTRAL_WORLD.x;
+  const dist = Math.sqrt(dr*dr + dx*dx);
+  return {
+    dist: dist.toFixed(0),
+    jumps: Math.max(1, Math.ceil(dist/35)),
+    time: (dist*0.4).toFixed(1),
+    fuel: (dist*1.8).toFixed(0),
+  };
+}
+
+let selectedObject = null;
+
+function showInfoForStar(o){
+  selectedObject = o;
+  document.getElementById('ts-name').textContent = o.stable ? o.name : `${STAR_NAMES[o.starType]} #${o.id}`;
+  const zs = zoneStats(o.zone);
+  const ts = travelStats(o);
+  document.getElementById('tr-selected-rows').innerHTML =
+    `${o.stable ? (o.role==='capital'?'столица Империи · центр ассамбли':'феод-вассал') : `зона ${o.zone}`}<br>
+     расстояние: <b>${ts.dist} кл</b><br>прыжков: <b>${ts.jumps}</b><br>
+     время полёта: <b>~${ts.time} ч</b><br>расход топлива: <b>~${ts.fuel} ед</b>`;
+  const pl = document.getElementById('tr-planets');
+  pl.style.display = 'block';
+  pl.innerHTML = '';
+  o.planets.forEach((p,i)=>{
+    const row = document.createElement('div');
+    row.className = 'ip-row';
+    row.innerHTML = `<span class="ip-type" style="background:${p.type.color}"></span>
+      <span class="ip-name">${p.type.name} ${i+1}</span>
+      <span class="ip-faction" style="background:${FACTIONS[p.owner].color}" title="${FACTIONS[p.owner].name}"></span>`;
+    pl.appendChild(row);
+  });
+}
+
+function showInfoGeneric(o, label){
+  selectedObject = o;
+  document.getElementById('ts-name').textContent = label;
+  const ts = travelStats(o);
+  document.getElementById('tr-selected-rows').innerHTML =
+    `зона ${o.zone}<br>расстояние: <b>${ts.dist} кл</b><br>прыжков: <b>${ts.jumps}</b><br>
+     время полёта: <b>~${ts.time} ч</b><br>расход топлива: <b>~${ts.fuel} ед</b>`;
+  document.getElementById('tr-planets').style.display = 'none';
+}
+
+svg.addEventListener('click', (e)=>{
+  if(suppressClick){ suppressClick=false; return; } // клик после перетаскивания/зума — не считается выбором
+  const g = e.target.closest('[data-id]');
+  if(!g){ selectVisual(null); selectedObject=null;
+    document.getElementById('ts-name').textContent='—';
+    document.getElementById('tr-selected-rows').textContent='выберите объект на карте';
+    document.getElementById('tr-planets').style.display='none';
+    return; }
+  const o = objects.find(x=>x.id == g.getAttribute('data-id'));
+  if(!o) return;
+  selectVisual(g);
+  if(o.type==='star'){
+    showInfoForStar(o);
+    toast(o.stable
+      ? `${o.name} — стабильный мир, зона ${o.zone}${o.role==='capital'?' (столица Империи, центр ассамбли)':' (феод-вассал)'}`
+      : `${STAR_NAMES[o.starType]} #${o.id} — зона ${o.zone}`);
+  } else if(o.type==='bh'){
+    showInfoGeneric(o, `Чёрная дыра #${o.id}`);
+    toast(`Чёрная дыра #${o.id} — зона ${o.zone}${o.chaotic?' (хаотичное движение, опасна для звёзд)':''}`);
+  } else if(o.type==='neb'){
+    showInfoGeneric(o, 'Туманность');
+    toast(`Туманность — зона ${o.zone}`);
+  } else {
+    showInfoGeneric(o, 'Астероидное поле');
+    toast(`Астероидное поле — зона ${o.zone}`);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// Зум и панорамирование карты: колесо мыши (зум к курсору) на десктопе,
+// pinch двумя пальцами (зум к середине между пальцами) + перетаскивание
+// одним пальцем/мышью — на мобильном и десктопе одинаково через Pointer Events.
+// ══════════════════════════════════════════════════════════════════════════
+let vb = { x:0, y:0, w:300, h:300 };
+const VB_MIN = 70, VB_MAX = 300, VB_PAD = 60;
+function applyVB(){ svg.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.w} ${vb.h}`); }
+function clampVB(){
+  vb.w = Math.max(VB_MIN, Math.min(VB_MAX, vb.w));
+  vb.h = vb.w;
+  vb.x = Math.max(-VB_PAD, Math.min(300-vb.w+VB_PAD, vb.x));
+  vb.y = Math.max(-VB_PAD, Math.min(300-vb.h+VB_PAD, vb.y));
+}
+function clientToUser(clientX, clientY, box){
+  const rect = svg.getBoundingClientRect();
+  return {
+    x: box.x + (clientX-rect.left)/rect.width*box.w,
+    y: box.y + (clientY-rect.top)/rect.height*box.h,
+  };
+}
+function zoomAt(clientX, clientY, factor){
+  const pt = clientToUser(clientX, clientY, vb);
+  const newW = Math.max(VB_MIN, Math.min(VB_MAX, vb.w*factor));
+  const ratio = newW/vb.w;
+  vb.x = pt.x - (pt.x-vb.x)*ratio;
+  vb.y = pt.y - (pt.y-vb.y)*ratio;
+  vb.w = newW; vb.h = newW;
+  clampVB();
+  applyVB();
+}
+
+svg.addEventListener('wheel', (e)=>{
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, e.deltaY>0 ? 1.15 : 0.87);
+}, {passive:false});
+
+let suppressClick = false;
+const activePointers = new Map();
+let panState = null, pinchState = null;
+
+svg.addEventListener('pointerdown', (e)=>{
+  svg.setPointerCapture(e.pointerId);
+  activePointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(activePointers.size===1){
+    panState = { startX:e.clientX, startY:e.clientY, vb0:{...vb}, moved:0 };
+    svg.classList.add('panning');
+  } else if(activePointers.size===2){
+    panState = null;
+    const pts = [...activePointers.values()];
+    pinchState = {
+      dist: Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y),
+      vb0: {...vb},
+      midClient: { x:(pts[0].x+pts[1].x)/2, y:(pts[0].y+pts[1].y)/2 },
+    };
+  }
+});
+svg.addEventListener('pointermove', (e)=>{
+  if(!activePointers.has(e.pointerId)) return;
+  activePointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(activePointers.size===2 && pinchState){
+    const pts = [...activePointers.values()];
+    const dist = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+    const factor = pinchState.dist / Math.max(1,dist);
+    const newW = Math.max(VB_MIN, Math.min(VB_MAX, pinchState.vb0.w*factor));
+    const ratio = newW/pinchState.vb0.w;
+    const pt = clientToUser(pinchState.midClient.x, pinchState.midClient.y, pinchState.vb0);
+    vb.x = pt.x - (pt.x-pinchState.vb0.x)*ratio;
+    vb.y = pt.y - (pt.y-pinchState.vb0.y)*ratio;
+    vb.w = newW; vb.h = newW;
+    clampVB();
+    applyVB();
+    suppressClick = true;
+  } else if(activePointers.size===1 && panState){
+    const rect = svg.getBoundingClientRect();
+    const dxUser = (e.clientX-panState.startX)/rect.width*panState.vb0.w;
+    const dyUser = (e.clientY-panState.startY)/rect.height*panState.vb0.h;
+    panState.moved = Math.max(panState.moved, Math.hypot(e.clientX-panState.startX, e.clientY-panState.startY));
+    vb.x = panState.vb0.x - dxUser;
+    vb.y = panState.vb0.y - dyUser;
+    clampVB();
+    applyVB();
+    if(panState.moved > 5) suppressClick = true;
+  }
+});
+function endPointer(e){
+  activePointers.delete(e.pointerId);
+  if(activePointers.size < 2) pinchState = null;
+  if(activePointers.size < 1){ panState = null; svg.classList.remove('panning'); }
+}
+svg.addEventListener('pointerup', endPointer);
+svg.addEventListener('pointercancel', endPointer);
+svg.addEventListener('pointerleave', (e)=>{ if(activePointers.size<=1) endPointer(e); });
+
+// ── список объектов сектора (верхняя левая панель) — заглушка: 4 стабильных мира ──
+(function renderObjList(){
+  const wrap = document.getElementById('tr-obj-rows');
+  STABLE_WORLDS.forEach(w=>{
+    const row = document.createElement('div');
+    row.className = 'tr-obj-row';
+    row.textContent = FACTIONS[w.faction].name;
+    wrap.appendChild(row);
+  });
+})();
+
+// ── флоты игрока (заглушка — концепция нескольких флотов не описана в ТЗ.md) ──
+const FLEETS = [
+  { name:'1-й флот «Скиталец»', ship:'Крейсер «Аврора»',  status:'на орбите Технократии' },
+  { name:'2-й флот «Тень»',     ship:'Разведчик «Игла»',   status:'в пути, зона 4' },
+  { name:'3-й флот «Кузня»',    ship:'Транспорт «Ковчег»', status:'на стоянке, зона 6' },
+];
+let fleetIndex = 0;
+function renderFleetLists(){
+  const rows = document.getElementById('fleet-rows');
+  rows.innerHTML = '';
+  FLEETS.forEach((f,i)=>{
+    const row = document.createElement('div');
+    row.className = 'sl-row' + (i===fleetIndex ? ' active' : '');
+    row.textContent = f.name;
+    row.onclick = ()=>{ fleetIndex=i; updateFleetStatus(); renderFleetLists(); };
+    rows.appendChild(row);
+  });
+  updateFleetStatus();
+}
+function updateFleetStatus(){
+  const f = FLEETS[fleetIndex];
+  document.getElementById('bs-name').textContent = f.ship;
+  document.getElementById('bs-sub').textContent = `${f.name} · ${f.status}`;
+}
+document.getElementById('bb-prev').onclick = ()=>{ fleetIndex=(fleetIndex+FLEETS.length-1)%FLEETS.length; renderFleetLists(); toast(`Флот: ${FLEETS[fleetIndex].name}`); };
+document.getElementById('bb-next').onclick = ()=>{ fleetIndex=(fleetIndex+1)%FLEETS.length; renderFleetLists(); toast(`Флот: ${FLEETS[fleetIndex].name}`); };
+document.getElementById('bb-fly').onclick = ()=>{
+  if(!selectedObject){ toast('Сначала выберите объект на карте'); return; }
+  const name = selectedObject.stable ? selectedObject.name : (selectedObject.type==='star' ? `${STAR_NAMES[selectedObject.starType]} #${selectedObject.id}` : selectedObject.type);
+  toast(`${FLEETS[fleetIndex].name} → курс на «${name}» (заглушка)`);
+};
+renderFleetLists();
+
+// ── колонии игрока (заглушка) ────────────────────────────────────────────
+const COLONIES = [
+  { name:'Колония «Восход»', zone:3 },
+  { name:'Колония «Опора»',  zone:4 },
+  { name:'Форпост «Игла»',   zone:9 },
+];
+(function renderColonies(){
+  const rows = document.getElementById('colony-rows');
+  COLONIES.forEach(c=>{
+    const row = document.createElement('div');
+    row.className = 'sl-row';
+    row.textContent = `${c.name} · з.${c.zone}`;
+    rows.appendChild(row);
+  });
+})();
+
+document.getElementById('btn-back').onclick = ()=>toast('Главное меню (заглушка)');
+document.getElementById('btn-own-sector').onclick = ()=>toast('Карта своего сектора (заглушка) — переключение зума на локальный участок');
+document.getElementById('bb-back').onclick = ()=>{ location.href = 'ship.html'; };
+
+// ══════════════════════════════════════════════════════════════════════════
+// Вращение: время выхода из радиуса (мес.) = номер зоны, зоны 6–8 = 0 (ТЗ.md §2.1).
+// Объект дрейфует по x (дуговая ось), а не «скачет» с края в край плоско —
+// движение по x при фиксированном r и есть орбитальное движение по дуге
+// (см. toXY: x влияет на угол theta, r — на радиус дуги).
+// Дошедший до края окна (x<0 или x>120) считается покинувшим сектор и
+// появляется заново с противоположного края с новым id/типом (ТЗ.md §2.3).
+// Ускорение времени — инструмент админ-панели сервера, не игрока (см. #admin).
+// ══════════════════════════════════════════════════════════════════════════
+let secondsPerMonth = 4;
+document.querySelectorAll('#admin .admin-btn').forEach(btn=>{
+  btn.onclick = ()=>{
+    document.querySelectorAll('#admin .admin-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    secondsPerMonth = Number(btn.dataset.spm);
+  };
+});
+
+let lastT = performance.now();
+function tick(now){
+  const dt = (now - lastT)/1000; lastT = now;
+  if(secondsPerMonth > 0){
+    objects.forEach(o=>{
+      if(!o.rotates) return;
+      const unitsPerSec = 120 / (o.months * secondsPerMonth); // всё окно (120 клетей по дуге) за months
+      o.x += unitsPerSec * dt;
+      if(o.x > 120){
+        o.x = 0; // объект покинул сектор — регенерация с противоположного края
+        o.r = zoneR(ZONES[o.zone-1]);
+        if(o.type==='star'){ o.starType = pickWeighted(ZONES[o.zone-1].starW); o.id = nextId++; o._node.setAttribute('data-id', o.id); o.planets = randomPlanets(); }
+      }
+      updateObjectPos(o);
+    });
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
