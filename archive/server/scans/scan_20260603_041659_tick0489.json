@@ -1,0 +1,176 @@
+{
+  "timestamp": "2026-06-02T22:10:37.830Z",
+  "seed": 50,
+  "tick": 489,
+  "summary": {
+    "stars_total": 41,
+    "stars_by_type": {
+      "white_dwarf": 14,
+      "yellow_dwarf": 6,
+      "red_dwarf": 21
+    },
+    "planets_total": 193,
+    "planets_by_type": {
+      "lava": 68,
+      "rocky": 47,
+      "ice": 46,
+      "gas_giant": 32
+    },
+    "planets_eff_type": {
+      "lava": 56,
+      "rocky": 45,
+      "ice": 46,
+      "gas_giant": 32,
+      "destroyed": 14
+    },
+    "planets_with_life": 87,
+    "planets_life_alive": 84,
+    "planets_life_extinct": 3,
+    "planets_in_hab_zone": 46,
+    "water_dist": {
+      "100": 0,
+      "0-9": 68,
+      "10-19": 0,
+      "20-29": 5,
+      "30-39": 24,
+      "40-49": 37,
+      "50-59": 15,
+      "60-69": 19,
+      "70-79": 22,
+      "80-89": 3,
+      "90-99": 0
+    },
+    "pressure_dist": {
+      "0-9": 14,
+      "10-19": 25,
+      "20-29": 21,
+      "30-49": 16,
+      "50-69": 31,
+      "70-100": 86
+    },
+    "life_miss_reasons": {
+      "bad_type": 100,
+      "low_water": 0,
+      "bad_pressure": 0,
+      "bad_temp": 3,
+      "radiation": 0,
+      "no_zone": 3
+    },
+    "life_by_star": {
+      "yellow_dwarf": {
+        "planets": 37,
+        "life": 17,
+        "alive": 15,
+        "extinct": 2,
+        "life_age_sum": 5671
+      },
+      "red_dwarf": {
+        "planets": 97,
+        "life": 39,
+        "alive": 38,
+        "extinct": 1,
+        "life_age_sum": 5710
+      },
+      "white_dwarf": {
+        "planets": 59,
+        "life": 31,
+        "alive": 31,
+        "extinct": 0,
+        "life_age_sum": 9856
+      },
+      "blue_giant": {
+        "planets": 0,
+        "life": 0,
+        "alive": 0,
+        "extinct": 0,
+        "life_age_sum": 0
+      },
+      "neutron_star": {
+        "planets": 0,
+        "life": 0,
+        "alive": 0,
+        "extinct": 0,
+        "life_age_sum": 0
+      }
+    },
+    "life_by_planet": {
+      "lava": {
+        "total": 68,
+        "life": 0,
+        "alive": 0,
+        "extinct": 0,
+        "life_age_sum": 0
+      },
+      "rocky": {
+        "total": 47,
+        "life": 46,
+        "alive": 44,
+        "extinct": 2,
+        "life_age_sum": 10551
+      },
+      "ice": {
+        "total": 46,
+        "life": 41,
+        "alive": 40,
+        "extinct": 1,
+        "life_age_sum": 10686
+      },
+      "gas_giant": {
+        "total": 32,
+        "life": 0,
+        "alive": 0,
+        "extinct": 0,
+        "life_age_sum": 0
+      }
+    },
+    "extinct_reasons": {
+      "radiation": 0,
+      "scorching": 2,
+      "frozen": 1,
+      "atm_loss": 0,
+      "crushing_atm": 0,
+      "conditions": 0
+    },
+    "life_age_dist": {
+      "0-10": 3,
+      "11-30": 6,
+      "31-60": 8,
+      "61-100": 3,
+      "101-200": 28,
+      "200+": 39
+    },
+    "activity_dist": {
+      "0-19": 29,
+      "20-39": 2,
+      "40-59": 1,
+      "60-79": 19,
+      "80-100": 33
+    },
+    "bio_res": {
+      "biomass": {
+        "sum": 141571,
+        "n": 84,
+        "median": 2240,
+        "avg": 1685
+      },
+      "phosphates": {
+        "sum": 133056,
+        "n": 81,
+        "median": 2229,
+        "avg": 1643
+      },
+      "carbonates": {
+        "sum": 152349,
+        "n": 80,
+        "median": 2550,
+        "avg": 1904
+      },
+      "bitumens": {
+        "sum": 155367,
+        "n": 74,
+        "median": 2914,
+        "avg": 2100
+      }
+    }
+  }
+}

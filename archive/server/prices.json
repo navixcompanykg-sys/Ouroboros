@@ -57,7 +57,7 @@
     "food_factory": {
       "name": "Пищевое производство", "formula": "fixed_1to1",
       "recipe":      { "ind_equip": 5, "metal_struct": 6, "hq_alloys": 3, "electronics": 3, "cable": 3, "chem_reagents": 2 },
-      "maintenance": { "chem_reagents": 2, "electronics": 1, "polymers": 1, "metal_struct": 1 }
+      "maintenance": { "hydrogen": 2, "chem_reagents": 3, "noble_gas": 1, "polymers": 1 }
     },
     "plantation": {
       "name": "Плантации", "formula": "base_x_n_x_1.5",

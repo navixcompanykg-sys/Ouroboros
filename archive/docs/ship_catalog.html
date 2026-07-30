@@ -1,0 +1,592 @@
+<title>Каталог кораблей — OUROBOROS</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #020a14;
+    color: #c8d8f0;
+    font-family: 'Courier New', 'Lucida Console', monospace;
+    padding: 28px 20px 36px;
+    min-height: 100vh;
+  }
+
+  .hdr { text-align: center; margin-bottom: 24px; }
+  .hdr-title {
+    font-size: 16px; letter-spacing: 8px; color: #00e5ff;
+    text-transform: uppercase; margin-bottom: 5px;
+  }
+  .hdr-sub { font-size: 9px; letter-spacing: 4px; color: #2a5a8a; text-transform: uppercase; }
+  .hdr-line {
+    height: 1px; margin: 13px auto 0;
+    background: linear-gradient(to right, transparent, #1a4a7a 20%, #00e5ff 50%, #1a4a7a 80%, transparent);
+  }
+
+  .col-headers {
+    display: grid;
+    grid-template-columns: 50px 1fr 1fr;
+    gap: 6px; margin-bottom: 6px;
+  }
+  .col-hdr {
+    text-align: center; font-size: 8px; letter-spacing: 4px;
+    padding: 5px; border-bottom: 1px solid;
+  }
+  .col-hdr.mil { color: #00e5ff; border-color: #1a4a8a; }
+  .col-hdr.civ { color: #00cc88; border-color: #1a6a3a; }
+
+  .tier-row {
+    display: grid;
+    grid-template-columns: 50px 1fr 1fr;
+    gap: 6px; margin-bottom: 6px;
+    align-items: stretch;
+  }
+
+  .tier-lbl {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 1px;
+  }
+  .tier-ue { font-size: 22px; color: #1a3a5a; font-weight: bold; line-height: 1; }
+  .tier-txt { font-size: 6.5px; letter-spacing: 1.5px; color: #142030; text-transform: uppercase; }
+
+  .ship-card {
+    display: flex; align-items: stretch;
+    border: 1px solid; border-radius: 3px; overflow: hidden;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    cursor: default;
+  }
+  .ship-card:hover { box-shadow: 0 0 14px rgba(0,229,255,0.08); }
+  .ship-card.mil { background: #030f1c; border-color: #162e54; }
+  .ship-card.mil:hover { border-color: #1e5090; }
+  .ship-card.civ { background: #030f0a; border-color: #163028; }
+  .ship-card.civ:hover { border-color: #1a6a3a; }
+
+  .canvas-wrap { flex-shrink: 0; position: relative; }
+  .canvas-wrap canvas { display: block; width: 130px; height: 92px; }
+  .canvas-wrap::after {
+    content: ''; position: absolute;
+    right: 0; top: 12%; bottom: 12%; width: 1px;
+  }
+  .ship-card.mil .canvas-wrap::after { background: linear-gradient(to bottom, transparent, #1a4a8a 40%, #1a4a8a 60%, transparent); }
+  .ship-card.civ .canvas-wrap::after { background: linear-gradient(to bottom, transparent, #1a6a3a 40%, #1a6a3a 60%, transparent); }
+
+  .ship-info {
+    flex: 1; padding: 8px 11px;
+    display: flex; flex-direction: column; justify-content: center; gap: 3px;
+    min-width: 0;
+  }
+  .ship-type { font-size: 7px; letter-spacing: 2.5px; text-transform: uppercase; opacity: 0.55; }
+  .ship-card.mil .ship-type { color: #00e5ff; }
+  .ship-card.civ .ship-type { color: #00cc88; }
+  .ship-name { font-size: 13px; letter-spacing: 2px; text-transform: uppercase; white-space: nowrap; }
+  .ship-card.mil .ship-name { color: #daeeff; }
+  .ship-card.civ .ship-name { color: #caeedd; }
+  .ship-stats {
+    font-size: 8px; line-height: 1.8; color: #2a5070;
+    display: flex; flex-wrap: wrap; gap: 0 10px;
+    margin-top: 1px;
+  }
+  .sv { color: #7ecfff; }
+  .ship-card.civ .sv { color: #55e8b0; }
+  .ship-role {
+    font-size: 7.5px; color: #203848;
+    border-top: 1px solid; padding-top: 4px; margin-top: 2px;
+    letter-spacing: 0.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ship-card.civ .ship-role { border-color: rgba(26,106,58,0.3); color: #1e3830; }
+  .ship-card.mil .ship-role { border-color: rgba(26,80,130,0.3); }
+
+  @media (max-width: 680px) {
+    .tier-row { grid-template-columns: 36px 1fr 1fr; }
+    .tier-ue { font-size: 16px; }
+    .canvas-wrap canvas { width: 96px; height: 70px; }
+    .ship-name { font-size: 10px; }
+    .ship-stats, .ship-role { display: none; }
+  }
+</style>
+
+<div class="hdr">
+  <div class="hdr-title">Каталог кораблей Ouroboros</div>
+  <div class="hdr-sub">Визуальный справочник · Вид сверху · 6 боевых + 6 гражданских классов</div>
+  <div class="hdr-line"></div>
+</div>
+
+<div class="col-headers">
+  <div></div>
+  <div class="col-hdr mil">⚔ БОЕВЫЕ</div>
+  <div class="col-hdr civ">◈ ГРАЖДАНСКИЕ</div>
+</div>
+
+<div id="grid"></div>
+
+<script>
+// ─── PALETTE ─────────────────────────────────────────────────────────────────
+const MF  = '#0a1828';   // military hull fill
+const MS  = '#1e6aaa';   // military stroke
+const MA  = '#00e5ff';   // military accent
+const MD  = '#0d2540';   // military detail (inner panel lines)
+
+const CF  = '#071810';   // civilian hull fill
+const CS  = '#1e7a4a';   // civilian stroke
+const CA  = '#00cc88';   // civilian accent
+const CD  = '#0c2a1a';   // civilian detail
+
+// ─── DRAWING HELPERS ─────────────────────────────────────────────────────────
+function poly(ctx, pts, fill, stroke, lw = 1) {
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+  if (fill)   { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke(); }
+}
+
+function ell(ctx, x, y, rx, ry, fill, stroke, lw = 1) {
+  ctx.beginPath();
+  ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+  if (fill)   { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke(); }
+}
+
+function seg(ctx, x1, y1, x2, y2, color, lw = 0.5) {
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+  ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.stroke();
+}
+
+function rr(ctx, x, y, w, h, r, fill, stroke, lw = 1) {
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, r);
+  if (fill)   { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke(); }
+}
+
+function dot(ctx, x, y, r, color, glow = true) {
+  if (glow) {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r * 3.5);
+    g.addColorStop(0, color);
+    g.addColorStop(0.35, color + '60');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.beginPath(); ctx.arc(x, y, r * 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = g; ctx.fill();
+  }
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = color; ctx.fill();
+}
+
+function turret(ctx, x, y, r, sc) {
+  ctx.beginPath(); ctx.arc(x, y, r + 0.8, 0, Math.PI * 2);
+  ctx.fillStyle = '#09192a'; ctx.fill();
+  ctx.strokeStyle = sc; ctx.lineWidth = 0.8; ctx.stroke();
+  ctx.beginPath(); ctx.arc(x, y, r * 0.4, 0, Math.PI * 2);
+  ctx.fillStyle = sc + '90'; ctx.fill();
+}
+
+function engGlow(ctx, x, y, r = 3.5) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r * 2.8);
+  g.addColorStop(0, 'rgba(255,200,80,1)');
+  g.addColorStop(0.25, 'rgba(255,120,30,0.6)');
+  g.addColorStop(0.7, 'rgba(255,60,10,0.15)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.beginPath(); ctx.arc(x, y, r * 2.8, 0, Math.PI * 2);
+  ctx.fillStyle = g; ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, r * 0.7, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffe080'; ctx.fill();
+}
+
+function gridBg(ctx, W, H, tint) {
+  ctx.fillStyle = tint === 'mil' ? '#030d1a' : '#030d09';
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = tint === 'mil' ? 'rgba(18,48,88,0.55)' : 'rgba(14,54,30,0.5)';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x <= W; x += 13) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for (let y = 0; y <= H; y += 13) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+}
+
+// ─── SHIP DRAWINGS ───────────────────────────────────────────────────────────
+
+function drawCorvette(ctx, cx, cy) {
+  // Sharp delta interceptor
+  poly(ctx, [
+    [cx,cy-28],[cx+4,cy-13],[cx+24,cy+19],[cx+13,cy+11],
+    [cx+8,cy+27],[cx,cy+22],[cx-8,cy+27],[cx-13,cy+11],[cx-24,cy+19],[cx-4,cy-13]
+  ], MF, MS, 1.2);
+  seg(ctx, cx+4,cy-11, cx+12,cy+9, MD, 0.6);
+  seg(ctx, cx-4,cy-11, cx-12,cy+9, MD, 0.6);
+  seg(ctx, cx+12,cy+9, cx+13,cy+18, MD, 0.5);
+  seg(ctx, cx-12,cy+9, cx-13,cy+18, MD, 0.5);
+  seg(ctx, cx, cy-24, cx, cy+18, MD, 0.7);
+  dot(ctx, cx, cy-19, 2.5, MA);
+  engGlow(ctx, cx, cy+23, 3.2);
+}
+
+function drawShuttle(ctx, cx, cy) {
+  // Small rounded utility craft
+  rr(ctx, cx-13,cy-21, 26,38, [8,8,5,5], CF, CS, 1.1);
+  poly(ctx,[cx+13,cy+3],[cx+21,cy+7],[cx+20,cy+16],[cx+13,cy+14], CF, CS, 0.9);
+  poly(ctx,[cx-13,cy+3],[cx-21,cy+7],[cx-20,cy+16],[cx-13,cy+14], CF, CS, 0.9);
+  rr(ctx, cx-8,cy-18, 16,10, 2, CD, CA, 0.8);
+  for (const dx of [-3.5,3.5]) {
+    ctx.beginPath(); ctx.arc(cx+dx, cy-13, 2, 0, Math.PI*2);
+    ctx.fillStyle = CA+'70'; ctx.fill();
+  }
+  seg(ctx, cx, cy-7, cx, cy+14, CD, 0.6);
+  engGlow(ctx, cx-5, cy+18, 2.6);
+  engGlow(ctx, cx+5, cy+18, 2.6);
+}
+
+function drawFrigate(ctx, cx, cy) {
+  // Elongated hull with wing nacelles
+  // Strut connectors (behind nacelles)
+  poly(ctx,[[cx+9,cy+0],[cx+10,cy+5],[cx+22,cy+5],[cx+22,cy+0]], MF, MD, 0.6);
+  poly(ctx,[[cx-9,cy+0],[cx-10,cy+5],[cx-22,cy+5],[cx-22,cy+0]], MF, MD, 0.6);
+  // Nacelles
+  poly(ctx,[[cx+10,cy-11],[cx+22,cy-6],[cx+22,cy+22],[cx+10,cy+20]], MF, MS, 1.0);
+  poly(ctx,[[cx-10,cy-11],[cx-22,cy-6],[cx-22,cy+22],[cx-10,cy+20]], MF, MS, 1.0);
+  // Main hull
+  poly(ctx,[
+    [cx,cy-33],[cx+7,cy-23],[cx+9,cy+17],[cx+6,cy+33],
+    [cx-6,cy+33],[cx-9,cy+17],[cx-7,cy-23]
+  ], MF, MS, 1.3);
+  // Hull details
+  seg(ctx, cx,cy-29, cx,cy+29, MD, 0.7);
+  seg(ctx, cx+5,cy-20, cx+7,cy+14, MD, 0.5);
+  seg(ctx, cx-5,cy-20, cx-7,cy+14, MD, 0.5);
+  rr(ctx, cx-4,cy-28, 8,9, 2, MD, MS+'80', 0.7);
+  dot(ctx, cx, cy-30, 2, MA);
+  engGlow(ctx, cx-17,cy+24, 2.8);
+  engGlow(ctx, cx+17,cy+24, 2.8);
+  engGlow(ctx, cx,cy+31, 2.6);
+}
+
+function drawTransport(ctx, cx, cy) {
+  // Boxy cargo transport (Челнок) - side cargo pods
+  poly(ctx,[[cx+14,cy-12],[cx+26,cy-10],[cx+26,cy+22],[cx+14,cy+26]], CF, CS, 1.0);
+  poly(ctx,[[cx-14,cy-12],[cx-26,cy-10],[cx-26,cy+22],[cx-14,cy+26]], CF, CS, 1.0);
+  seg(ctx, cx+14,cy+5, cx+26,cy+5, '#1a4a30', 0.5);
+  seg(ctx, cx-14,cy+5, cx-26,cy+5, '#1a4a30', 0.5);
+  // Main cabin hull (drawn on top)
+  poly(ctx,[
+    [cx,cy-30],[cx+11,cy-22],[cx+12,cy+28],[cx-12,cy+28],[cx-11,cy-22]
+  ], CF, CS, 1.2);
+  rr(ctx, cx-8,cy-25, 16,13, 2, CD, CA, 0.8);
+  seg(ctx, cx,cy-25, cx,cy-12, CA+'50', 0.7);
+  seg(ctx, cx,cy-10, cx,cy+24, CD, 0.6);
+  engGlow(ctx, cx-7,cy+30, 2.6);
+  engGlow(ctx, cx,cy+30, 2.6);
+  engGlow(ctx, cx+7,cy+30, 2.6);
+}
+
+function drawDestroyer(ctx, cx, cy) {
+  // Long narrow with lateral weapon pylons
+  poly(ctx,[
+    [cx,cy-38],[cx+6,cy-27],[cx+8,cy+20],[cx+5,cy+39],
+    [cx-5,cy+39],[cx-8,cy+20],[cx-6,cy-27]
+  ], MF, MS, 1.3);
+  // Weapon pylons
+  poly(ctx,[[cx+8,cy-4],[cx+22,cy-8],[cx+24,cy+7],[cx+8,cy+10]], MF, MS, 1.0);
+  poly(ctx,[[cx-8,cy-4],[cx-22,cy-8],[cx-24,cy+7],[cx-8,cy+10]], MF, MS, 1.0);
+  // Gun turrets
+  turret(ctx, cx+23, cy+0, 4.5, MS);
+  turret(ctx, cx-23, cy+0, 4.5, MS);
+  seg(ctx, cx+27,cy-1, cx+33,cy-3, MS, 0.9);
+  seg(ctx, cx+27,cy+2, cx+33,cy+2, MS, 0.9);
+  seg(ctx, cx-27,cy-1, cx-33,cy-3, MS, 0.9);
+  seg(ctx, cx-27,cy+2, cx-33,cy+2, MS, 0.9);
+  // Hull
+  seg(ctx, cx,cy-34, cx,cy+35, MD, 0.7);
+  seg(ctx, cx+4,cy-24, cx+6,cy+18, MD, 0.5);
+  seg(ctx, cx-4,cy-24, cx-6,cy+18, MD, 0.5);
+  dot(ctx, cx, cy-34, 2, MA);
+  engGlow(ctx, cx-4, cy+37, 3);
+  engGlow(ctx, cx+4, cy+37, 3);
+}
+
+function drawClipper(ctx, cx, cy) {
+  // Streamlined freighter with central cargo drum
+  ell(ctx, cx, cy-2, 17, 23, CD, CS, 1.0);
+  // Cargo section lines
+  seg(ctx, cx-17,cy-2, cx+17,cy-2, '#1a4a30', 0.5);
+  for (const dx of [-13,13]) seg(ctx, cx+dx,cy-23, cx+dx,cy+19, '#1a4a30', 0.4);
+  // Central spine
+  poly(ctx,[
+    [cx,cy-36],[cx+5,cy-27],[cx+6,cy+27],[cx-6,cy+27],[cx-5,cy-27]
+  ], CF, CS, 1.2);
+  // Connecting struts (spine to drum)
+  for (const dy of [-14,10]) {
+    seg(ctx, cx+5,cy+dy, cx+17,cy+dy, CS, 0.8);
+    seg(ctx, cx-5,cy+dy, cx-17,cy+dy, CS, 0.8);
+  }
+  dot(ctx, cx, cy-33, 2, CA);
+  engGlow(ctx, cx-4,cy+29, 2.7);
+  engGlow(ctx, cx+4,cy+29, 2.7);
+}
+
+function drawCruiser(ctx, cx, cy) {
+  // Wide warship with heavy sponsons
+  poly(ctx,[[cx-13,cy-17],[cx-31,cy-8],[cx-33,cy+16],[cx-13,cy+21]], MF, MS, 1.0);
+  poly(ctx,[[cx+13,cy-17],[cx+31,cy-8],[cx+33,cy+16],[cx+13,cy+21]], MF, MS, 1.0);
+  seg(ctx, cx-13,cy-2, cx-31,cy-2, MD, 0.6);
+  seg(ctx, cx+13,cy-2, cx+31,cy-2, MD, 0.6);
+  // Main center hull
+  poly(ctx,[
+    [cx,cy-29],[cx+12,cy-21],[cx+14,cy+18],[cx+8,cy+31],
+    [cx-8,cy+31],[cx-14,cy+18],[cx-12,cy-21]
+  ], MF, MS, 1.4);
+  seg(ctx, cx,cy-25, cx,cy+27, MD, 0.7);
+  // 4 turrets
+  turret(ctx, cx,    cy-21, 3.8, MS);
+  turret(ctx, cx-21, cy+4,  3.2, MS);
+  turret(ctx, cx+21, cy+4,  3.2, MS);
+  turret(ctx, cx,    cy+22, 3.0, MS);
+  dot(ctx, cx, cy-27, 2, MA);
+  engGlow(ctx, cx-8, cy+33, 3.2);
+  engGlow(ctx, cx+8, cy+33, 3.2);
+  engGlow(ctx, cx-29,cy+18, 2.8);
+  engGlow(ctx, cx+29,cy+18, 2.8);
+}
+
+function drawBarge(ctx, cx, cy) {
+  // Wide flat cargo platform
+  poly(ctx,[
+    [cx-20,cy-22],[cx+20,cy-22],[cx+34,cy-4],
+    [cx+34,cy+16],[cx+22,cy+22],[cx-22,cy+22],
+    [cx-34,cy+16],[cx-34,cy-4]
+  ], CF, CS, 1.3);
+  // Cargo section dividers
+  for (const dx of [-12,0,12]) {
+    seg(ctx, cx+dx,cy-20, cx+dx,cy+20, '#1a4a30', 0.6);
+  }
+  seg(ctx, cx-30,cy-14, cx+30,cy-14, '#1a4a30', 0.4);
+  seg(ctx, cx-30,cy+10, cx+30,cy+10, '#1a4a30', 0.4);
+  // Leading edge accent
+  seg(ctx, cx-18,cy-22, cx+18,cy-22, CA, 0.8);
+  dot(ctx, cx-32, cy-2, 1.5, CA, false);
+  dot(ctx, cx+32, cy-2, 1.5, CA, false);
+  engGlow(ctx, cx-18, cy+21, 2.8);
+  engGlow(ctx, cx,    cy+22, 3.0);
+  engGlow(ctx, cx+18, cy+21, 2.8);
+}
+
+function drawBattleship(ctx, cx, cy) {
+  // Massive warship with wing batteries
+  poly(ctx,[[cx-20,cy-10],[cx-37,cy-2],[cx-37,cy+21],[cx-20,cy+25]], MF, MS, 1.0);
+  poly(ctx,[[cx+20,cy-10],[cx+37,cy-2],[cx+37,cy+21],[cx+20,cy+25]], MF, MS, 1.0);
+  // Main hull
+  poly(ctx,[
+    [cx,cy-37],[cx+15,cy-27],[cx+20,cy-8],[cx+18,cy+25],
+    [cx+10,cy+39],[cx-10,cy+39],[cx-18,cy+25],
+    [cx-20,cy-8],[cx-15,cy-27]
+  ], MF, MS, 1.5);
+  // Forward superstructure
+  rr(ctx, cx-6,cy-33, 12,11, 2, MD, MS, 0.9);
+  seg(ctx, cx, cy-29, cx, cy+35, MD, 0.7);
+  seg(ctx, cx+8,cy-22, cx+14,cy+20, MD, 0.5);
+  seg(ctx, cx-8,cy-22, cx-14,cy+20, MD, 0.5);
+  // 5 turrets + 2 wing turrets
+  turret(ctx, cx,    cy-26, 4.2, MS);
+  turret(ctx, cx-15, cy-8,  3.8, MS);
+  turret(ctx, cx+15, cy-8,  3.8, MS);
+  turret(ctx, cx-14, cy+14, 3.3, MS);
+  turret(ctx, cx+14, cy+14, 3.3, MS);
+  turret(ctx, cx-35, cy+10, 3.0, MS);
+  turret(ctx, cx+35, cy+10, 3.0, MS);
+  dot(ctx, cx, cy-35, 2, MA);
+  engGlow(ctx, cx-11,cy+41, 3.2);
+  engGlow(ctx, cx-3, cy+41, 3.2);
+  engGlow(ctx, cx+3, cy+41, 3.2);
+  engGlow(ctx, cx+11,cy+41, 3.2);
+  engGlow(ctx, cx-34,cy+23, 3.0);
+  engGlow(ctx, cx+34,cy+23, 3.0);
+}
+
+function drawLiner(ctx, cx, cy) {
+  // Long elegant passenger ship
+  poly(ctx,[
+    [cx,cy-37],[cx+10,cy-29],[cx+14,cy-10],
+    [cx+14,cy+27],[cx+8,cy+38],[cx-8,cy+38],
+    [cx-14,cy+27],[cx-14,cy-10],[cx-10,cy-29]
+  ], CF, CS, 1.3);
+  // Passenger superstructure
+  rr(ctx, cx-8,cy-22, 16,46, 3, CD, CS+'80', 0.8);
+  // Deck windows (5 rows)
+  for (let i = 0; i < 5; i++) {
+    const wy = cy - 16 + i * 8;
+    for (let j = -2; j <= 2; j++) {
+      ctx.beginPath();
+      ctx.arc(cx + j * 2.8, wy + 2, 1.1, 0, Math.PI * 2);
+      ctx.fillStyle = CA + '55'; ctx.fill();
+    }
+  }
+  // Observation deck at bow
+  ell(ctx, cx, cy-32, 8, 5, CD, CA, 0.8);
+  dot(ctx, cx, cy-37, 2, CA);
+  seg(ctx, cx-12,cy-8, cx-12,cy+25, '#1a4a30', 0.5);
+  seg(ctx, cx+12,cy-8, cx+12,cy+25, '#1a4a30', 0.5);
+  engGlow(ctx, cx-7,cy+40, 3.0);
+  engGlow(ctx, cx,  cy+40, 2.7);
+  engGlow(ctx, cx+7,cy+40, 3.0);
+}
+
+function drawDreadnought(ctx, cx, cy) {
+  // Colossal planet-siege fortress
+  poly(ctx,[[cx-22,cy-14],[cx-45,cy-4],[cx-45,cy+23],[cx-22,cy+27]], MF, MS, 1.1);
+  poly(ctx,[[cx+22,cy-14],[cx+45,cy-4],[cx+45,cy+23],[cx+22,cy+27]], MF, MS, 1.1);
+  seg(ctx, cx-22,cy+6, cx-45,cy+6, MD, 0.6);
+  seg(ctx, cx+22,cy+6, cx+45,cy+6, MD, 0.6);
+  // Main fortress hull
+  poly(ctx,[
+    [cx,cy-41],[cx+16,cy-31],[cx+22,cy-13],[cx+20,cy+27],
+    [cx+12,cy+43],[cx-12,cy+43],[cx-20,cy+27],
+    [cx-22,cy-13],[cx-16,cy-31]
+  ], MF, MS, 1.6);
+  // Siege battery (bow)
+  rr(ctx, cx-8,cy-40, 16,16, 2, MD, MA, 1.1);
+  seg(ctx, cx-6,cy-40, cx+6,cy-40, MA, 0.7);
+  dot(ctx, cx, cy-44, 2.5, MA);
+  // Hull structural lines
+  seg(ctx, cx,cy-35, cx,cy+39, MD, 0.7);
+  seg(ctx, cx+10,cy-24, cx+16,cy+22, MD, 0.5);
+  seg(ctx, cx-10,cy-24, cx-16,cy+22, MD, 0.5);
+  // 8 turrets
+  turret(ctx, cx-14,cy-17, 3.8, MS);
+  turret(ctx, cx+14,cy-17, 3.8, MS);
+  turret(ctx, cx-17,cy+8,  3.5, MS);
+  turret(ctx, cx+17,cy+8,  3.5, MS);
+  turret(ctx, cx-12,cy+29, 3.2, MS);
+  turret(ctx, cx+12,cy+29, 3.2, MS);
+  turret(ctx, cx-43,cy+10, 3.0, MS);
+  turret(ctx, cx+43,cy+10, 3.0, MS);
+  // Engines
+  engGlow(ctx, cx-12,cy+45, 3.8);
+  engGlow(ctx, cx-4, cy+45, 3.8);
+  engGlow(ctx, cx+4, cy+45, 3.8);
+  engGlow(ctx, cx+12,cy+45, 3.8);
+  engGlow(ctx, cx-42,cy+25, 3.2);
+  engGlow(ctx, cx+42,cy+25, 3.2);
+}
+
+function drawTanker(ctx, cx, cy) {
+  // Triple-cylinder industrial tanker
+  // Front and rear manifold bars
+  rr(ctx, cx-29,cy-36, 58,7, 2, CD, CS, 0.9);
+  rr(ctx, cx-29,cy+28, 58,7, 2, CD, CS, 0.9);
+  // Spine connectors
+  for (const tx of [-20,0,20]) {
+    seg(ctx, cx+tx,cy-29, cx+tx,cy+28, '#1a4a30', 0.5);
+  }
+  // 3 tanks (left, center, right)
+  ell(ctx, cx-20,cy-3, 10,28, CF, CS, 1.0);
+  ell(ctx, cx,   cy-3, 11,30, CF, CS, 1.1);
+  ell(ctx, cx+20,cy-3, 10,28, CF, CS, 1.0);
+  // Tank detail rings
+  for (const tx of [cx-20,cx,cx+20]) {
+    for (const ry of [-18, 0, 16]) {
+      const rw = tx === cx ? 10 : 9;
+      seg(ctx, tx-rw,cy+ry, tx+rw,cy+ry, CA+'35', 0.5);
+    }
+    ell(ctx, tx, cy-31, tx===cx?10:9, 3, CD, CS+'80', 0.6);
+    ell(ctx, tx, cy+25, tx===cx?10:9, 3, CD, CS+'80', 0.6);
+  }
+  // Valve dots
+  for (const [tx,ty] of [[cx-20,cy-10],[cx,cy-10],[cx+20,cy-10],
+                          [cx-20,cy+9], [cx,cy+9], [cx+20,cy+9]]) {
+    dot(ctx, tx, ty, 1.5, CA, false);
+  }
+  engGlow(ctx, cx-20,cy+36, 3.2);
+  engGlow(ctx, cx,   cy+36, 3.5);
+  engGlow(ctx, cx+20,cy+36, 3.2);
+}
+
+// ─── SHIP DATA ────────────────────────────────────────────────────────────────
+const TIERS = [
+  {
+    ue: 1,
+    mil: { fn: drawCorvette,    name: 'Корвет',   type: 'БОЕВОЙ', stats: ['Прочность: 100', 'Манёвр: 9', 'Скорость: 10 пк/тик'], role: 'Перехватчик · Быстрый разведчик' },
+    civ: { fn: drawShuttle,     name: 'Шаттл',    type: 'ГРАЖДАНСКИЙ', stats: ['Прочность: 100', 'Слоты: 8', 'Скорость: 10 пк/тик'], role: 'Лёгкий транспорт · Курьер' },
+  },
+  {
+    ue: 2,
+    mil: { fn: drawFrigate,     name: 'Фрегат',   type: 'БОЕВОЙ', stats: ['Прочность: 200', 'Манёвр: 7', 'Скорость: 8 пк/тик'], role: 'Универсальный бой · Охранение' },
+    civ: { fn: drawTransport,   name: 'Челнок',   type: 'ГРАЖДАНСКИЙ', stats: ['Прочность: 200', 'Слоты: 12', 'Скорость: 8 пк/тик'], role: 'Транспорт · Внутрисистемный' },
+  },
+  {
+    ue: 4,
+    mil: { fn: drawDestroyer,   name: 'Эсминец',  type: 'БОЕВОЙ', stats: ['Прочность: 400', 'Манёвр: 5', 'Скорость: 6 пк/тик'], role: 'Огневая поддержка · Сопровождение' },
+    civ: { fn: drawClipper,     name: 'Клипер',   type: 'ГРАЖДАНСКИЙ', stats: ['Прочность: 400', 'Слоты: 16', 'Скорость: 6 пк/тик'], role: 'Быстрый грузовик · Торговля' },
+  },
+  {
+    ue: 8,
+    mil: { fn: drawCruiser,     name: 'Крейсер',  type: 'БОЕВОЙ', stats: ['Прочность: 800', 'Манёвр: 3', 'Скорость: 4 пк/тик'], role: 'Линейный бой · Флагман эскадры' },
+    civ: { fn: drawBarge,       name: 'Баржа',    type: 'ГРАЖДАНСКИЙ', stats: ['Прочность: 800', 'Слоты: 20', 'Скорость: 4 пк/тик'], role: 'Тяжёлый транспорт · Массовая доставка' },
+  },
+  {
+    ue: 12,
+    mil: { fn: drawBattleship,  name: 'Линкор',   type: 'БОЕВОЙ', stats: ['Прочность: 1200', 'Манёвр: 2', 'Скорость: 3 пк/тик'], role: 'Флагман флота · Подавление обороны' },
+    civ: { fn: drawLiner,       name: 'Лайнер',   type: 'ГРАЖДАНСКИЙ', stats: ['Прочность: 1200', 'Слоты: 26', 'Скорость: 3 пк/тик'], role: 'Колониальный лайнер · Пассажирский' },
+  },
+  {
+    ue: 21,
+    mil: { fn: drawDreadnought, name: 'Дредноут', type: 'БОЕВОЙ', stats: ['Прочность: 2100', 'Манёвр: 1', 'Скорость: 2 пк/тик'], role: 'Осада планет · Подавляющая сила' },
+    civ: { fn: drawTanker,      name: 'Танкер',   type: 'ГРАЖДАНСКИЙ', stats: ['Прочность: 2100', 'Слоты: 32', 'Скорость: 2 пк/тик'], role: 'Газовый танкер · Сверхёмкость' },
+  },
+];
+
+// ─── RENDER GRID ─────────────────────────────────────────────────────────────
+function buildGrid() {
+  const grid = document.getElementById('grid');
+
+  TIERS.forEach(tier => {
+    const row = document.createElement('div');
+    row.className = 'tier-row';
+
+    // Tier label
+    const lbl = document.createElement('div');
+    lbl.className = 'tier-lbl';
+    lbl.innerHTML = `<span class="tier-ue">${tier.ue}</span><span class="tier-txt">у.е.</span>`;
+    row.appendChild(lbl);
+
+    // Military card
+    row.appendChild(buildCard(tier.mil, 'mil'));
+    // Civilian card
+    row.appendChild(buildCard(tier.civ, 'civ'));
+
+    grid.appendChild(row);
+  });
+}
+
+function buildCard(data, faction) {
+  const card = document.createElement('div');
+  card.className = `ship-card ${faction}`;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'canvas-wrap';
+  const canvas = document.createElement('canvas');
+  wrap.appendChild(canvas);
+  card.appendChild(wrap);
+
+  const info = document.createElement('div');
+  info.className = 'ship-info';
+  info.innerHTML = `
+    <div class="ship-type">${data.type}</div>
+    <div class="ship-name">${data.name}</div>
+    <div class="ship-stats">${data.stats.map(s => `<span><span class="sv">${s}</span></span>`).join('')}</div>
+    <div class="ship-role">${data.role}</div>
+  `;
+  card.appendChild(info);
+
+  // Draw after layout
+  requestAnimationFrame(() => {
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.offsetWidth;
+    const H = canvas.offsetHeight;
+    canvas.width  = W * dpr;
+    canvas.height = H * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    gridBg(ctx, W, H, faction);
+    data.fn(ctx, W / 2, H / 2);
+  });
+
+  return card;
+}
+
+buildGrid();
+</script>

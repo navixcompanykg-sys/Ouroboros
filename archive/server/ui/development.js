@@ -177,7 +177,7 @@ const BUILDINGS_CFG = {
   warehouse: {
     name: 'Склад', icon: '📦', category: 'special',
     desc: 'Хранение ресурсов и резервов',
-    effect: '+5000 складских мест/ур',
+    effect: '10к→20к→30к→50к→80к… у.м. (Фибоначчи)',
     maxLevel: 12, energyPerLevel: 0,
     baseCost: { silicates:40, carbonates:15, bitumens:10, iron:20, metal_struct:12, ind_equip:4 },
   },
@@ -534,6 +534,10 @@ function injectDOM() {
   el.style.cssText = 'display:none;flex-direction:row;width:100%;height:100%;overflow:hidden;';
   el.innerHTML = `
     <div id="dev-grid-wrap" style="flex:1;overflow:hidden;padding:6px 8px;display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-shrink:0;">
+        <button id="dev-back-btn" style="background:transparent;border:1px solid rgba(0,229,255,0.25);color:#7ecfff;font-family:'Share Tech Mono',monospace;font-size:10px;padding:2px 10px;border-radius:3px;cursor:pointer;letter-spacing:1px;transition:all 0.15s;" onmouseover="this.style.borderColor='#00e5ff';this.style.color='#00e5ff'" onmouseout="this.style.borderColor='rgba(0,229,255,0.25)';this.style.color='#7ecfff'">← НАЗАД</button>
+        <span style="color:#4a7aaa;font-size:10px;letter-spacing:2px;">МИН. РАЗВИТИЯ</span>
+      </div>
       <div id="dev-grid" style="display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(6,1fr);gap:5px;flex:1;min-height:0;"></div>
     </div>
     <div id="dev-detail" style="width:230px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;border-left:1px solid rgba(60,130,200,0.25);align-self:stretch;">
@@ -550,6 +554,8 @@ function injectDOM() {
   // Insert into pui-main (replaces planet content visually)
   const puiMain = document.getElementById('pui-main');
   puiMain.appendChild(el);
+
+  document.getElementById('dev-back-btn').addEventListener('click', () => { close(); });
 
   document.getElementById('dev-build-btn').addEventListener('click', () => {
     if (!_selected) return;

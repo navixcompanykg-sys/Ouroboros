@@ -1,0 +1,60 @@
+{
+  "timestamp": "2026-06-02T21:53:28.818Z",
+  "seed": 50,
+  "tick": 375,
+  "summary": {
+    "stars_total": 42,
+    "stars_by_type": {
+      "yellow_dwarf": 11,
+      "red_dwarf": 21,
+      "white_dwarf": 10
+    },
+    "planets_total": 199,
+    "planets_by_type": {
+      "lava": 72,
+      "rocky": 55,
+      "ice": 36,
+      "gas_giant": 36
+    },
+    "planets_eff_type": {
+      "lava": 53,
+      "rocky": 50,
+      "ice": 36,
+      "gas_giant": 36,
+      "destroyed": 24
+    },
+    "planets_with_life": 86,
+    "planets_life_alive": 79,
+    "planets_life_extinct": 7,
+    "planets_in_hab_zone": 54,
+    "water_dist": {
+      "100": 0,
+      "0-9": 72,
+      "10-19": 0,
+      "20-29": 9,
+      "30-39": 36,
+      "40-49": 38,
+      "50-59": 12,
+      "60-69": 21,
+      "70-79": 11,
+      "80-89": 0,
+      "90-99": 0
+    },
+    "pressure_dist": {
+      "0-9": 24,
+      "10-19": 17,
+      "20-29": 19,
+      "30-49": 18,
+      "50-69": 37,
+      "70-100": 84
+    },
+    "life_miss_reasons": {
+      "bad_type": 108,
+      "low_water": 0,
+      "bad_pressure": 0,
+      "bad_temp": 4,
+      "radiation": 0,
+      "no_zone": 1
+    }
+  }
+}

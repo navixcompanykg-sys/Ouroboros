@@ -459,9 +459,10 @@
 
   <!-- Top buttons: port / shipyard / warehouse / market / admin -->
   <div class="pui-bar top">
-    <button class="pui-btn disabled" data-pui="spaceport">КОСМОДРОМ</button>
-    <button class="pui-btn disabled" data-pui="shipyard">ВЕРФЬ</button>
-    <button class="pui-btn disabled" data-pui="warehouse">СКЛАД</button>
+    <button id="pui-back" class="pui-btn" style="border-color:rgba(0,229,255,0.35);color:#7ecfff;letter-spacing:1px;">← ГАЛАКТИКА</button>
+    <button class="pui-btn" data-pui="spaceport">КОСМОДРОМ</button>
+    <button class="pui-btn" data-pui="shipyard">ВЕРФЬ</button>
+    <button class="pui-btn" data-pui="warehouse">СКЛАД</button>
     <button class="pui-btn disabled" data-pui="market">ТОРГОВАЯ БИРЖА</button>
     <button class="pui-btn disabled" data-pui="admin">АДМИНИСТРАЦИЯ</button>
   </div>
@@ -4569,6 +4570,7 @@ function closePlanetUI() {
 }
 
 document.getElementById('pui-close').addEventListener('click', closePlanetUI);
+document.getElementById('pui-back').addEventListener('click', closePlanetUI);
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && puiOverlay.classList.contains('open')) {
     closePlanetUI();
@@ -4579,6 +4581,9 @@ document.addEventListener('keydown', e => {
 // ── МИН. РАЗВИТИЯ — lazy import ──────────────────────────────
 let _puiCurrentPlanet = null;
 let _devModule = null;
+let _whModule  = null;
+let _spModule  = null;
+let _syModule  = null;
 
 document.querySelectorAll('.pui-btn[data-pui]').forEach(btn => {
   if (btn.classList.contains('disabled')) return;
@@ -4591,6 +4596,26 @@ document.querySelectorAll('.pui-btn[data-pui]').forEach(btn => {
       }
       const starName = document.getElementById('pui-planet-name')?.textContent || '—';
       _devModule.open(_puiCurrentPlanet, { planetName: starName });
+    } else if (pui === 'warehouse') {
+      if (!_puiCurrentPlanet) return;
+      if (_devModule) _devModule.close();
+      if (_spModule)  _spModule.close();
+      _whModule = await import('/ui/warehouse.js?v=' + Date.now());
+      _whModule.open(_puiCurrentPlanet, {});
+    } else if (pui === 'spaceport') {
+      if (!_puiCurrentPlanet) return;
+      if (_devModule) _devModule.close();
+      if (_whModule)  _whModule.close();
+      if (_syModule)  _syModule.close();
+      _spModule = await import('/ui/spaceport.js?v=' + Date.now());
+      _spModule.open(_puiCurrentPlanet, {});
+    } else if (pui === 'shipyard') {
+      if (!_puiCurrentPlanet) return;
+      if (_devModule) _devModule.close();
+      if (_whModule)  _whModule.close();
+      if (_spModule)  _spModule.close();
+      _syModule = await import('/ui/shipyard.js?v=' + Date.now());
+      _syModule.open(_puiCurrentPlanet, {});
     }
   });
 });

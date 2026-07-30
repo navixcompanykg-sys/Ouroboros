@@ -11,6 +11,12 @@ echo  -------------------------------------------------------
 echo  Working dir: %CD%
 echo.
  
+:: Kill any process already holding port 8080
+for /f "tokens=5" %%p in ('netstat -ano 2^>nul ^| findstr /R ":8080 " ^| findstr /R "LISTENING"') do (
+    echo  Port 8080 busy ^(PID %%p^) — terminating...
+    taskkill /F /PID %%p >nul 2>&1
+)
+
 :: Check Go is installed
 where go >nul 2>&1
 if %errorlevel% neq 0 (
