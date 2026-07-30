@@ -1,4 +1,4 @@
-$json = Get-Content 'server\star_registry.json' -Raw | ConvertFrom-Json
+$json = Get-Content "$PSScriptRoot\..\server\star_registry.json" -Raw | ConvertFrom-Json
 $alive = @($json | Where-Object { $null -eq $_.death_tick })
 $dead  = @($json | Where-Object { $null -ne $_.death_tick })
 Write-Host "Total: $($json.Count)  Alive: $($alive.Count)  Dead: $($dead.Count)"

@@ -1,4 +1,4 @@
-$json = Get-Content 'D:\Projects\Ouroboros\server\star_registry.json' -Raw | ConvertFrom-Json
+$json = Get-Content "$PSScriptRoot\..\server\star_registry.json" -Raw | ConvertFrom-Json
 $dead = $json | Where-Object { $null -ne $_.death_tick }
 
 $types = @('red_dwarf','yellow_dwarf','blue_giant','neutron_star')

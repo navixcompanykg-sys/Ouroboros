@@ -1,4 +1,4 @@
-$json = Get-Content 'server\star_registry.json' -Raw | ConvertFrom-Json
+$json = Get-Content "$PSScriptRoot\..\server\star_registry.json" -Raw | ConvertFrom-Json
 $dead = @($json | Where-Object { $null -ne $_.death_tick })
 
 function Stats($arr) {
