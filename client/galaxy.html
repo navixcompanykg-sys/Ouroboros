@@ -13,8 +13,8 @@
     --gold:#ffcf6b;
   }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;}
-  html,body{height:100%;overflow:hidden;background:#000;}
-  body{font-family:var(--sans);color:var(--text);display:flex;align-items:center;justify-content:center;gap:18px;}
+  html,body{height:100%;background:#000;}
+  body{font-family:var(--sans);color:var(--text);display:flex;align-items:center;justify-content:center;}
 
   #screen{position:relative;flex-shrink:0;
     width:min(92vw, 400px, calc(94vh * 390 / 844));
@@ -24,22 +24,10 @@
     box-shadow:0 0 0 1px rgba(255,255,255,0.03), 0 20px 60px rgba(0,0,0,0.7);
     display:flex;flex-direction:column;}
 
-  /* ── админ-панель сервера: ВНЕ экрана телефона — игрок этого не видит ──
-     В финальной игре доступна только с аккаунта администратора сервера. ── */
-  #admin{flex-shrink:0;width:150px;padding:12px;border:1px dashed rgba(255,100,68,0.4);
-    background:rgba(20,8,8,0.5);display:none;}
-  @media (min-width:620px){ #admin{display:block;} }
-  #admin h3{font-family:var(--mono);font-size:8px;letter-spacing:1px;color:#ff8060;margin-bottom:2px;}
-  #admin .admin-note{font-family:var(--mono);font-size:6.5px;color:#ff8060;opacity:.7;line-height:1.5;margin-bottom:12px;}
-  #admin .admin-group{margin-bottom:14px;}
-  #admin .admin-label{font-family:var(--mono);font-size:7px;letter-spacing:1px;color:var(--text);opacity:.6;margin-bottom:5px;}
-  #admin .admin-btn{display:block;width:100%;text-align:left;background:var(--panel-bg);border:1px solid var(--border);
-    color:var(--text-bright);font-family:var(--mono);font-size:8.5px;padding:6px 8px;margin-bottom:3px;cursor:pointer;}
-  #admin .admin-btn.active{border-color:#ff8060;color:#ff8060;background:rgba(255,100,68,0.08);}
-  #admin .admin-btn:active{border-color:#ff8060;}
-  #admin .admin-stat{font-family:var(--mono);font-size:7px;color:var(--text);line-height:1.7;}
-  #admin .admin-stat b{color:var(--accent2);font-weight:400;}
-  #admin .admin-stat .bad{color:#ff8060;}
+  /* Админ-панель (скорость, статистика сектора, ссылка на список планет) —
+     не часть этой страницы: подключается скриптом admin-panel.js, который
+     сам вставляет разметку/стили и подстраивает body под второй элемент
+     рядом с рамкой телефона. См. ТЗ_UI.md §1.1. */
 
   /* ── шапка: строка МЕНЮ / название / своего сектора ────────────────── */
   header{flex-shrink:0;height:32px;display:flex;align-items:center;justify-content:space-between;
@@ -195,24 +183,7 @@
 
 </div>
 
-<div id="admin">
-  <h3>АДМИН-ПАНЕЛЬ СЕРВЕРА</h3>
-  <div class="admin-note">Вне экрана телефона — игрок этого не видит. Скорость меняется НА СЕРВЕРЕ и сразу действует для всех подключённых устройств.</div>
-  <div class="admin-group">
-    <div class="admin-label">УСКОРЕНИЕ ВРЕМЕНИ</div>
-    <div class="admin-btn" data-speed="0">пауза</div>
-    <div class="admin-btn" data-speed="0.0833333">1 мес = 12 сек</div>
-    <div class="admin-btn" data-speed="0.25">1 мес = 4 сек</div>
-    <div class="admin-btn" data-speed="1">1 мес = 1 сек</div>
-    <div class="admin-btn" data-speed="5">5 мес / сек</div>
-    <div class="admin-btn" data-speed="20">20 мес / сек</div>
-  </div>
-  <div class="admin-group">
-    <div class="admin-label">СОСТОЯНИЕ СЕРВЕРА</div>
-    <div class="admin-stat" id="admin-stat">подключение…</div>
-  </div>
-</div>
-
+<script src="world.js"></script>
 <script>
 // ══════════════════════════════════════════════════════════════════════════
 // КЛИЕНТ: только отображение.
@@ -249,48 +220,11 @@ function toXY(r, x){
   return { x: APEX_X + truePx * Math.sin(theta), y: APEX_Y - truePx * Math.cos(theta) };
 }
 
-// ── справочники отображения: сервер шлёт только ключи ─────────────────────
-const FACTIONS = {
-  technocracy: { name:'Технократия',         color:'#4fd1ff' },
-  tradefed:    { name:'Торговая федерация',  color:'#ffd24f' },
-  monarchy:    { name:'Монархия',            color:'#c084fc' },
-  miners:      { name:'Рудокопы',            color:'#ff8c42' },
-  pirates:     { name:'Пираты',              color:'#ff4d6d' },
-  smugglers:   { name:'Контрабандисты',      color:'#9aa0a8' },
-  rebels:      { name:'Повстанцы',           color:'#4dff88' },
-  none:        { name:'Независимая',         color:'#3a4256' },
-};
-// Пять эффективных типов планет из v1 (archive/docs/RESOURCES_design.md).
-// Порядок — от звезды наружу. Прежний список с ocean/toxic/desert был ошибкой
-// заглушки: в v1 это доли биомов на поверхности, а не типы планет.
-const PLANET_TYPES = {
-  core:  { name:'Голое ядро',  color:'#6a6f7a' },
-  lava:  { name:'Лавовая',     color:'#ff5a3c' },
-  rocky: { name:'Каменистая',  color:'#a99274' },
-  ice:   { name:'Ледяная',     color:'#bfe8ff' },
-  gas:   { name:'Газ. гигант', color:'#e0c088' },
-};
-// Ресурсы: ключ с сервера → отображаемое имя. Шкала концентрации 0–10 000 у.е.
-const RESOURCES = {
-  silicates:     'Силикаты',
-  iron:          'Железо',
-  refractory:    'Тугоплавкие',
-  lightRare:     'Лёгкие редкие',
-  platinoids:    'Платиноиды',
-  inertGases:    'Инертные газы',
-  helium3:       'Гелий-3',
-  hydrogen:      'Водород',
-  volcanicGases: 'Вулканич. газы',
-  radioactives:  'Радиоактивные',
-};
-const STAR_COLORS = {
-  red:'rgb(255,100,68)', yellow:'rgb(255,224,102)', blue:'rgb(160,200,255)',
-  white:'rgb(210,235,255)', neutron:'rgb(180,255,210)'
-};
-const STAR_NAMES = {
-  red:'Красный карлик', yellow:'Жёлтый карлик', blue:'Синий гигант',
-  white:'Белый карлик', neutron:'Нейтронная звезда'
-};
+// Справочники — из общего модуля world.js: реальность одна на все экраны,
+// и держать по копии словарей в каждом файле нельзя (разъезжаются цвета и
+// названия). Сектор при этом остаётся на своём канале данных — SSE-потоке
+// событий, он для этого масштаба точнее опроса.
+const { FACTIONS, PLANET_TYPES, RESOURCES, STAR_COLORS, STAR_NAMES } = World;
 
 // ══════════════════════════════════════════════════════════════════════════
 // ЕДИНОЕ ВРЕМЯ СЕРВЕРА
@@ -516,7 +450,6 @@ function showOffline(msg){
   clock.connected = false;
   document.getElementById('off-text').innerHTML = msg;
   document.getElementById('offline').classList.add('show');
-  updateAdminStat();
 }
 function hideOffline(){
   clock.connected = true;
@@ -558,7 +491,6 @@ async function loadGalaxyInner(){
   drawAssembleLayers();
   renderStableList();
   hideOffline();
-  updateAdminStat();
 }
 
 // смена ориентации/размера окна меняет масштаб — пересчитываем тела
@@ -573,7 +505,6 @@ function connectEvents(){
     try { msg = JSON.parse(ev.data); } catch { return; }
     syncClock(msg.months, msg.speed);
     hideOffline();
-    markSpeedButton(msg.speed);
 
     if(msg.resync){
       // клиент отстал больше, чем сервер хранит в буфере событий (бывает на
@@ -587,7 +518,6 @@ function connectEvents(){
       });
       lastSeq = msg.seq;
     }
-    updateAdminStat();
   };
   es.onerror = ()=>{
     // EventSource переподключается сам, но со старым since — пересоздаём вручную
@@ -598,44 +528,9 @@ function connectEvents(){
   };
 }
 
-async function setSpeed(speed){
-  try{
-    const res = await fetch('api/speed', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({speed}),
-    });
-    const data = await res.json();
-    syncClock(data.months, data.speed);
-    markSpeedButton(data.speed);
-    toast(data.speed===0 ? 'Время на паузе (сервер)' : `Скорость сервера: ${data.speed} мес/сек`);
-  }catch(e){
-    toast('Не удалось сменить скорость — нет связи');
-  }
-}
-
-function markSpeedButton(speed){
-  document.querySelectorAll('#admin .admin-btn').forEach(b=>{
-    b.classList.toggle('active', Math.abs(Number(b.dataset.speed)-speed) < 1e-6);
-  });
-}
-document.querySelectorAll('#admin .admin-btn').forEach(btn=>{
-  btn.onclick = ()=>setSpeed(Number(btn.dataset.speed));
-});
-
-function updateAdminStat(){
-  const byType = {star:0, neb:0, ast:0, bh:0};
-  let mass = 0;
-  objects.forEach(o=>{ byType[o.type] = (byType[o.type]||0)+1; mass += o.mass; });
-  document.getElementById('admin-stat').innerHTML =
-    `связь: <b class="${clock.connected?'':'bad'}">${clock.connected?'есть':'нет'}</b><br>` +
-    `время: <b>${gameMonths().toFixed(1)}</b> мес<br>` +
-    `скорость: <b>${clock.speed}</b> мес/с<br>` +
-    `сид: <b>${galaxySeed}</b><br>` +
-    `объектов: <b>${objects.size}</b><br>` +
-    `звёзд: <b>${byType.star}</b> · ЧД: <b>${byType.bh}</b><br>` +
-    `туман.: <b>${byType.neb}</b> · астер.: <b>${byType.ast}</b><br>` +
-    `масса: <b>${mass.toFixed(0)}</b> M☉`;
-}
+// Управление скоростью, статистика сектора и ссылка на список планет —
+// в общей админ-панели (admin-panel.js), которая опрашивает /api/stats сама
+// и не зависит от состояния этой страницы.
 
 // ── тост ──────────────────────────────────────────────────────────────
 let toastTimer;
@@ -736,13 +631,34 @@ function showInfoGeneric(o, label){
   document.getElementById('tr-planets').style.display = 'none';
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// Выбор объекта по клику — БЛИЖАЙШИЙ к точке клика, а не точное попадание в
+// фигуру SVG. Точное попадание регулярно не срабатывает на реальном тапе:
+// тела рисуются мелкими точками, курсор/палец редко попадает миллиметр в
+// миллиметр. То же решение уже было в архивном прототипе (galaxy.html,
+// findNearest) — здесь тот же принцип, адаптированный под SVG viewBox вместо
+// canvas.
+// ══════════════════════════════════════════════════════════════════════════
+const TAP_HIT_PX = 16; // минимальный радиус «попадания» клика, экранные px
+function findNearestObject(clientX, clientY){
+  const pt = clientToUser(clientX, clientY, vb);
+  const rect = svg.getBoundingClientRect();
+  const pxPerUnit = rect.width ? rect.width / vb.w : 1;
+  let best = null, bestPx = Infinity;
+  objects.forEach(o=>{
+    const p = toXY(o.r, xOf(o));
+    const d = Math.hypot(p.x - pt.x, p.y - pt.y) * pxPerUnit;
+    const limit = Math.max(TAP_HIT_PX, bodyRadius(o) * pxPerUnit);
+    if(d <= limit && d < bestPx){ bestPx = d; best = o; }
+  });
+  return best;
+}
+
 svg.addEventListener('click', (e)=>{
   if(suppressClick){ suppressClick=false; return; }
-  const g = e.target.closest('[data-id]');
-  if(!g){ clearSelection(); return; }
-  const o = objects.get(Number(g.getAttribute('data-id')));
-  if(!o) return;
-  selectVisual(g);
+  const o = findNearestObject(e.clientX, e.clientY);
+  if(!o){ clearSelection(); return; }
+  selectVisual(o._node);
   if(o.type==='star'){
     showInfoForStar(o);
     toast(o.stable
@@ -868,38 +784,79 @@ function renderStableList(){
   });
 }
 
-// ── флоты игрока (заглушка — концепция нескольких флотов не описана в ТЗ.md) ──
-const FLEETS = [
-  { name:'1-й флот «Скиталец»', ship:'Крейсер «Аврора»',  status:'на орбите Технократии' },
-  { name:'2-й флот «Тень»',     ship:'Разведчик «Игла»',   status:'в пути, зона 4' },
-  { name:'3-й флот «Кузня»',    ship:'Транспорт «Ковчег»', status:'на стоянке, зона 6' },
-];
-let fleetIndex = 0;
+// ══════════════════════════════════════════════════════════════════════════
+// Флоты игрока — реальные данные с сервера (server/fleets.go), не заглушка:
+// один флот на каждый из 4 стабильных миров (столица + 3 вассала). Летает и
+// рисуется на всех экранах только ТЕКУЩИЙ флот (Current==true) — это тот же
+// `ship`, что и everywhere в проекте; остальные три стоят на орбите родного
+// мира и отдают только имя/класс/позицию — их незачем разыгрывать целым
+// миром, раз они никуда не двигаются (см. комментарий в fleets.go).
+// ══════════════════════════════════════════════════════════════════════════
+let fleetIndex = 0; // какой флот сейчас ПОКАЗАН в списке/нижней панели, не обязательно текущий
+function fleetStatusText(f){
+  if(!f.current){
+    const home = objects.get(f.homeStarId);
+    return home ? `на орбите ${home.stable ? FACTIONS[home.faction].name : (STAR_NAMES[home.starType]||home.starType)}` : 'позиция неизвестна';
+  }
+  const ship = World.state.ship;
+  if(!ship) return '—';
+  if(ship.landed) return 'на поверхности планеты';
+  if(ship.transit) return ship.transit.mode==='interstellar' ? 'в межзвёздном перелёте' : 'в полёте';
+  const home = objects.get(ship.systemStarId);
+  return home ? `в системе ${home.stable ? FACTIONS[home.faction].name : (STAR_NAMES[home.starType]||home.starType)}` : 'в системе';
+}
 function renderFleetLists(){
+  const fleets = World.state.fleets;
   const rows = document.getElementById('fleet-rows');
+  if(!fleets || !fleets.length){ rows.innerHTML = ''; return; }
+  if(fleetIndex >= fleets.length) fleetIndex = 0;
   rows.innerHTML = '';
-  FLEETS.forEach((f,i)=>{
+  fleets.forEach((f,i)=>{
     const row = document.createElement('div');
     row.className = 'sl-row' + (i===fleetIndex ? ' active' : '');
-    row.textContent = f.name;
-    row.onclick = ()=>{ fleetIndex=i; updateFleetStatus(); renderFleetLists(); };
+    row.textContent = f.name + (f.current ? ' ★' : '');
+    row.onclick = ()=>{ fleetIndex=i; renderFleetLists(); };
     rows.appendChild(row);
   });
   updateFleetStatus();
 }
 function updateFleetStatus(){
-  const f = FLEETS[fleetIndex];
-  document.getElementById('bs-name').textContent = f.ship;
-  document.getElementById('bs-sub').textContent = `${f.name} · ${f.status}`;
+  const fleets = World.state.fleets;
+  if(!fleets || !fleets.length) return;
+  const f = fleets[fleetIndex];
+  document.getElementById('bs-name').textContent = f.shipClass;
+  document.getElementById('bs-sub').textContent = `${f.name} · ${fleetStatusText(f)}`;
 }
-document.getElementById('bb-prev').onclick = ()=>{ fleetIndex=(fleetIndex+FLEETS.length-1)%FLEETS.length; renderFleetLists(); toast(`Флот: ${FLEETS[fleetIndex].name}`); };
-document.getElementById('bb-next').onclick = ()=>{ fleetIndex=(fleetIndex+1)%FLEETS.length; renderFleetLists(); toast(`Флот: ${FLEETS[fleetIndex].name}`); };
-document.getElementById('bb-fly').onclick = ()=>{
-  if(!selectedObject){ toast('Сначала выберите объект на карте'); return; }
-  const name = selectedObject.stable ? FACTIONS[selectedObject.faction].name
-    : (selectedObject.type==='star' ? `${STAR_NAMES[selectedObject.starType]} #${selectedObject.id}` : selectedObject.type);
-  toast(`${FLEETS[fleetIndex].name} → курс на «${name}» (заглушка)`);
+document.getElementById('bb-prev').onclick = ()=>{
+  const fleets = World.state.fleets; if(!fleets || !fleets.length) return;
+  fleetIndex=(fleetIndex+fleets.length-1)%fleets.length; renderFleetLists(); toast(`Флот: ${fleets[fleetIndex].name}`);
 };
+document.getElementById('bb-next').onclick = ()=>{
+  const fleets = World.state.fleets; if(!fleets || !fleets.length) return;
+  fleetIndex=(fleetIndex+1)%fleets.length; renderFleetLists(); toast(`Флот: ${fleets[fleetIndex].name}`);
+};
+// Настоящая навигация (ship.go): целью может быть только звезда (§2.7.1
+// ТЗ.md — «конкретный объект, звезда или планета», планету у чужой звезды
+// сначала выбираем прилетев к ней — см. system.html). Летать может только
+// ТЕКУЩИЙ флот — у остальных пока нет собственной симуляции полёта.
+document.getElementById('bb-fly').onclick = async ()=>{
+  const fleets = World.state.fleets;
+  const viewed = fleets && fleets[fleetIndex];
+  if(viewed && !viewed.current){ toast(`«${viewed.name}» пока не управляется игроком — доступен только текущий флот`); return; }
+  if(!selectedObject){ toast('Сначала выберите объект на карте'); return; }
+  if(selectedObject.type !== 'star'){ toast('Целью полёта может быть только звезда или планета — не туманность/астероид/ЧД'); return; }
+  const name = selectedObject.stable ? FACTIONS[selectedObject.faction].name : `${STAR_NAMES[selectedObject.starType]} #${selectedObject.id}`;
+  try{
+    const data = await World.navigate('star', selectedObject.id);
+    if(data.transit){
+      const eta = Math.max(0, (new Date(data.transit.arriveAt) - new Date(data.transit.departedAt))/1000);
+      toast(`${viewed ? viewed.name : 'Флот'} → курс на «${name}»\n${data.transit.mode==='interstellar'?'межзвёздный перелёт':'полёт внутри системы'}, ETA ~${eta.toFixed(0)} с`);
+    } else {
+      toast(`${viewed ? viewed.name : 'Флот'} уже в системе «${name}»`);
+    }
+  }catch(e){ toast('Не удалось проложить курс: ' + e.message); }
+};
+World.subscribe(renderFleetLists);
 renderFleetLists();
 
 // ── колонии игрока (заглушка) ────────────────────────────────────────────
@@ -923,17 +880,65 @@ document.getElementById('btn-own-sector').onclick = ()=>toast('Карта сво
 document.getElementById('bb-back').onclick = ()=>{ location.href = 'ship.html'; };
 
 // ══════════════════════════════════════════════════════════════════════════
+// Маркер корабля на карте сектора.
+//
+// Состояние корабля — из общего модуля (World.state.ship): свой опрос
+// /api/ship здесь не нужен, корабль один на все экраны. А вот положение его
+// ЗВЕЗДЫ берём из локального `objects` — это состав сектора, который карта
+// ведёт по SSE-потоку (4 кадра в секунду), он на этом масштабе точнее, чем
+// секундный опрос.
+//
+// Во время меж-звёздного перелёта звезды под кораблём нет вовсе: тогда
+// интерполируем From→To по доле пройденного времени, как и на system.html.
+// ══════════════════════════════════════════════════════════════════════════
+let shipMarkerNode = null;
+function shipSectorPos(){
+  const ship = World.state.ship;
+  if(!ship) return null;
+  const tr = ship.transit;
+  if(tr && tr.mode === 'interstellar'){
+    const departed = new Date(tr.departedAt).getTime();
+    const arrive = new Date(tr.arriveAt).getTime();
+    const frac = arrive>departed ? Math.min(1, Math.max(0, (Date.now()-departed)/(arrive-departed))) : 1;
+    return { r: tr.fromR + (tr.toR-tr.fromR)*frac, x: tr.fromArc + (tr.toArc-tr.fromArc)*frac };
+  }
+  const starObj = objects.get(ship.systemStarId);
+  if(!starObj) return null;
+  return { r: starObj.r, x: xOf(starObj) };
+}
+// Размер маркера, в отличие от объектов сектора, НЕ истинный и не зависит от
+// зума: это значок «вы здесь», а не тело со своими размерами. Радиус задан в
+// единицах viewBox, поэтому при приближении раздувался бы сам собой — держим
+// его постоянным в пикселях.
+const SHIP_MARKER_PX = 4; // радиус значка на экране, px
+function renderShipMarker(){
+  const pos = shipSectorPos();
+  if(!pos) return;
+  const p = toXY(pos.r, pos.x);
+  if(!shipMarkerNode){
+    shipMarkerNode = el('circle', {fill:'#00e5ff', stroke:'#fff'});
+    svg.appendChild(shipMarkerNode); // поверх всех объектов и кольца ассамбли
+  }
+  const w = svg.getBoundingClientRect().width;
+  const r = w ? SHIP_MARKER_PX * vb.w / w : 2;
+  shipMarkerNode.setAttribute('r', r);
+  shipMarkerNode.setAttribute('stroke-width', r * 0.2);
+  shipMarkerNode.setAttribute('cx', p.x);
+  shipMarkerNode.setAttribute('cy', p.y);
+}
+World.start();
+
+// ══════════════════════════════════════════════════════════════════════════
 // Кадр: положение каждого объекта — чистая функция серверного времени.
 // Никакого накопления по кадрам, поэтому просадка FPS или уход вкладки в фон
 // не сдвигают картинку относительно сервера: вернувшись, она сразу на месте.
 // ══════════════════════════════════════════════════════════════════════════
-let statTimer = 0;
 function frame(now){
   if(clock.connected){
     const t = gameMonths();
     objects.forEach(o=>{ if(o.arc) updateObjectPos(o, t); });
-    if(now - statTimer > 250){ statTimer = now; updateAdminStat(); }
   }
+  renderShipMarker();
   requestAnimationFrame(frame);
 }
 
@@ -950,5 +955,6 @@ loadGalaxy()
     requestAnimationFrame(frame);
   });
 </script>
+<script src="admin-panel.js"></script>
 </body>
 </html>

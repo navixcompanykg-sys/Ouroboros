@@ -16,11 +16,11 @@ import (
 // ════════════════════════════════════════════════════════════════════════════
 
 const (
-	maxR    = 120.0 // радиальная ось окна (клети)
-	halfW   = 60.0  // половина ширины окна по дуговой оси
-	trueR0  = 280.0 // от истинного центра галактики до ближнего края окна
-	pxpu    = 300.0 / maxR
-	apexX   = 150.0
+	maxR     = 120.0 // радиальная ось окна (клети)
+	halfW    = 60.0  // половина ширины окна по дуговой оси
+	trueR0   = 280.0 // от истинного центра галактики до ближнего края окна
+	pxpu     = 300.0 / maxR
+	apexX    = 150.0
 	minSepPx = 15.0 // минимальный экранный зазор между точечными объектами
 
 	// Уход и вход разнесены за границы окна: объект доезжает до края и только
@@ -232,6 +232,11 @@ type Object struct {
 	Planets  []Planet `json:"planets,omitempty"`
 	Stable   bool     `json:"stable,omitempty"`
 	Chaotic  bool     `json:"chaotic,omitempty"`
+
+	// Только для type=="star" — см. planets.go rollMeteorActivity/rollRings.
+	Rings          int     `json:"rings,omitempty"`
+	MeteorActivity int     `json:"meteorActivity,omitempty"` // 1–100
+	SystemRadius   float64 `json:"sysR,omitempty"`           // радиус звёздной области, клети — размер поля масштаба «Звёздная система»
 
 	Rad float64 `json:"-"` // радиус тела, клети — только для расстановки на сервере
 

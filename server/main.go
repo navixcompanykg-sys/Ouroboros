@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -28,13 +29,17 @@ import (
 var (
 	clk      *Clock
 	sim      *Sim
+	ship     *Ship
 	seed     int64
 	clientFS string
 )
 
 func main() {
 	port := flag.Int("port", 8080, "порт HTTP-сервера")
-	speed := flag.Float64("speed", 0.25, "стартовое ускорение: игровых месяцев за реальную секунду")
+	// По умолчанию — РЕАЛЬНОЕ время: 1 игровой месяц идёт ровно 1 календарный
+	// месяц, никакого сжатия (gameSpeedRealtime в clock.go). Всё, что быстрее, —
+	// ускорение для отладки из админ-панели, а не то, что видит игрок.
+	speed := flag.Float64("speed", gameSpeedRealtime, "скорость игрового времени: игровых месяцев за реальную секунду (по умолчанию — реальное время)")
 	seedFlag := flag.Int64("seed", 0, "сид генерации галактики (0 = случайный при запуске)")
 	flag.Parse()
 
@@ -52,6 +57,8 @@ func main() {
 
 	clk = NewClock(*speed)
 	sim = NewSim(seed)
+	ship = NewShip(findCapitalID(sim), findCapitalRadius(sim))
+	initFleets(sim)
 	stop := make(chan struct{})
 	go clk.Run(stop)
 	go driveSim(stop)
@@ -62,6 +69,11 @@ func main() {
 	mux.HandleFunc("/api/galaxy", handleGalaxy)
 	mux.HandleFunc("/api/stats", handleStats)
 	mux.HandleFunc("/api/events", handleEvents)
+	mux.HandleFunc("/api/ship", handleShip)
+	mux.HandleFunc("/api/ship/navigate", handleShipNavigate)
+	mux.HandleFunc("/api/ship/land", handleShipLand)
+	mux.HandleFunc("/api/ship/launch", handleShipLaunch)
+	mux.HandleFunc("/api/fleets", handleFleets)
 	mux.Handle("/", noCache(http.FileServer(http.Dir(clientFS))))
 
 	addr := fmt.Sprintf(":%d", *port)
@@ -94,6 +106,32 @@ func resolveClientDir() (string, error) {
 		}
 	}
 	return "", fmt.Errorf("ship.html не найден ни в одном из %v", candidates)
+}
+
+// findCapitalID/findCapitalRadius — где стоит корабль при старте сервера:
+// в системе столицы Империи (Role=="capital", тот же объект, вокруг которого
+// centred круг перелётов на карте сектора, см. galaxy.html). Если по какой-то
+// причине столица не нашлась (не должно происходить), берём первую звезду.
+func findCapitalID(sim *Sim) int {
+	objects, _ := sim.Snapshot()
+	for _, o := range objects {
+		if o.Type == "star" && o.Role == "capital" {
+			return o.ID
+		}
+	}
+	for _, o := range objects {
+		if o.Type == "star" {
+			return o.ID
+		}
+	}
+	return 0
+}
+
+func findCapitalRadius(sim *Sim) float64 {
+	if star, ok := sim.Object(findCapitalID(sim)); ok {
+		return star.SystemRadius
+	}
+	return 30
 }
 
 // noCache — на время разработки: иначе телефон закеширует старый HTML и правки
@@ -157,7 +195,10 @@ func handleGalaxy(w http.ResponseWriter, r *http.Request) {
 	}{Snapshot: snap, Seed: seed, Seq: seq, Objects: objects})
 }
 
-// GET /api/stats — сводка по сектору для диагностики и тестов.
+// GET /api/stats — сводка по сектору для диагностики и тестов. Читает её и
+// общая админ-панель (client/admin-panel.js): опрашивает этот эндпоинт раз в
+// секунду с любого экрана — панель не привязана к тому, какой именно HTML
+// сейчас открыт (ship.html/galaxy.html), в отличие от карты сектора.
 func handleStats(w http.ResponseWriter, r *http.Request) {
 	snap := clk.Snapshot()
 	sim.Advance(snap.Months)
@@ -165,7 +206,8 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 		Stats
 		Months float64 `json:"months"`
 		Speed  float64 `json:"speed"`
-	}{Stats: sim.Stats(), Months: snap.Months, Speed: snap.Speed})
+		Seed   int64   `json:"seed"`
+	}{Stats: sim.Stats(), Months: snap.Months, Speed: snap.Speed, Seed: seed})
 }
 
 // POST /api/speed {"speed": <месяцев в секунду>} — ускорение времени.
@@ -185,7 +227,9 @@ func handleSpeed(w http.ResponseWriter, r *http.Request) {
 	sim.Advance(clk.Snapshot().Months) // доводим состав по старой скорости, потом меняем
 	s := clk.SetSpeed(*body.Speed)
 	_, seq := sim.Snapshot()
-	log.Printf("скорость → %.4f мес/сек (игровое время %.2f мес)", s.Speed, s.Months)
+	// formatSpeed, а не %.4f: игровая (реальная) скорость — это ~3.8e-7 мес/сек,
+	// в логе она печаталась как «0.0000 мес/сек» и была неотличима от паузы.
+	log.Printf("скорость → %s (игровое время %.2f мес)", formatSpeed(s.Speed), s.Months)
 	writeJSON(w, timeResponse{Snapshot: s, Seed: seed, Seq: seq})
 }
 
@@ -246,6 +290,71 @@ const (
 	maxEventsPerFrame = 500 // выше — отправляем resync вместо простыни событий
 )
 
+// GET /api/ship — текущее положение корабля (ship.go: один глобальный
+// корабль на сервере, реальное время полёта, не игровые месяцы).
+func handleShip(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, ship.Snapshot(time.Now()))
+}
+
+// POST /api/ship/navigate {"kind":"star"|"planet","starId":N,"planetIndex":N}
+// — проложить курс. kind="star" всегда допустим (в своей системе или
+// межзвёздно); kind="planet" — только в ТЕКУЩЕЙ системе корабля (см. ship.go:
+// до чужой планеты летим в два шага — сначала до её звезды).
+func handleShipNavigate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "нужен POST", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Kind        string `json:"kind"`
+		StarID      int    `json:"starId"`
+		PlanetIndex int    `json:"planetIndex"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || (body.Kind != "star" && body.Kind != "planet") {
+		http.Error(w, `ожидается {"kind":"star"|"planet","starId":N,"planetIndex":N}`, http.StatusBadRequest)
+		return
+	}
+	if err := ship.Navigate(sim, time.Now(), body.Kind, body.StarID, body.PlanetIndex); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, ship.Snapshot(time.Now()))
+}
+
+// POST /api/ship/land — посадка на планету, у которой корабль сейчас
+// находится. Заглушка, см. ship.go.
+func handleShipLand(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "нужен POST", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := ship.Land(time.Now()); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, ship.Snapshot(time.Now()))
+}
+
+// POST /api/ship/launch — взлёт с поверхности.
+func handleShipLaunch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "нужен POST", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := ship.Launch(time.Now()); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, ship.Snapshot(time.Now()))
+}
+
+// GET /api/fleets — раскладка флотов игрока по стабильным мирам (fleets.go).
+// Только текущий флот (Current==true) реально симулируется через ship.go;
+// остальные — статичные данные о гарнизоне на орбите родного мира.
+func handleFleets(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, fleets)
+}
+
 func parseUint(s string) uint64 {
 	v, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {
@@ -284,13 +393,35 @@ func lanIPs() []string {
 	return out
 }
 
+// formatSpeed — человекочитаемая скорость времени: на игровой (реальное
+// время) множитель ~3.8e-7 мес/сек, и «0.0000 мес/сек» в баннере не говорит
+// ничего. Главное — КРАТНОСТЬ к игровой скорости, абсолютный темп идёт
+// уточнением. Тот же формат, что и в админ-панели (client/admin-panel.js).
+func formatSpeed(speed float64) string {
+	if speed <= 0 {
+		return "пауза (время стоит)"
+	}
+	mult := speed / gameSpeedRealtime
+	secPerMonth := 1 / speed
+	var per string
+	if secPerMonth >= 86400 {
+		per = fmt.Sprintf("%.1f реальных суток", secPerMonth/86400)
+	} else {
+		per = fmt.Sprintf("%.1f реальных часов", secPerMonth/3600)
+	}
+	if math.Abs(mult-1) < 0.01 {
+		return fmt.Sprintf("× 1 игровая, реальное время (1 игр. месяц / %s)", per)
+	}
+	return fmt.Sprintf("× %.0f от игровой (1 игр. месяц / %s)", mult, per)
+}
+
 func printBanner(port int, speed float64) {
 	line := strings.Repeat("─", 58)
 	fmt.Println(line)
 	fmt.Println("  УРОБОРОС — сервер")
 	fmt.Printf("  клиент:   %s\n", clientFS)
 	fmt.Printf("  сид:      %d\n", seed)
-	fmt.Printf("  скорость: %.4f игр. мес / реальную сек\n", speed)
+	fmt.Printf("  скорость: %s\n", formatSpeed(speed))
 	fmt.Println(line)
 	fmt.Printf("  на этом компьютере:  http://localhost:%d/\n", port)
 	ips := lanIPs()

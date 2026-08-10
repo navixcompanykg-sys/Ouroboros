@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>УРОБОРОС — Звёздная система</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap');
+  :root {
+    --bg:#04060f; --panel-bg:rgba(6,12,28,0.92); --border:rgba(60,130,200,0.18);
+    --accent:#2a7fff; --accent2:#00e5ff; --text:#8baac8; --text-bright:#cce4ff;
+    --mono:'Share Tech Mono',monospace; --sans:'Rajdhani',sans-serif;
+    --gold:#ffcf6b; --ok:#44cc88; --err:#ff5544; --warn:#ff8060;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;}
+  html,body{height:100%;background:#000;}
+  body{font-family:var(--sans);color:var(--text);display:flex;align-items:center;justify-content:center;}
+
+  #screen{position:relative;flex-shrink:0;
+    width:min(92vw, 400px, calc(94vh * 390 / 844));
+    aspect-ratio:390/844;
+    background:var(--bg);overflow:hidden;
+    border-radius:34px;border:2px solid #14161e;
+    box-shadow:0 0 0 1px rgba(255,255,255,0.03), 0 20px 60px rgba(0,0,0,0.7);
+    display:flex;flex-direction:column;}
+
+  header{flex-shrink:0;height:32px;display:flex;align-items:center;justify-content:space-between;
+    padding:0 10px;border-bottom:1px solid var(--border);z-index:10;line-height:1.3;}
+  #btn-back{font-family:var(--mono);font-size:7px;letter-spacing:1px;color:var(--accent2);cursor:pointer;}
+  #hdr-title{font-family:var(--mono);font-size:8px;letter-spacing:2px;color:var(--accent2);}
+  #btn-sector{font-family:var(--mono);font-size:6.5px;letter-spacing:.5px;color:var(--text);opacity:.7;cursor:pointer;text-align:right;}
+
+  #info-row{flex-shrink:0;padding:5px 6px;border-bottom:1px solid var(--border);z-index:10;
+    background:var(--panel-bg);min-height:34px;}
+  #info-title{font-family:var(--sans);font-weight:600;font-size:10px;color:var(--text-bright);margin-bottom:2px;}
+  #info-rows{font-family:var(--mono);font-size:6.5px;color:var(--text);line-height:1.6;}
+  #info-rows b{color:var(--accent2);font-weight:400;}
+  #info-actions{display:flex;gap:6px;margin-top:4px;}
+  .info-btn{font-family:var(--mono);font-size:8px;letter-spacing:1px;padding:4px 10px;cursor:pointer;
+    border:1.2px solid var(--accent2);color:var(--accent2);background:rgba(0,229,255,0.06);}
+  .info-btn:active{background:rgba(0,229,255,0.16);}
+  .info-btn.land{border-color:var(--ok);color:var(--ok);background:rgba(68,204,136,0.08);}
+
+  #map-outer{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px;min-height:0;}
+  #map-wrap{position:relative;width:100%;aspect-ratio:1/1;max-height:100%;}
+  #map{width:100%;height:100%;display:block;touch-action:none;cursor:grab;}
+  #map.panning{cursor:grabbing;}
+  .obj{cursor:pointer;}
+  .hit-area{fill:rgba(0,0,0,0.001);stroke:none;} /* прозрачная, но не fill:none — иначе клики сквозь неё не ловятся */
+  .star-body{stroke-width:0.8;}
+  .planet-body{stroke-width:0.5;stroke:rgba(255,255,255,0.4);}
+  .obj-selected{stroke:#fff !important;stroke-width:1.4 !important;}
+  .orbit-ring{fill:none;stroke:var(--border);stroke-width:0.4;}
+  .ship-marker{fill:var(--accent2);stroke:#fff;stroke-width:0.5;filter:drop-shadow(0 0 3px var(--accent2));}
+
+  #bottom-bar{flex-shrink:0;display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 8px;
+    border-top:1px solid var(--border);background:var(--panel-bg);z-index:10;
+    font-family:var(--mono);font-size:7px;color:var(--text);}
+  #bottom-bar b{color:var(--accent2);font-weight:400;}
+
+  #toast{position:absolute;left:50%;bottom:56px;transform:translateX(-50%) translateY(10px);
+    background:var(--panel-bg);border:1px solid var(--accent2);color:var(--accent2);
+    font-family:var(--mono);font-size:9px;letter-spacing:.5px;padding:7px 12px;z-index:60;
+    max-width:80%;text-align:center;line-height:1.5;white-space:pre-line;
+    opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  #landed-overlay{position:absolute;inset:0;background:rgba(4,6,15,0.95);z-index:70;
+    display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;}
+  #landed-overlay.show{display:flex;}
+  #landed-overlay .lo-title{font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--ok);}
+  #landed-overlay .lo-text{font-family:var(--mono);font-size:9px;color:var(--text);line-height:1.8;}
+  #landed-overlay .info-btn{font-size:10px;padding:8px 20px;}
+
+  #transit-overlay{position:absolute;inset:0;background:rgba(4,6,15,0.9);z-index:65;
+    display:none;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px;text-align:center;}
+  #transit-overlay.show{display:flex;}
+  #transit-overlay .to-title{font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--accent2);}
+  #transit-overlay .to-text{font-family:var(--mono);font-size:8px;color:var(--text);line-height:1.8;}
+
+  #offline{position:absolute;inset:0;background:rgba(4,6,15,0.94);z-index:80;
+    display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center;}
+  #offline.show{display:flex;}
+  #offline .off-title{font-family:var(--mono);font-size:11px;letter-spacing:1px;color:#ff8060;}
+  #offline .off-text{font-family:var(--mono);font-size:8px;color:var(--text);line-height:1.8;}
+</style>
+</head>
+<body>
+<div id="screen">
+
+  <header>
+    <div id="btn-back">← КОРАБЛЬ</div>
+    <div id="hdr-title">ЗВЁЗДНАЯ СИСТЕМА</div>
+    <div id="btn-sector">КАРТА<br>СЕКТОРА</div>
+  </header>
+
+  <div id="info-row">
+    <div id="info-title">Выберите объект на карте</div>
+    <div id="info-rows"></div>
+    <div id="info-actions"></div>
+  </div>
+
+  <div id="map-outer">
+    <div id="map-wrap">
+      <svg id="map" viewBox="0 0 300 300" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+  </div>
+
+  <div id="bottom-bar">
+    система <b id="bb-star">—</b> · планет <b id="bb-nplanets">—</b> · корабль <b id="bb-shipstate">—</b> · обзор <b id="bb-zoom">—</b>
+  </div>
+
+  <div id="toast"></div>
+
+  <div id="transit-overlay">
+    <div class="to-title">КОРАБЛЬ В МЕЖЗВЁЗДНОМ ПЕРЕЛЁТЕ</div>
+    <div class="to-text" id="to-text">—</div>
+  </div>
+
+  <div id="landed-overlay">
+    <div class="lo-title">ПОСАДКА ВЫПОЛНЕНА</div>
+    <div class="lo-text" id="lo-text">—</div>
+    <div class="info-btn" id="btn-launch">ВЗЛЕТЕТЬ</div>
+  </div>
+
+  <div id="offline">
+    <div class="off-title">НЕТ СВЯЗИ С СЕРВЕРОМ</div>
+    <div class="off-text" id="off-text"></div>
+  </div>
+
+</div>
+
+<script src="world.js"></script>
+<script>
+'use strict';
+// ══════════════════════════════════════════════════════════════════════════
+// Масштаб «Звёздная система» (ТЗ_UI.md §3.7). Показывает систему, в которой
+// СЕЙЧАС находится корабль (GET /api/ship → systemStarId), а не произвольную
+// выбранную — если нужна другая звезда, для этого есть «карта сектора»
+// (galaxy.html), откуда и прокладывается меж-звёздный перелёт.
+//
+// Корабль — один глобальный объект на сервере (ship.go), не локальное
+// состояние вкладки: тот же принцип «сервер авторитетен», что и для сектора.
+// Время полёта — реальные секунды, позиция — интерполяция From→To по доле
+// (now-departedAt)/(arriveAt-departedAt), как и везде в проекте.
+// ══════════════════════════════════════════════════════════════════════════
+
+// Справочники, часы, положения тел и действия корабля — из общего модуля
+// world.js: реальность одна на все экраны, дублировать её нельзя.
+const { FACTIONS, PLANET_TYPES, SCALE } = World;
+
+const svg = document.getElementById('map');
+const SVGNS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs){
+  const e = document.createElementNS(SVGNS, tag);
+  for(const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+// ── локальное состояние ЭКРАНА (не мира) ─────────────────────────────────
+let scale = 1;          // px viewBox на клеть
+let selected = null;    // {kind:'star'|'planet', index}
+
+// удобные ссылки на текущий мир — обновляются в onWorld()
+let star = null;        // звезда системы, где сейчас корабль
+let shipView = null;    // снимок корабля
+
+const gameMonths = World.gameMonths;
+const planetLocal = World.planetPos;
+
+// ══════════════════════════════════════════════════════════════════════════
+// ЗУМ И ПАНОРАМИРОВАНИЕ
+//
+// Через viewBox SVG напрямую, а не CSS-transform — тогда клики по планетам
+// остаются точными на любом масштабе (то же решение, что на карте сектора,
+// ТЗ_UI.md §3.1).
+//
+// Пределы обзора заданы в «экранах телефона», как и весь масштаб системы
+// (ТЗ.md §2.7.4: «в масштабе корабля 1 клетка = 1 экран телефона»):
+//   • максимально приближено — видно 4 экрана (4 клети поперёк);
+//   • максимально отдалено   — вся система целиком, 2×sysR клетей.
+// Поскольку sysR у систем разный (25–35), нижний предел viewBox считается
+// под конкретную систему, а не берётся константой.
+// ══════════════════════════════════════════════════════════════════════════
+const SYS_R_PX = 130;        // радиус системы в единицах viewBox (поле 300×300 с запасом)
+const MIN_VIEW_CELLS = 4;    // самый близкий обзор — 4 экрана телефона
+const VB_FULL = 300;         // самый дальний обзор — вся система с полями
+const PAN_PAD = 20;          // насколько центр обзора может выйти за край системы
+
+let vb = { x:0, y:0, w:VB_FULL, h:VB_FULL };
+let VB_MIN = 20;             // пересчитывается под sysR текущей системы
+
+function updateZoomLimits(){
+  // 4 клети поперёк в единицах viewBox
+  VB_MIN = Math.min(VB_FULL, MIN_VIEW_CELLS * scale);
+  clampVB();
+  applyVB();
+}
+function resetView(){
+  vb = { x:0, y:0, w:VB_FULL, h:VB_FULL };
+}
+// centerView — навести обзор на звезду, сохранив масштаб. keepCells — сколько
+// экранов показывать; null означает «весь охват системы» (первая загрузка).
+function centerView(keepCells){
+  const w = keepCells == null
+    ? VB_FULL
+    : Math.max(MIN_VIEW_CELLS * scale, Math.min(VB_FULL, keepCells * scale));
+  vb = { x: 150 - w/2, y: 150 - w/2, w, h: w };
+}
+function clampVB(){
+  // Страховка от NaN/Infinity: если элемент карты в момент жеста имел нулевой
+  // размер (вкладка в фоне, вёрстка ещё не разложена), деление на его ширину
+  // даёт NaN — и viewBox ломается НАВСЕГДА, без шанса восстановиться. Проще
+  // откатиться к полному обзору, чем оставить карту мёртвой.
+  if(!Number.isFinite(vb.w) || !Number.isFinite(vb.x) || !Number.isFinite(vb.y)){
+    resetView();
+  }
+  vb.w = Math.max(VB_MIN, Math.min(VB_FULL, vb.w));
+  vb.h = vb.w;
+  // центр обзора держим в пределах системы (плюс небольшой запас), иначе на
+  // сильном приближении легко «уехать» в пустоту и потерять систему из виду
+  const lo = 150 - SYS_R_PX - PAN_PAD, hi = 150 + SYS_R_PX + PAN_PAD;
+  const cx = vb.x + vb.w/2, cy = vb.y + vb.h/2;
+  vb.x += Math.max(lo, Math.min(hi, cx)) - cx;
+  vb.y += Math.max(lo, Math.min(hi, cy)) - cy;
+}
+function applyVB(){
+  svg.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+  applyBodySizes();      // тела — истинного размера, он и меняется вместе с обзором
+  applyShipPosition();   // а маркер корабля, наоборот, держит постоянный размер в px
+  updateZoomLabel();
+}
+function updateZoomLabel(){
+  const cells = vb.w / scale; // сколько клетей = экранов телефона видно
+  const el2 = document.getElementById('bb-zoom');
+  if(el2) el2.textContent = `${cells.toFixed(cells < 10 ? 1 : 0)} экр.`;
+}
+function clientToUser(clientX, clientY, box){
+  const rect = svg.getBoundingClientRect();
+  // нулевой размер элемента -> деление на ноль; берём центр обзора как точку
+  // привязки, чтобы зум просто отработал «от середины», а не выдал NaN
+  if(!rect.width || !rect.height) return { x: box.x + box.w/2, y: box.y + box.h/2 };
+  return {
+    x: box.x + (clientX-rect.left)/rect.width*box.w,
+    y: box.y + (clientY-rect.top)/rect.height*box.h,
+  };
+}
+function zoomAt(clientX, clientY, factor){
+  const pt = clientToUser(clientX, clientY, vb);
+  const newW = Math.max(VB_MIN, Math.min(VB_FULL, vb.w*factor));
+  const ratio = newW/vb.w;
+  vb.x = pt.x - (pt.x-vb.x)*ratio;
+  vb.y = pt.y - (pt.y-vb.y)*ratio;
+  vb.w = newW; vb.h = newW;
+  clampVB();
+  applyVB();
+}
+
+svg.addEventListener('wheel', (e)=>{
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, e.deltaY>0 ? 1.15 : 0.87);
+}, {passive:false});
+
+// pinch двумя пальцами и перетаскивание одним — через Pointer Events, как на
+// карте сектора: одинаково работает мышью и тачем
+let suppressClick = false;
+const activePointers = new Map();
+let panState = null, pinchState = null;
+
+svg.addEventListener('pointerdown', (e)=>{
+  svg.setPointerCapture(e.pointerId);
+  activePointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(activePointers.size===1){
+    panState = { startX:e.clientX, startY:e.clientY, vb0:{...vb}, moved:0 };
+    svg.classList.add('panning');
+  } else if(activePointers.size===2){
+    panState = null;
+    const pts = [...activePointers.values()];
+    pinchState = {
+      dist: Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y),
+      vb0: {...vb},
+      midClient: { x:(pts[0].x+pts[1].x)/2, y:(pts[0].y+pts[1].y)/2 },
+    };
+  }
+});
+svg.addEventListener('pointermove', (e)=>{
+  if(!activePointers.has(e.pointerId)) return;
+  activePointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(activePointers.size===2 && pinchState){
+    const pts = [...activePointers.values()];
+    const dist = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+    const factor = pinchState.dist / Math.max(1,dist);
+    const newW = Math.max(VB_MIN, Math.min(VB_FULL, pinchState.vb0.w*factor));
+    const ratio = newW/pinchState.vb0.w;
+    const pt = clientToUser(pinchState.midClient.x, pinchState.midClient.y, pinchState.vb0);
+    vb.x = pt.x - (pt.x-pinchState.vb0.x)*ratio;
+    vb.y = pt.y - (pt.y-pinchState.vb0.y)*ratio;
+    vb.w = newW; vb.h = newW;
+    clampVB();
+    applyVB();
+    suppressClick = true;
+  } else if(activePointers.size===1 && panState){
+    const rect = svg.getBoundingClientRect();
+    const dxUser = (e.clientX-panState.startX)/rect.width*panState.vb0.w;
+    const dyUser = (e.clientY-panState.startY)/rect.height*panState.vb0.h;
+    panState.moved = Math.max(panState.moved, Math.hypot(e.clientX-panState.startX, e.clientY-panState.startY));
+    vb.x = panState.vb0.x - dxUser;
+    vb.y = panState.vb0.y - dyUser;
+    clampVB();
+    applyVB();
+    if(panState.moved > 5) suppressClick = true; // это было перетаскивание, а не выбор объекта
+  }
+});
+function endPointer(e){
+  activePointers.delete(e.pointerId);
+  if(activePointers.size < 2) pinchState = null;
+  if(activePointers.size < 1){ panState = null; svg.classList.remove('panning'); }
+}
+svg.addEventListener('pointerup', endPointer);
+svg.addEventListener('pointercancel', endPointer);
+svg.addEventListener('pointerleave', (e)=>{ if(activePointers.size<=1) endPointer(e); });
+
+// смена размера/ориентации окна меняет экранный масштаб — пересчитываем тела
+window.addEventListener('resize', applyBodySizes);
+function shipLocalToScreen(sx, sy){
+  return { x: 150 + sx*scale, y: 150 - sy*scale };
+}
+
+// ── реакция на обновление мира ───────────────────────────────────────────
+// Данные тянет World (общий опрос на все экраны), экран только перерисовывает.
+function onWorld(w){
+  if(!w.online){
+    showOffline('Экран работает только через сервер.<br>Запустите <b>server</b> и откройте адрес заново.<br><br>' + (w.error || ''));
+    return;
+  }
+  shipView = w.ship;
+  star = w.star;
+  hideOffline();
+  renderSystem();
+  updateBottomBar();
+  updateOverlays();
+}
+
+function showOffline(msg){
+  document.getElementById('off-text').innerHTML = msg;
+  document.getElementById('offline').classList.add('show');
+}
+function hideOffline(){
+  document.getElementById('offline').classList.remove('show');
+}
+
+// ── рендер системы (звезда + планеты + орбитальные кольца) ────────────────
+let objLayer = null;
+let starGroup = null, starVisual = null, starHit = null;
+let renderedStarId = null;
+function renderSystem(){
+  svg.innerHTML = '';
+  objLayer = el('g', {id:'obj-layer'});
+  svg.appendChild(objLayer);
+  if(!star) return;
+
+  const sysR = star.sysR || 30;
+  const prevScale = scale;
+  scale = SYS_R_PX / sysR;
+
+  // Сменилась система (корабль перелетел к другой звезде). Масштаб — вкус
+  // игрока, и менять его за него не надо: сохраняем ТОТ ЖЕ обзор в экранах,
+  // а не в единицах viewBox (у новой звезды свой sysR, те же единицы означали
+  // бы другой охват). Панораму при этом центрируем на звезде: точка, на
+  // которую игрок смотрел в прошлой системе, в новой ничего не значит.
+  if(renderedStarId !== star.id){
+    const keepCells = renderedStarId === null ? null : vb.w / prevScale;
+    renderedStarId = star.id;
+    centerView(keepCells);
+  }
+  updateZoomLimits();
+
+  (star.planets || []).forEach(p => {
+    const ring = el('circle', {class:'orbit-ring', cx:150, cy:150, r:p.orbit*scale});
+    objLayer.appendChild(ring);
+  });
+
+  const starColor = World.starColor(star);
+  starGroup = el('g', {class:'body-group', transform:'translate(150,150)'});
+  starVisual = el('circle', {class:'body-visual star-body', fill:starColor, stroke:starColor});
+  starHit = el('circle', {class:'obj hit-area', 'data-kind':'star'});
+  starGroup.appendChild(starVisual);
+  starGroup.appendChild(starHit);
+  objLayer.appendChild(starGroup);
+
+  // узлы планет запоминаем — их положение обновляется каждый кадр (планеты
+  // обращаются вокруг звезды), а не фиксируется на момент загрузки.
+  // Каждая планета — группа из двух кругов: видимый (честный размер, может
+  // быть визуально точкой на общем плане) и прозрачный hit-круг поверх него
+  // не меньше пальца — иначе на отдалённом виде системы в планету не попасть
+  // тапом, хотя клик по центру и сработает технически.
+  planetNodes = (star.planets || []).map((p, i) => {
+    const t = PLANET_TYPES[p.type] || {color:'#888'};
+    const group = el('g', {class:'body-group'});
+    const visual = el('circle', {class:'body-visual planet-body', fill:t.color});
+    const hit = el('circle', {class:'obj hit-area', 'data-kind':'planet', 'data-index':i});
+    group.appendChild(visual);
+    group.appendChild(hit);
+    objLayer.appendChild(group);
+    return { group, visual, hit };
+  });
+
+  shipNode = el('polygon', {class:'ship-marker', points:'0,-5 4,4 0,1.5 -4,4'});
+  objLayer.appendChild(shipNode);
+
+  applySelectionVisual();
+  applyBodySizes();
+  applyPlanetPositions();
+  applyShipPosition();
+}
+
+// ── размер тел: видимый — истинный, hit-область — не меньше пальца ────────
+// Тело рисуется в СВОЁМ размере (звезда радиусом 2 клети — ТЗ.md §2.8,
+// планета — половина своего диаметра 1,5–3 клети, §2.5), но само по себе
+// на отдалённом виде системы это несколько экранных пикселей — тапом не
+// попасть. Поэтому видимый кружок и кликабельная область — РАЗНЫЕ круги
+// (см. renderSystem): видимый честно сжимается почти в точку, а прозрачный
+// hit-круг поверх него не опускается ниже MIN_TAP_PX — пальцем всегда легко
+// попасть, даже если смотреть на систему целиком.
+const MIN_TAP_PX = 15;       // минимальный экранный радиус ОБЛАСТИ КЛИКА, px
+const STAR_RADIUS_CELLS = 2; // ТЗ.md §2.8: диаметр звезды 4 клети
+
+// ── размер тел: ТОЛЬКО истинный ───────────────────────────────────────────
+//
+// Никаких множителей, кривых роста и подгонки под долю экрана: тело рисуется
+// своим размером (звезда — радиусом 2 клети, ТЗ.md §2.8; планета — половиной
+// своего диаметра, §2.5), а видимым он становится сам собой — при приближении
+// обзор сужается, тело остаётся прежним и потому растёт на экране; при
+// отдалении, наоборот, УБЫВАЕТ. Это и есть «зависимость от зума».
+//
+// Считать иначе нет нужды: клеть равна ширине экрана, самая крупная планета —
+// ⌀1 клеть (server/planets.go planetDiameter), поэтому на ближайшем зуме карты
+// (4 экрана) она занимает ровно четверть ширины обзора и ни при каком зуме за
+// экран не вылезает.
+function bodyVisualRadius(realCells){
+  return realCells * scale;
+}
+// Область клика — не меньше пальца: видимый круг честно мелкий на общем плане,
+// промахнуться по нему легко (см. .hit-area в renderSystem).
+function bodyHitRadius(visualR){
+  const w = svg.getBoundingClientRect().width;
+  if(!w) return visualR;
+  return Math.max(visualR, MIN_TAP_PX * vb.w / w);
+}
+function applyBodySizes(){
+  if(starVisual){
+    const r = bodyVisualRadius(STAR_RADIUS_CELLS);
+    starVisual.setAttribute('r', r);
+    if(starHit) starHit.setAttribute('r', bodyHitRadius(r));
+  }
+  if(!star) return;
+  (star.planets || []).forEach((p, i) => {
+    const node = planetNodes[i];
+    if(!node) return;
+    const r = bodyVisualRadius((p.d || 2) / 2);
+    node.visual.setAttribute('r', r);
+    node.hit.setAttribute('r', bodyHitRadius(r));
+  });
+}
+
+// Положение планет — чистая функция игрового времени (см. planetLocal).
+// Двигаем ГРУППУ (visual+hit разом), не отдельные круги — их центр всегда 0,0.
+let planetNodes = [];
+function applyPlanetPositions(){
+  if(!star || !planetNodes.length) return;
+  const t = gameMonths();
+  (star.planets || []).forEach((p, i) => {
+    const node = planetNodes[i];
+    if(!node) return;
+    const loc = planetLocal(p, t);
+    const pos = shipLocalToScreen(loc.x, loc.y);
+    node.group.setAttribute('transform', `translate(${pos.x},${pos.y})`);
+  });
+}
+
+// Положение корабля — World.shipPos() (общий модуль): в перелёте
+// интерполяция, у планеты — наследование её орбитального движения.
+//
+// Размер маркера, в отличие от небесных тел, НЕ истинный и не зависит от зума:
+// это значок «вы здесь», а не тело со своими размерами. Полигон задан в
+// единицах viewBox, поэтому при сужении обзора он сам по себе раздувался на
+// весь экран — компенсируем масштабом, обратным зуму, и маркер остаётся одного
+// размера в пикселях на любом приближении.
+const SHIP_MARKER_PX = 8;    // половина высоты значка на экране, px
+const SHIP_MARKER_UNITS = 5; // половина высоты полигона в его собственных единицах
+let shipNode = null;
+function shipMarkerScale(){
+  const w = svg.getBoundingClientRect().width;
+  if(!w) return 1;
+  const pxPerUnit = w / vb.w;
+  return SHIP_MARKER_PX / (SHIP_MARKER_UNITS * pxPerUnit);
+}
+function applyShipPosition(){
+  if(!shipNode || !shipView) return;
+  const loc = World.shipPos();
+  const p = shipLocalToScreen(loc.x, loc.y);
+  shipNode.setAttribute('transform', `translate(${p.x},${p.y}) scale(${shipMarkerScale()})`);
+}
+
+function applySelectionVisual(){
+  objLayer.querySelectorAll('.body-visual').forEach(n => n.classList.remove('obj-selected'));
+  if(!selected) return;
+  // обводка идёт на ВИДИМЫЙ круг (hit-круг прозрачный, обводить нечего)
+  const visual = selected.kind === 'star'
+    ? starVisual
+    : (planetNodes[selected.index] && planetNodes[selected.index].visual);
+  if(visual) visual.classList.add('obj-selected');
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Выбор объекта по клику — БЛИЖАЙШИЙ к точке клика, а не точное попадание в
+// фигуру SVG (тот же принцип, что и на карте сектора, и в архивном прототипе
+// findNearest): реальный тап пальцем/курсором редко приходится ровно в
+// маленькую точку, а промах в hit-круг рядом с телом — это тоже «клик по
+// телу», не пустое место.
+// ══════════════════════════════════════════════════════════════════════════
+const TAP_HIT_PX = 16; // минимальный радиус «попадания» клика, экранные px
+function findNearestBody(clientX, clientY){
+  if(!star) return null;
+  const pt = clientToUser(clientX, clientY, vb);
+  const rect = svg.getBoundingClientRect();
+  const pxPerUnit = rect.width ? rect.width / vb.w : 1;
+  let best = null, bestPx = Infinity;
+  // visualR — тот же видимый радиус (в единицах viewBox), которым тело
+  // нарисовано (bodyVisualRadius): порог клика должен покрывать весь ВИДИМЫЙ
+  // круг, иначе на приближении клик рядом с краем крупного тела не попадал бы
+  // в него.
+  const check = (kind, index, screenPos, visualR) => {
+    const d = Math.hypot(screenPos.x - pt.x, screenPos.y - pt.y) * pxPerUnit;
+    const limit = Math.max(TAP_HIT_PX, visualR * pxPerUnit);
+    if(d <= limit && d < bestPx){ bestPx = d; best = { kind, index }; }
+  };
+  check('star', undefined, { x:150, y:150 }, bodyVisualRadius(STAR_RADIUS_CELLS));
+  const t = gameMonths();
+  (star.planets || []).forEach((p, i) => {
+    const loc = planetLocal(p, t);
+    check('planet', i, shipLocalToScreen(loc.x, loc.y), bodyVisualRadius((p.d || 2) / 2));
+  });
+  return best;
+}
+
+// ── выбор объекта и панель информации ──────────────────────────────────────
+svg.addEventListener('click', (e) => {
+  // перетаскивание/пинч заканчиваются click'ом — он не должен сбрасывать выбор
+  if(suppressClick){ suppressClick = false; return; }
+  const hit = findNearestBody(e.clientX, e.clientY);
+  if(!hit){ selected = null; renderInfo(); applySelectionVisual(); return; }
+  selected = hit;
+  renderInfo();
+  applySelectionVisual();
+});
+
+function renderInfo(){
+  const titleEl = document.getElementById('info-title');
+  const rowsEl = document.getElementById('info-rows');
+  const actionsEl = document.getElementById('info-actions');
+  actionsEl.innerHTML = '';
+
+  if(!selected || !star){
+    titleEl.textContent = 'Выберите объект на карте';
+    rowsEl.textContent = '';
+    return;
+  }
+
+  if(selected.kind === 'star'){
+    titleEl.textContent = World.starLabel(star);
+    rowsEl.innerHTML = `масса: <b>${(star.mass||0).toFixed(2)} M☉</b> · радиус системы: <b>${(star.sysR||0).toFixed(0)} кл</b> · планет: <b>${(star.planets||[]).length}</b><br>` +
+      `метеориты: <b>${star.meteorActivity||0}</b>/100 · кольца: <b>${star.rings||0}</b>`;
+    return;
+  }
+
+  const p = star.planets[selected.index];
+  const t = PLANET_TYPES[p.type] || { name:p.type };
+  const f = FACTIONS[p.owner] || FACTIONS.none;
+  // «Год планеты» в реальных часах/сутках — World.formatPeriod (считает по
+  // канонической игровой скорости, не по текущему отладочному множителю).
+  const periodTxt = World.formatPeriod(p);
+  titleEl.textContent = `${t.name} · орбита ${p.orbit}`;
+  rowsEl.innerHTML = `владелец: <b>${f.name}</b> · вода: <b>${p.water}/100</b> · жизнь: <b>${p.life?'есть':'нет'}</b><br>` +
+    `температура: <b>${p.temp}K</b> · давление: <b>${p.pressure}</b> · радиация: <b>${p.radiation}</b><br>` +
+    `год планеты: <b>${periodTxt}</b>`;
+
+  const isHere = shipView && shipView.systemStarId === star.id && shipView.atPlanetIndex === selected.index && !shipView.transit;
+  if(isHere && !shipView.landed){
+    actionsEl.appendChild(makeBtn('ПОСАДКА', 'land', land));
+  } else if(!shipView.landed) {
+    actionsEl.appendChild(makeBtn('ЛЕТЕТЬ', '', () => navigate('planet', selected.index)));
+  }
+}
+function makeBtn(label, cls, onClick){
+  const b = document.createElement('div');
+  b.className = 'info-btn' + (cls ? ' '+cls : '');
+  b.textContent = label;
+  b.onclick = onClick;
+  return b;
+}
+
+// ── навигация / посадка / взлёт ─────────────────────────────────────────
+// Действия — через общий модуль (World), он же сразу применяет новое
+// состояние корабля и оповещает все экраны.
+async function navigate(kind, planetIndex){
+  try{
+    shipView = await World.navigate(kind, star.id, planetIndex ?? 0);
+    toast('Курс проложен');
+    applyShipPosition();
+    renderInfo();
+  }catch(e){ toast('Не удалось проложить курс: ' + e.message); }
+}
+async function land(){
+  try{
+    shipView = await World.land();
+    updateOverlays();
+  }catch(e){ toast('Не удалось сесть: ' + e.message); }
+}
+document.getElementById('btn-launch').onclick = async () => {
+  try{
+    shipView = await World.launch();
+    updateOverlays();
+    toast('Взлёт выполнен');
+  }catch(e){ toast('Не удалось взлететь: ' + e.message); }
+};
+
+// ── оверлеи: посадка / меж-звёздный перелёт ────────────────────────────────
+function updateOverlays(){
+  const landedOv = document.getElementById('landed-overlay');
+  const transitOv = document.getElementById('transit-overlay');
+  if(!shipView){ landedOv.classList.remove('show'); transitOv.classList.remove('show'); return; }
+
+  if(shipView.landed){
+    landedOv.classList.add('show');
+    transitOv.classList.remove('show');
+    const p = star && star.planets ? star.planets[shipView.landedPlanetIndex] : null;
+    const t = p ? (PLANET_TYPES[p.type]||{name:p.type}).name : '—';
+    document.getElementById('lo-text').textContent = `Вы на поверхности: ${t}.\nПланетарный интерфейс ещё не реализован — заглушка.`;
+    return;
+  }
+  landedOv.classList.remove('show');
+
+  if(shipView.transit && shipView.transit.mode === 'interstellar'){
+    transitOv.classList.add('show');
+    const t = shipView.transit;
+    const secLeft = Math.max(0, (new Date(t.arriveAt).getTime() - Date.now())/1000);
+    document.getElementById('to-text').textContent = `курс на звезду #${t.toStarId} · прибытие через ${secLeft.toFixed(0)} с`;
+  } else {
+    transitOv.classList.remove('show');
+  }
+}
+
+function updateBottomBar(){
+  if(!star) return;
+  document.getElementById('bb-star').textContent = `#${star.id} ${World.starLabel(star)}`;
+  document.getElementById('bb-nplanets').textContent = (star.planets||[]).length;
+  let shipState = '—';
+  if(shipView){
+    if(shipView.landed) shipState = 'на поверхности';
+    else if(shipView.transit) shipState = shipView.transit.mode==='interstellar' ? 'в межзвёздном перелёте' : 'в полёте';
+    else if(shipView.atPlanetIndex>=0) shipState = 'у планеты';
+    else shipState = 'в системе';
+  }
+  document.getElementById('bb-shipstate').textContent = shipState;
+}
+
+// ── тост ──────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+// ── навигация по экранам ────────────────────────────────────────────────
+document.getElementById('btn-back').onclick = () => { location.href = 'ship.html'; };
+document.getElementById('btn-sector').onclick = () => { location.href = 'galaxy.html'; };
+
+// ── кадр: планеты по орбитам + корабль в перелёте ───────────────────────
+// Обе позиции — чистые функции времени, без накопления по кадрам: просадка
+// FPS или уход вкладки в фон картинку не сдвигают.
+function frame(){
+  applyPlanetPositions();
+  applyShipPosition();
+  requestAnimationFrame(frame);
+}
+
+// ── подписка на общий мир ────────────────────────────────────────────────
+World.subscribe(onWorld);
+World.start();
+requestAnimationFrame(frame);
+</script>
+<script src="admin-panel.js"></script>
+</body>
+</html>

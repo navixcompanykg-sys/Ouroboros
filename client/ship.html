@@ -25,9 +25,14 @@
     border-radius:34px;border:2px solid #14161e;
     box-shadow:0 0 0 1px rgba(255,255,255,0.03), 0 20px 60px rgba(0,0,0,0.7);}
 
-  /* ── фон-космос (заглушка), вращается относительно курса, а не корабль ── */
+  /* ── космос: вращается относительно курса, а не корабль ── */
   #space{position:absolute;inset:-40%;transition:transform .25s ease-out;}
   #space canvas{width:100%;height:100%;display:block;}
+  /* Слой реального мира в масштабе 1:1 поверх звёздного фона */
+  #world-layer{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;}
+  .w-planet{stroke:rgba(255,255,255,0.35);stroke-width:0.004;}
+  .w-star{stroke-width:0.004;}
+  .w-label{font-family:var(--mono);fill:var(--text-bright);opacity:.75;}
 
   /* ── корабль-заглушка: смещён от центра к нижней трети экрана,
      ориентация всегда «вперёд/вверх экрана» — не вращается ────────── */
@@ -78,6 +83,7 @@
   #object-list.expanded{height:300px;overflow-y:auto;} /* до нижнего края боковых регуляторов (design 390×844) */
   #object-list .ol-rows{flex:1;padding:4px 0;}
   .ol-row{display:flex;align-items:center;gap:5px;padding:3px 6px;font-family:var(--mono);font-size:8.5px;}
+  .ol-row-selected{background:rgba(0,229,255,0.14);}
   .ol-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
   .ol-name{color:var(--text-bright);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .ol-dist{color:var(--text);opacity:.6;}
@@ -87,9 +93,17 @@
   #radar-wrap svg{width:100%;height:100%;}
   .radar-sweep{transform-origin:60px 60px;animation:sweep 3.5s linear infinite;}
   @keyframes sweep{to{transform:rotate(360deg);}}
-  .radar-blip{opacity:.9;}
+  .radar-blip{opacity:.9;cursor:pointer;}
+  .radar-blip-selected{stroke:#fff;stroke-width:1;}
+  .radar-route{stroke:var(--accent2);stroke-width:1;stroke-dasharray:3 2;opacity:.85;pointer-events:none;}
   #radar-label{position:absolute;left:50%;bottom:-15px;transform:translateX(-50%);font-family:var(--mono);
     font-size:7px;color:var(--text);opacity:.5;letter-spacing:1px;white-space:nowrap;}
+  #radar-fly-btn{position:absolute;left:50%;top:-32px;transform:translateX(-50%);
+    background:var(--panel-bg);border:1.2px solid var(--accent2);color:var(--accent2);
+    font-family:var(--mono);font-size:9px;letter-spacing:1px;padding:5px 12px;
+    cursor:pointer;white-space:nowrap;display:none;z-index:30;}
+  #radar-fly-btn.show{display:block;}
+  #radar-fly-btn:active{background:rgba(0,229,255,0.16);}
 
   /* ── меню трёх кнопок (центр, форма «летающей тарелки») ── */
   #three-menu{flex-shrink:0;width:163px;display:flex;flex-direction:column;align-items:center;}
@@ -132,7 +146,13 @@
 <body>
 <div id="screen">
 
-  <div id="space"><canvas id="space-canvas"></canvas></div>
+  <div id="space">
+    <canvas id="space-canvas"></canvas>
+    <!-- Мир в масштабе 1:1 (1 клеть = ширина экрана, ТЗ.md §2.7.4). Лежит
+         внутри #space, поэтому вращается вместе с ним при смене курса —
+         вращается пространство, а не корабль (ТЗ_UI.md §2.1.2). -->
+    <svg id="world-layer" preserveAspectRatio="xMidYMid slice"></svg>
+  </div>
 
   <div id="ship-wrap">
     <svg id="ship-svg" viewBox="-27 -27 54 54">
@@ -164,6 +184,7 @@
     </div>
 
     <div id="radar-wrap">
+      <div id="radar-fly-btn">ЛЕТЕТЬ</div>
       <svg viewBox="0 0 120 120">
         <circle cx="60" cy="60" r="58" fill="none" stroke="var(--border)" stroke-width="1"/>
         <circle cx="60" cy="60" r="38" fill="none" stroke="var(--border)" stroke-width="1"/>
@@ -190,34 +211,113 @@
 
 </div>
 
+<script src="world.js"></script>
 <script>
-// ── условные данные объектов радара (заглушка) ──────────────────────────
-// цвета — как в архиве (archive/docs/OUROBOROS_design.md §3 «Цвета объектов»)
-const NEARBY = [
-  {name:'Красный карлик #4471', dist:12, color:'rgb(255,100,68)', angle:20},
-  {name:'Астероидное поле',     dist:18, color:'rgb(136,153,170)', angle:95},
-  {name:'Туманность',           dist:25, color:'rgb(68,255,204)', angle:200},
-  {name:'Неизв. корабль',       dist:31, color:'#00e5ff', angle:260},
-  {name:'Жёлтый карлик #12',    dist:40, color:'rgb(255,224,102)', angle:150},
-  {name:'Чёрная дыра #2',       dist:55, color:'rgb(187,68,255)', angle:320},
-  {name:'Астероидное поле',     dist:61, color:'rgb(136,153,170)', angle:40},
-  {name:'Формация',             dist:68, color:'rgb(255,200,80)',  angle:170},
-  {name:'Синий гигант #7',      dist:74, color:'rgb(160,200,255)', angle:290},
-  {name:'Обломки корабля',      dist:80, color:'#ff8060',           angle:230},
-];
+// ══════════════════════════════════════════════════════════════════════════
+// HUD КОРАБЛЯ — тот же мир, что и на карте системы, но в масштабе 1:1.
+//
+// Данные, часы, положения тел и действия корабля берутся из общего модуля
+// world.js: реальность одна, и считать её в каждом экране заново нельзя —
+// разъедутся радар, карта и навигация. Экран отвечает только за отрисовку
+// и органы управления.
+//
+// Масштаб: 1 клеть = ширина экрана телефона (ТЗ.md §2.7.4, SCALE в world.js).
+// Это самый близкий масштаб в игре и единственный для этого экрана: игрок
+// «внутри» мира, а не смотрит на схему сверху.
+// ══════════════════════════════════════════════════════════════════════════
+const { FACTIONS, PLANET_TYPES, SCALE } = World;
+
+let shipView = null;
+let currentStar = null;
+
+// Выбранная цель навигации: {kind:'star'|'planet', index}. index=-1 для звезды
+// (для единообразия с server API, где planetIndex у kind:"star" не читается).
+let selectedTarget = null;
+let lastStarId = null;
+function isSameTarget(a, b){ return !!a && !!b && a.kind === b.kind && a.index === b.index; }
+
+const gameMonths = World.gameMonths;
+const planetLocal = World.planetPos;
+
+function onWorld(w){
+  shipView = w.online ? w.ship : null;
+  // в межзвёздном перелёте вокруг буквально пустота — ни системы, ни целей
+  currentStar = (w.online && !(w.ship.transit && w.ship.transit.mode === 'interstellar'))
+    ? w.star : null;
+  const starId = currentStar ? currentStar.id : null;
+  if(starId !== lastStarId){
+    selectedTarget = null; // цель принадлежала прошлой системе — тут её объектов нет
+    lastStarId = starId;
+  }
+  renderObjectList();
+  renderRadarBlips();
+  renderWorldLayer();
+  updateFlyUI();
+}
+
+// bearing: 0°=вверх экрана (курс корабля), по часовой — та же конвенция,
+// что уже была в радаре-заглушке (x=r·sin, y=-r·cos)
+function bearing(dx, dy){ return Math.atan2(dx, dy) * 180 / Math.PI; }
+
+// Положение корабля — World.shipPos(): стоя у планеты, корабль НАСЛЕДУЕТ её
+// орбитальное движение, а не берётся из снимка /api/ship раз в секунду.
+// Иначе дистанция до «своей» планеты дёргалась бы вместо честного нуля.
+const shipLocal = World.shipPos;
+
+function computeNearby(){
+  if(!currentStar || !shipView) return [];
+  const me = shipLocal();
+  const list = [];
+  list.push({
+    kind:'star', index:-1,
+    name: World.starLabel(currentStar), dist: Math.hypot(me.x, me.y), color: World.starColor(currentStar),
+    angle: bearing(-me.x, -me.y),
+  });
+  const now = gameMonths();
+  (currentStar.planets||[]).forEach((p,i)=>{
+    const loc = planetLocal(p, now); // планета на орбите движется
+    const t = PLANET_TYPES[p.type] || {name:p.type, color:'#888'};
+    list.push({
+      kind:'planet', index:i,
+      name: `${t.name} · орб.${p.orbit}`, dist: Math.hypot(loc.x-me.x, loc.y-me.y), color: t.color,
+      angle: bearing(loc.x-me.x, loc.y-me.y),
+    });
+  });
+  list.sort((a,b)=>a.dist-b.dist);
+  return list;
+}
+
+// ── выбор цели навигации: из списка объектов или прямо с радара ─────────────
+function selectTarget(o){
+  selectedTarget = { kind:o.kind, index:o.index };
+  renderObjectList();
+  renderRadarBlips();
+  updateFlyUI();
+}
 
 const OL_COLLAPSED_COUNT = 5; // сколько ближайших объектов показываем без разворота панели
 
 function renderObjectList(){
   const wrap = document.getElementById('ol-rows');
   wrap.innerHTML = '';
+  const nearby = computeNearby();
   const expanded = document.getElementById('object-list').classList.contains('expanded');
-  const list = expanded ? NEARBY : NEARBY.slice(0, OL_COLLAPSED_COUNT);
-  list.forEach(o=>{
+  const list = expanded ? nearby : nearby.slice(0, OL_COLLAPSED_COUNT);
+  if(list.length === 0){
     const row = document.createElement('div');
     row.className = 'ol-row';
+    row.innerHTML = `<span class="ol-name" style="opacity:.5">${shipView && shipView.transit ? 'открытый космос…' : 'нет связи с сервером'}</span>`;
+    wrap.appendChild(row);
+    return;
+  }
+  list.forEach(o=>{
+    const row = document.createElement('div');
+    row.className = 'ol-row' + (isSameTarget(selectedTarget, o) ? ' ol-row-selected' : '');
     row.innerHTML = `<span class="ol-dot" style="background:${o.color}"></span>
-      <span class="ol-name">${o.name}</span><span class="ol-dist">${o.dist}кл</span>`;
+      <span class="ol-name">${o.name}</span><span class="ol-dist">${o.dist.toFixed(1)}кл</span>`;
+    // stopPropagation — иначе клик по конкретному объекту всплывёт до
+    // #object-list и просто развернёт/свернёт панель вместо выбора цели
+    row.onclick = (e) => { e.stopPropagation(); selectTarget(o); };
     wrap.appendChild(row);
   });
 }
@@ -225,16 +325,112 @@ function renderObjectList(){
 function renderRadarBlips(){
   const g = document.getElementById('radar-blips');
   g.innerHTML = '';
-  const maxDist = 60; // заглушка: масштаб радара
-  NEARBY.forEach(o=>{
-    const r = 8 + (o.dist / maxDist) * 48;
+  const nearby = computeNearby();
+  const maxDist = (currentStar && currentStar.sysR) ? currentStar.sysR : 60;
+
+  // позиции считаем все разом — маршрут до цели рисуется ПОД блипами (нужен
+  // порядок в DOM: линия первым узлом)
+  const positioned = nearby.map(o=>{
+    const r = 8 + Math.min(1, o.dist / maxDist) * 48;
     const rad = o.angle * Math.PI / 180;
-    const x = 60 + r * Math.sin(rad);
-    const y = 60 - r * Math.cos(rad);
+    return { o, x: 60 + r * Math.sin(rad), y: 60 - r * Math.cos(rad) };
+  });
+
+  const targetHit = positioned.find(p => isSameTarget(selectedTarget, p.o));
+  if(targetHit){
+    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1', 60); line.setAttribute('y1', 60);
+    line.setAttribute('x2', targetHit.x); line.setAttribute('y2', targetHit.y);
+    line.setAttribute('class', 'radar-route');
+    g.appendChild(line);
+  }
+
+  positioned.forEach(({o,x,y})=>{
+    const isSel = isSameTarget(selectedTarget, o);
     const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
-    c.setAttribute('cx', x); c.setAttribute('cy', y); c.setAttribute('r', 3);
-    c.setAttribute('fill', o.color); c.setAttribute('class','radar-blip');
+    c.setAttribute('cx', x); c.setAttribute('cy', y); c.setAttribute('r', isSel ? 4 : 3);
+    c.setAttribute('fill', o.color);
+    c.setAttribute('class', 'radar-blip' + (isSel ? ' radar-blip-selected' : ''));
+    // stopPropagation — иначе клик по блипу всплывёт до #radar-wrap и откроет
+    // экран карты вместо выбора цели
+    c.addEventListener('click', (e) => { e.stopPropagation(); selectTarget(o); });
     g.appendChild(c);
+  });
+}
+
+// ── кнопка «ЛЕТЕТЬ» над радаром: видна только при выбранной цели ───────────
+function updateFlyUI(){
+  const btn = document.getElementById('radar-fly-btn');
+  if(!selectedTarget || !currentStar || !shipView){ btn.classList.remove('show'); return; }
+  const alreadyThere = !shipView.transit && shipView.systemStarId === currentStar.id &&
+    selectedTarget.kind === 'planet' && shipView.atPlanetIndex === selectedTarget.index;
+  if(alreadyThere){ btn.classList.remove('show'); return; }
+  btn.classList.add('show');
+}
+document.getElementById('radar-fly-btn').addEventListener('click', async (e) => {
+  e.stopPropagation(); // не давать клику всплыть до #radar-wrap (открыл бы карту)
+  if(!selectedTarget || !currentStar) return;
+  try{
+    const data = await World.navigate(selectedTarget.kind, currentStar.id,
+      selectedTarget.kind === 'planet' ? selectedTarget.index : 0);
+    toast(data.transit ? 'Курс проложен' : 'Вы уже там');
+    updateFlyUI();
+  }catch(err){ toast('Не удалось проложить курс: ' + err.message); }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// СЛОЙ МИРА В МАСШТАБЕ 1:1
+//
+// Тот же мир, что рисует карта системы, но вплотную: 1 клеть = ширина экрана
+// (SCALE.shipCellsPerScreen, ТЗ.md §2.7.4). Тела рисуются ИСТИННЫМ размером,
+// без подгонки — самая крупная планета в игре (⌀1 клеть) занимает ровно экран
+// целиком, остальные меньше.
+//
+// Координаты: корабль в начале, ось Y экрана — вперёд по курсу. viewBox взят
+// в клетях, поэтому радиусы тел подставляются как есть, без пересчёта.
+// Слой лежит внутри #space и потому вращается вместе с ним при смене курса.
+// ══════════════════════════════════════════════════════════════════════════
+const worldLayer = document.getElementById('world-layer');
+const SVGNS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs){
+  const e = document.createElementNS(SVGNS, tag);
+  for(const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+function renderWorldLayer(){
+  worldLayer.innerHTML = '';
+  if(!currentStar || !shipView) return;
+
+  // Ширина обзора = 1 клеть; #space растянут на 180% экрана (inset:-40%),
+  // поэтому по ширине слоя укладывается 1.8 клети — так при повороте
+  // пространства углы кадра не оказываются пустыми.
+  const viewCells = SCALE.shipCellsPerScreen * 1.8;
+  const half = viewCells / 2;
+  worldLayer.setAttribute('viewBox', `${-half} ${-half} ${viewCells} ${viewCells}`);
+
+  const me = shipLocal();
+  const t = gameMonths();
+
+  // экранные координаты относительно корабля; ось Y вниз, поэтому инверсия
+  const rel = (x, y) => ({ x: x - me.x, y: -(y - me.y) });
+
+  // звезда
+  const s = rel(0, 0);
+  worldLayer.appendChild(svgEl('circle', {
+    class:'w-star', cx:s.x, cy:s.y, r:2,   // радиус звезды 2 клети, ТЗ.md §2.8
+    fill: World.starColor(currentStar), stroke: World.starColor(currentStar),
+  }));
+
+  // планеты — в истинном размере: половина диаметра в клетях
+  (currentStar.planets || []).forEach(p => {
+    const loc = planetLocal(p, t);
+    const c = rel(loc.x, loc.y);
+    // за пределами обзора с запасом — не рисуем вовсе
+    if(Math.hypot(c.x, c.y) - (p.d||2)/2 > viewCells) return;
+    worldLayer.appendChild(svgEl('circle', {
+      class:'w-planet', cx:c.x, cy:c.y, r:(p.d||2)/2, fill: World.planetColor(p),
+    }));
   });
 }
 
@@ -288,10 +484,16 @@ document.getElementById('modal').onclick = (e)=>{ if(e.target.id==='modal') e.cu
 
 // ── верхние кнопки ───────────────────────────────────────────────────────
 document.getElementById('btn-menu').onclick = ()=>openModal('МЕНЮ', 'Заглушка: выход в главное меню.');
-document.getElementById('btn-galaxy').onclick = ()=>{ location.href = 'galaxy.html'; };
+// Карта звёздной системы или сектора — в зависимости от того, где сейчас
+// корабль (ТЗ_UI.md §2.3): в межзвёздном перелёте показывать нечего кроме
+// самого сектора, иначе — система, в которой корабль находится сейчас.
+function openMapForShipLocation(){
+  location.href = (shipView && shipView.transit && shipView.transit.mode === 'interstellar') ? 'galaxy.html' : 'system.html';
+}
+document.getElementById('btn-galaxy').onclick = openMapForShipLocation;
 
 // ── радар и список объектов ─────────────────────────────────────────────
-document.getElementById('radar-wrap').onclick = ()=>openModal('КАРТА СЕКТОРА', 'Заглушка: откроется карта звёздной системы или межзвёздного сектора — в зависимости от положения корабля (ТЗ_UI.md §2.3).');
+document.getElementById('radar-wrap').onclick = openMapForShipLocation;
 // Клик по списку объектов раскрывает панель вверх (до зоны меню), а не открывает модалку —
 // показывает все видимые объекты, а не только 4 ближайших.
 document.getElementById('object-list').onclick = ()=>{
@@ -389,9 +591,22 @@ function wireSteer(el, dir){
 wireSteer(document.getElementById('steer-left'), 'left');
 wireSteer(document.getElementById('steer-right'), 'right');
 
-renderObjectList();
-renderRadarBlips();
 renderSet();
+
+// ── подписка на общий мир ────────────────────────────────────────────────
+World.subscribe(onWorld);
+World.start();
+
+// Радар и слой мира — покадрово: планеты движутся по орбитам, и корабль
+// вместе со «своей» планетой. Раз в секунду, как приходят данные, они бы
+// дёргались. Список объектов, наоборот, обновляется по опросу: числа
+// дистанций, скачущие 60 раз в секунду, читать невозможно.
+(function frame(){
+  renderRadarBlips();
+  renderWorldLayer();
+  requestAnimationFrame(frame);
+})();
 </script>
+<script src="admin-panel.js"></script>
 </body>
 </html>

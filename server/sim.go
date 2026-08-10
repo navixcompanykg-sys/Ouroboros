@@ -22,10 +22,10 @@ import (
 // exitQueue — очередь ближайших выходов за край окна.
 type exitQueue []*Object
 
-func (q exitQueue) Len() int            { return len(q) }
-func (q exitQueue) Less(i, j int) bool  { return q[i].TExit < q[j].TExit }
-func (q exitQueue) Swap(i, j int)       { q[i], q[j] = q[j], q[i]; q[i].heapI = i; q[j].heapI = j }
-func (q *exitQueue) Push(x any)         { o := x.(*Object); o.heapI = len(*q); *q = append(*q, o) }
+func (q exitQueue) Len() int           { return len(q) }
+func (q exitQueue) Less(i, j int) bool { return q[i].TExit < q[j].TExit }
+func (q exitQueue) Swap(i, j int)      { q[i], q[j] = q[j], q[i]; q[i].heapI = i; q[j].heapI = j }
+func (q *exitQueue) Push(x any)        { o := x.(*Object); o.heapI = len(*q); *q = append(*q, o) }
 func (q *exitQueue) Pop() any {
 	old := *q
 	n := len(old)
@@ -152,10 +152,14 @@ func (s *Sim) seed() {
 		for _, col := range assignDistinctColumns(s.rng, z.Stars-nStable, z) {
 			r, x := s.findSpot(z, col, radStar)
 			st := pickWeighted(s.rng, z.StarW)
+			// масса — до планет: от неё зависит период их обращения (Кеплер)
+			mass := massInRange(s.rng, starMass[st])
+			planets, rings, meteor, sysR := makeStarEnvironment(s.rng, st, r, mass)
 			s.add(&Object{
 				ID: s.takeID(), Type: "star", StarType: st, Zone: z.ID,
 				R: r, X0: x, T0: 0, Arc: arcSpeedAt(r), Rad: radStar,
-				Mass: massInRange(s.rng, starMass[st]), Planets: generatePlanets(s.rng, st, r),
+				Mass: mass, Planets: planets,
+				Rings: rings, MeteorActivity: meteor, SystemRadius: sysR,
 			})
 		}
 
@@ -213,11 +217,13 @@ func (s *Sim) seed() {
 
 	// 4 стабильных мира — неподвижная реф. точка, навсегда вне цикла оборота
 	for _, w := range s.stable {
+		mass := massInRange(s.rng, starMass["yellow"])
+		planets, rings, meteor, sysR := makeStarEnvironment(s.rng, "stable", w.r, mass)
 		s.add(&Object{
 			ID: s.takeID(), Type: "star", StarType: "stable", Faction: w.faction, Role: w.role,
 			Zone: w.zone, R: w.r, X0: w.x, T0: 0, Arc: 0,
-			Mass: massInRange(s.rng, starMass["yellow"]), Stable: true, Rad: radStable,
-			Planets: generatePlanets(s.rng, "stable", w.r),
+			Mass: mass, Stable: true, Rad: radStable,
+			Planets: planets, Rings: rings, MeteorActivity: meteor, SystemRadius: sysR,
 		})
 	}
 }
@@ -281,9 +287,12 @@ func (s *Sim) spawnReplacing(gone *Object, at float64) *Object {
 	switch gone.Type {
 	case "star":
 		o.StarType = starTypeForMass(s.rng, z.StarW, gone.Mass)
-		// планеты у вошедшей звезды свои: другой тип светила и другая орбита в
-		// галактике дают другой состав недр (ТЗ.md §2.5)
-		o.Planets = generatePlanets(s.rng, o.StarType, r)
+		// планеты, кольца и метеоритная активность у вошедшей звезды свои:
+		// другой тип светила и другая орбита в галактике дают другой состав
+		// недр (ТЗ.md §2.5) и другую историю системы
+		// масса переносится от ушедшей звезды (возврат массы, ТЗ.md §2.3) —
+		// она же задаёт период обращения планет новой системы
+		o.Planets, o.Rings, o.MeteorActivity, o.SystemRadius = makeStarEnvironment(s.rng, o.StarType, r, gone.Mass)
 	case "bh":
 		o.Chaotic = z.ID <= 2
 	case "neb":
@@ -331,6 +340,17 @@ func (s *Sim) Advance(now float64) {
 		s.add(fresh)
 		s.pushEvent(Event{Kind: "spawn", At: at, ID: fresh.ID, Obj: fresh})
 	}
+}
+
+// Object возвращает объект по ID — используется кораблём (ship.go) для
+// разрешения цели навигации (звезда/её планеты). Объекты неизменны после
+// создания (Advance заменяет их целиком, а не мутирует поля), поэтому
+// возвращённый указатель безопасно читать и после отпускания блокировки.
+func (s *Sim) Object(id int) (*Object, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	o, ok := s.objects[id]
+	return o, ok
 }
 
 // Snapshot — полный состав сектора. Клиент берёт его при подключении и дальше

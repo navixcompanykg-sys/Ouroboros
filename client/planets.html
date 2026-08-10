@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>УРОБОРОС — Список планет</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap');
+  :root {
+    --bg:#04060f; --panel-bg:rgba(6,12,28,0.92); --border:rgba(60,130,200,0.18);
+    --accent:#2a7fff; --accent2:#00e5ff; --text:#8baac8; --text-bright:#cce4ff;
+    --mono:'Share Tech Mono',monospace; --sans:'Rajdhani',sans-serif;
+    --gold:#ffcf6b; --ok:#44cc88; --err:#ff5544; --warn:#ff8060;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{background:var(--bg);color:var(--text);font-family:var(--sans);height:100%;}
+  body{display:flex;flex-direction:column;overflow:hidden;}
+
+  header{flex-shrink:0;display:flex;align-items:center;gap:14px;padding:8px 16px;
+    border-bottom:1px solid var(--border);background:var(--panel-bg);}
+  .logo{font-family:var(--mono);font-size:12px;letter-spacing:3px;color:var(--accent2);white-space:nowrap;}
+  .logo span{color:var(--text);opacity:.6;letter-spacing:1px;}
+  .hdr-sync{font-family:var(--mono);font-size:9px;letter-spacing:1px;color:var(--text);display:flex;align-items:center;gap:5px;}
+  .hdr-dot{width:6px;height:6px;border-radius:50%;background:var(--text);}
+  .hdr-dot.ok{background:var(--ok);box-shadow:0 0 4px var(--ok);}
+  .hdr-dot.err{background:var(--err);}
+  .hdr-time{font-family:var(--mono);font-size:9px;color:var(--text);opacity:.6;}
+  .hdr-actions{margin-left:auto;display:flex;gap:8px;}
+  .btn{font-family:var(--mono);font-size:10px;letter-spacing:1px;background:transparent;
+    border:1px solid var(--border);color:var(--text);padding:5px 12px;cursor:pointer;white-space:nowrap;}
+  .btn:hover{border-color:var(--accent2);color:var(--accent2);}
+
+  .panels{flex-shrink:0;display:flex;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);
+    background:rgba(6,10,22,0.6);flex-wrap:wrap;}
+  .panel{background:var(--panel-bg);border:1px solid var(--border);padding:8px 12px;min-width:200px;flex:1;}
+  .panel-title{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent);opacity:.85;margin-bottom:6px;}
+  .chip-row{display:flex;flex-wrap:wrap;gap:6px;}
+  .chip{display:flex;align-items:center;gap:5px;background:rgba(255,255,255,0.03);
+    border:1px solid var(--border);padding:3px 8px;font-family:var(--mono);font-size:10px;white-space:nowrap;}
+  .chip .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+  .chip b{color:var(--text-bright);font-weight:400;margin-left:2px;}
+  .chip.total b{color:var(--accent2);}
+
+  .filter-bar{flex-shrink:0;display:flex;align-items:center;gap:14px;padding:7px 16px;
+    background:rgba(6,10,22,0.75);border-bottom:1px solid var(--border);flex-wrap:wrap;}
+  .filter-group{display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
+  .filter-label{font-family:var(--mono);font-size:9px;letter-spacing:1.5px;color:var(--text);opacity:.65;margin-right:2px;}
+  .tag{display:flex;align-items:center;gap:3px;cursor:pointer;user-select:none;padding:2px 6px;
+    border:1px solid transparent;font-family:var(--mono);font-size:9px;color:var(--text);opacity:.6;}
+  .tag input{display:none;}
+  .tag .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+  .tag.active{border-color:var(--border);opacity:1;color:var(--text-bright);}
+  .filter-sep{width:1px;height:16px;background:var(--border);}
+  select{background:rgba(0,0,0,0.4);border:1px solid var(--border);color:var(--text-bright);
+    font-family:var(--mono);font-size:10px;padding:3px 6px;outline:none;}
+
+  .tabs{flex-shrink:0;display:flex;gap:2px;padding:6px 16px 0;background:rgba(6,10,22,0.75);}
+  .tab-btn{font-family:var(--mono);font-size:9.5px;letter-spacing:1.5px;background:rgba(255,255,255,0.02);
+    border:1px solid var(--border);border-bottom:none;color:var(--text);opacity:.6;padding:6px 14px;cursor:pointer;}
+  .tab-btn:hover{opacity:.85;}
+  .tab-btn.active{opacity:1;color:var(--accent2);background:rgba(6,10,22,0.5);border-color:var(--accent2);}
+
+  .res-summary{flex-shrink:0;padding:6px 16px;border-bottom:1px solid var(--border);
+    background:rgba(6,10,22,0.5);overflow-x:auto;}
+  .res-summary table{border-collapse:collapse;font-family:var(--mono);font-size:9.5px;min-width:640px;}
+  .res-summary th{text-align:right;padding:3px 8px;color:var(--text);opacity:.6;font-weight:normal;letter-spacing:.5px;white-space:nowrap;}
+  .res-summary th:first-child{text-align:left;}
+  .res-summary td{text-align:right;padding:3px 8px;color:var(--text-bright);white-space:nowrap;}
+  .res-summary td:first-child{text-align:left;color:var(--text);}
+  .res-summary tr.water-row td{color:var(--gold);}
+  .res-summary tr:not(:last-child){border-bottom:1px solid rgba(100,130,160,0.06);}
+
+  .table-wrap{flex:1;overflow:auto;}
+  table.main{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:10.5px;min-width:1400px;}
+  table.main thead{position:sticky;top:0;z-index:5;}
+  table.main thead tr{background:rgba(6,10,22,0.98);border-bottom:1px solid var(--border);}
+  table.main th{padding:6px 8px;text-align:left;font-size:9px;letter-spacing:1px;color:var(--text);
+    opacity:.65;font-weight:normal;cursor:pointer;white-space:nowrap;border-right:1px solid rgba(100,130,160,0.06);}
+  table.main th:hover{opacity:1;color:var(--accent2);}
+  table.main th.sorted{opacity:1;color:var(--accent2);}
+  table.main th .arrow{margin-left:3px;opacity:.7;font-size:8px;}
+  table.main td{padding:4px 8px;white-space:nowrap;border-right:1px solid rgba(100,130,160,0.04);}
+  table.main tbody tr:hover{background:rgba(0,229,255,0.03);}
+  table.main tbody tr:nth-child(even){background:rgba(255,255,255,0.012);}
+  .col-num{text-align:right;color:var(--text-bright);}
+  .col-dim{color:var(--text);opacity:.7;}
+  .col-type{display:flex;align-items:center;gap:5px;}
+  .type-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+  .life-yes{color:var(--ok);}
+  .life-no{color:var(--text);opacity:.35;}
+  .owner-box{display:inline-block;width:8px;height:8px;border-radius:1px;}
+
+  .table-footer{flex-shrink:0;padding:5px 16px;background:var(--panel-bg);border-top:1px solid var(--border);
+    font-family:var(--mono);font-size:9px;color:var(--text);opacity:.7;}
+  .table-footer b{color:var(--text-bright);opacity:1;}
+
+  #offline{position:fixed;inset:0;background:rgba(4,6,15,0.95);z-index:80;
+    display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;}
+  #offline.show{display:flex;}
+  #offline .off-title{font-family:var(--mono);font-size:13px;letter-spacing:1px;color:var(--warn);}
+  #offline .off-text{font-family:var(--mono);font-size:10px;color:var(--text);line-height:1.8;text-align:center;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">УРОБОРОС <span>· СПИСОК ПЛАНЕТ</span></div>
+  <div class="hdr-sync"><div class="hdr-dot" id="hdr-dot"></div><span id="hdr-sync-label">—</span></div>
+  <div class="hdr-time" id="hdr-time">—</div>
+  <div class="hdr-actions">
+    <button class="btn" id="btn-refresh">↻ ОБНОВИТЬ</button>
+    <button class="btn" onclick="window.open('galaxy.html','_blank')">КАРТА СЕКТОРА</button>
+  </div>
+</header>
+
+<div class="panels">
+  <div class="panel">
+    <div class="panel-title">ЗВЁЗДЫ ПО ТИПАМ</div>
+    <div class="chip-row" id="star-stats"></div>
+  </div>
+  <div class="panel">
+    <div class="panel-title">ПЛАНЕТЫ ПО ТИПАМ</div>
+    <div class="chip-row" id="planet-stats"></div>
+  </div>
+</div>
+
+<div class="filter-bar">
+  <span class="filter-label">ЗОНА</span>
+  <div class="filter-group" id="zone-filters"></div>
+  <div class="filter-sep"></div>
+  <span class="filter-label">ТИП ЗВЕЗДЫ</span>
+  <div class="filter-group" id="startype-filters"></div>
+  <div class="filter-sep"></div>
+  <span class="filter-label">ТИП ПЛАНЕТЫ</span>
+  <div class="filter-group" id="planettype-filters"></div>
+  <div class="filter-sep"></div>
+  <span class="filter-label">ЖИЗНЬ</span>
+  <select id="life-filter">
+    <option value="all">все</option>
+    <option value="yes">только с жизнью</option>
+    <option value="no">только без</option>
+  </select>
+</div>
+
+<div class="tabs">
+  <div class="tab-btn active" id="tab-res">РЕСУРСЫ</div>
+  <div class="tab-btn" id="tab-env">СРЕДА ПЛАНЕТ</div>
+</div>
+
+<div class="res-summary" id="res-summary-wrap">
+  <table id="res-summary-table">
+    <thead>
+      <tr><th>РЕСУРС</th><th>СУММА</th><th>МИНИМУМ</th><th>МАКСИМУМ</th><th>СРЕДНЕЕ</th></tr>
+    </thead>
+    <tbody id="res-summary-body"></tbody>
+  </table>
+</div>
+
+<div class="res-summary" id="env-summary-wrap" style="display:none">
+  <table id="env-summary-table">
+    <thead>
+      <tr><th>ПОКАЗАТЕЛЬ</th><th>МИНИМУМ</th><th>МАКСИМУМ</th><th>СРЕДНЕЕ</th></tr>
+    </thead>
+    <tbody id="env-summary-body"></tbody>
+  </table>
+</div>
+
+<div class="table-wrap">
+  <table class="main" id="planets-table">
+    <thead>
+      <tr id="table-head-row"></tr>
+    </thead>
+    <tbody id="planets-tbody"></tbody>
+  </table>
+</div>
+
+<div class="table-footer">
+  ПОКАЗАНО <b id="footer-shown">0</b> ИЗ <b id="footer-total">0</b> ПЛАНЕТ
+</div>
+
+<div id="offline">
+  <div class="off-title">НЕТ СВЯЗИ С СЕРВЕРОМ</div>
+  <div class="off-text" id="off-text"></div>
+</div>
+
+<script>
+'use strict';
+// ══════════════════════════════════════════════════════════════════════════
+// Админ-инструмент: плоский список всех планет сектора + сводная статистика
+// по ресурсам. Не часть игры игрока — см. ТЗ_UI.md §3.6. Данные берутся из
+// того же GET /api/galaxy, которым пользуется карта сектора: разбор списка
+// планет по всем звёздам идёт целиком на клиенте, отдельный эндпоинт не нужен.
+// ══════════════════════════════════════════════════════════════════════════
+
+const FACTIONS = {
+  technocracy: { name:'Технократия',        color:'#4fd1ff' },
+  tradefed:    { name:'Торговая федерация', color:'#ffd24f' },
+  monarchy:    { name:'Монархия',           color:'#c084fc' },
+  miners:      { name:'Рудокопы',           color:'#ff8c42' },
+  pirates:     { name:'Пираты',             color:'#ff4d6d' },
+  smugglers:   { name:'Контрабандисты',     color:'#9aa0a8' },
+  rebels:      { name:'Повстанцы',          color:'#4dff88' },
+  none:        { name:'Независимая',        color:'#3a4256' },
+};
+const PLANET_TYPES = {
+  core:  { name:'Голое ядро',  color:'#6a6f7a' },
+  lava:  { name:'Лавовая',     color:'#ff5a3c' },
+  rocky: { name:'Каменистая',  color:'#a99274' },
+  ice:   { name:'Ледяная',     color:'#bfe8ff' },
+  gas:   { name:'Газ. гигант', color:'#e0c088' },
+};
+const STAR_TYPES = {
+  red:     { name:'Красный карлик',    short:'КК', color:'rgb(255,100,68)' },
+  yellow:  { name:'Жёлтый карлик',     short:'ЖК', color:'rgb(255,224,102)' },
+  blue:    { name:'Синий гигант',      short:'СГ', color:'rgb(160,200,255)' },
+  white:   { name:'Белый карлик',      short:'БК', color:'rgb(210,235,255)' },
+  neutron: { name:'Нейтронная звезда', short:'НЗ', color:'rgb(180,255,210)' },
+  stable:  { name:'Стабильный мир',    short:'СТ', color:'#ffcf6b' },
+};
+// Ресурсы: ключ с сервера → имя. Шкала концентрации 0–10 000 у.е. (ТЗ.md §2.5).
+const RESOURCES = {
+  silicates:     'Силикаты',
+  iron:          'Железо',
+  refractory:    'Тугоплавкие',
+  lightRare:     'Лёгкие редкие',
+  platinoids:    'Платиноиды',
+  inertGases:    'Инертные газы',
+  helium3:       'Гелий-3',
+  hydrogen:      'Водород',
+  volcanicGases: 'Вулканич. газы',
+  radioactives:  'Радиоактивные',
+  waterIce:      'Водяной лёд',
+  biomass:       'Дикая биомасса',
+  phosphates:    'Фосфаты',
+  carbonates:    'Карбонаты',
+  bitumens:      'Битумы',
+};
+const RES_KEYS = Object.keys(RESOURCES);
+// Среда планеты — отдельная таблица (не сырьё, ТЗ_UI.md §3.6.1), плюс метеоритная
+// активность/кольца самой звезды (повторяются на каждой её планете, как и колонка
+// «звезда» в основной таблице).
+const ENV_FIELDS = [
+  { key:'temp',       label:'ТЕМПЕРАТУРА, K' },
+  { key:'pressure',   label:'ДАВЛЕНИЕ, 0–100' },
+  { key:'volcanic',   label:'ВУЛКАНИЗМ, 0–100' },
+  { key:'radiation',  label:'РАДИАЦИЯ, 0–100' },
+  { key:'toxicity',   label:'ТОКСИЧНОСТЬ, 0–100' },
+  { key:'starRings',  label:'КОЛЬЦА ЗВЕЗДЫ' },
+  { key:'starMeteor', label:'МЕТЕОРЫ ЗВЕЗДЫ, 1–100' },
+];
+
+// ── состояние ────────────────────────────────────────────────────────────
+let allRows = [];       // одна запись = одна планета
+let starCounts = {};    // тип звезды → количество (снимок сектора, без фильтра)
+let planetCounts = {};  // тип планеты → количество
+let lifeCounts = { yes:0, no:0 };
+
+let filterZones = new Set();
+let filterStarTypes = new Set();
+let filterPlanetTypes = new Set();
+let filterLife = 'all';
+
+let sortCol = 'starId';
+let sortDir = 'asc';
+let activeTab = 'res'; // 'res' | 'env'
+
+// ── загрузка ─────────────────────────────────────────────────────────────
+async function load() {
+  try {
+    const res = await fetch('api/galaxy', { cache:'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    buildRows(data.objects || []);
+    setSync(true);
+    document.getElementById('hdr-time').textContent = 'обновлено ' + new Date().toLocaleTimeString();
+    renderStatPanels();
+    renderAll();
+  } catch (e) {
+    setSync(false, e.message);
+  }
+}
+
+function setSync(ok, msg) {
+  document.getElementById('hdr-dot').className = 'hdr-dot ' + (ok ? 'ok' : 'err');
+  document.getElementById('hdr-sync-label').textContent = ok ? 'LIVE' : 'ERR';
+  const off = document.getElementById('offline');
+  if (ok) {
+    off.classList.remove('show');
+  } else {
+    document.getElementById('off-text').innerHTML =
+      'Карта работает только через сервер.<br>Запустите <b>server</b> (см. server/README.md).<br><br>' + (msg || '');
+    off.classList.add('show');
+  }
+}
+
+function buildRows(objects) {
+  allRows = [];
+  starCounts = {};
+  planetCounts = {};
+  lifeCounts = { yes:0, no:0 };
+
+  objects.forEach(o => {
+    if (o.type !== 'star') return;
+    const stKey = o.stable ? 'stable' : o.starType;
+    starCounts[stKey] = (starCounts[stKey] || 0) + 1;
+    (o.planets || []).forEach(p => {
+      planetCounts[p.type] = (planetCounts[p.type] || 0) + 1;
+      if (p.life) lifeCounts.yes++; else lifeCounts.no++;
+      allRows.push({
+        starId: o.id, starType: stKey, faction: o.faction,
+        zone: o.zone, type: p.type, orbit: p.orbit, diameter: p.d,
+        water: p.water, life: !!p.life, owner: p.owner, res: p.res || {},
+        temp: p.temp || 0, pressure: p.pressure || 0, volcanic: p.volcanic || 0,
+        radiation: p.radiation || 0, toxicity: p.toxicity || 0,
+        starRings: o.rings || 0, starMeteor: o.meteorActivity || 0,
+      });
+    });
+  });
+}
+
+// ── сводные панели (звёзды/планеты по типам — не зависят от фильтра) ──────
+function renderStatPanels() {
+  const starWrap = document.getElementById('star-stats');
+  starWrap.innerHTML = '';
+  let starTotal = 0;
+  Object.keys(STAR_TYPES).forEach(k => {
+    const n = starCounts[k] || 0;
+    starTotal += n;
+    starWrap.appendChild(chip(STAR_TYPES[k].color, STAR_TYPES[k].short, n));
+  });
+  starWrap.appendChild(chip(null, 'ВСЕГО', starTotal, true));
+
+  const planetWrap = document.getElementById('planet-stats');
+  planetWrap.innerHTML = '';
+  let planetTotal = 0;
+  Object.keys(PLANET_TYPES).forEach(k => {
+    const n = planetCounts[k] || 0;
+    planetTotal += n;
+    planetWrap.appendChild(chip(PLANET_TYPES[k].color, PLANET_TYPES[k].name, n));
+  });
+  planetWrap.appendChild(chip(null, 'ВСЕГО', planetTotal, true));
+  planetWrap.appendChild(chip('#44cc88', 'С ЖИЗНЬЮ', lifeCounts.yes));
+}
+
+function chip(color, label, value, total) {
+  const c = document.createElement('div');
+  c.className = 'chip' + (total ? ' total' : '');
+  if (color) {
+    const d = document.createElement('div');
+    d.className = 'dot';
+    d.style.background = color;
+    c.appendChild(d);
+  }
+  const l = document.createElement('span');
+  l.textContent = label;
+  const v = document.createElement('b');
+  v.textContent = value.toLocaleString();
+  c.appendChild(l);
+  c.appendChild(v);
+  return c;
+}
+
+// ── фильтры ──────────────────────────────────────────────────────────────
+function passesFilter(r) {
+  if (filterZones.size > 0 && !filterZones.has(r.zone)) return false;
+  if (filterStarTypes.size > 0 && !filterStarTypes.has(r.starType)) return false;
+  if (filterPlanetTypes.size > 0 && !filterPlanetTypes.has(r.type)) return false;
+  if (filterLife === 'yes' && !r.life) return false;
+  if (filterLife === 'no' && r.life) return false;
+  return true;
+}
+
+function buildZoneFilters() {
+  const wrap = document.getElementById('zone-filters');
+  wrap.innerHTML = '';
+  for (let z = 1; z <= 12; z++) {
+    wrap.appendChild(makeTag(String(z), z, filterZones));
+  }
+}
+function buildStarTypeFilters() {
+  const wrap = document.getElementById('startype-filters');
+  wrap.innerHTML = '';
+  Object.keys(STAR_TYPES).forEach(k => {
+    wrap.appendChild(makeTag(STAR_TYPES[k].short, k, filterStarTypes, STAR_TYPES[k].color));
+  });
+}
+function buildPlanetTypeFilters() {
+  const wrap = document.getElementById('planettype-filters');
+  wrap.innerHTML = '';
+  Object.keys(PLANET_TYPES).forEach(k => {
+    wrap.appendChild(makeTag(PLANET_TYPES[k].name, k, filterPlanetTypes, PLANET_TYPES[k].color));
+  });
+}
+function makeTag(label, value, set, color) {
+  const t = document.createElement('label');
+  t.className = 'tag' + (set.has(value) ? ' active' : '');
+  if (color) {
+    const d = document.createElement('div');
+    d.className = 'dot';
+    d.style.background = color;
+    t.appendChild(d);
+  }
+  const span = document.createElement('span');
+  span.textContent = label;
+  t.appendChild(span);
+  t.onclick = (e) => {
+    e.preventDefault();
+    if (set.has(value)) set.delete(value); else set.add(value);
+    t.classList.toggle('active', set.has(value));
+    renderAll();
+  };
+  return t;
+}
+document.getElementById('life-filter').addEventListener('change', e => {
+  filterLife = e.target.value;
+  renderAll();
+});
+
+// ── сводка по ресурсам (по отфильтрованным планетам) ──────────────────────
+function renderResourceSummary(rows) {
+  const body = document.getElementById('res-summary-body');
+  body.innerHTML = '';
+  RES_KEYS.forEach(key => {
+    const values = rows.map(r => r.res[key] || 0);
+    body.appendChild(resRow(RESOURCES[key], values));
+  });
+  const waterRow = resRow('Гидросфера (вода, 0–100)', rows.map(r => r.water || 0));
+  waterRow.classList.add('water-row');
+  body.appendChild(waterRow);
+}
+function resRow(label, values) {
+  const tr = document.createElement('tr');
+  const n = values.length;
+  const sum = values.reduce((a,b)=>a+b, 0);
+  const min = n ? Math.min(...values) : 0;
+  const max = n ? Math.max(...values) : 0;
+  const avg = n ? sum / n : 0;
+  const cells = [label, sum.toLocaleString(), min.toLocaleString(), max.toLocaleString(), avg.toFixed(0)];
+  cells.forEach(v => {
+    const td = document.createElement('td');
+    td.textContent = v;
+    tr.appendChild(td);
+  });
+  return tr;
+}
+
+// ── сводка по среде планет (температура/давление/вулканизм/радиация/
+// токсичность) — без «суммы»: складывать проценты и кельвины бессмысленно.
+// Метеоритная активность/кольца звезды сюда намеренно не входят — это
+// свойство звезды, а не планеты, усреднение по строкам-планетам исказило бы
+// его в пользу звёзд с большим числом планет; сами значения видны в таблице.
+function renderEnvSummary(rows) {
+  const body = document.getElementById('env-summary-body');
+  body.innerHTML = '';
+  const fields = [
+    ['Температура, K', 'temp'],
+    ['Давление', 'pressure'],
+    ['Вулканизм', 'volcanic'],
+    ['Радиация', 'radiation'],
+    ['Токсичность', 'toxicity'],
+  ];
+  fields.forEach(([label, key]) => body.appendChild(envRow(label, rows.map(r => r[key]))));
+}
+function envRow(label, values) {
+  const tr = document.createElement('tr');
+  const n = values.length;
+  const min = n ? Math.min(...values) : 0;
+  const max = n ? Math.max(...values) : 0;
+  const avg = n ? values.reduce((a,b)=>a+b,0) / n : 0;
+  [label, min.toLocaleString(), max.toLocaleString(), avg.toFixed(1)].forEach(v => {
+    const td = document.createElement('td');
+    td.textContent = v;
+    tr.appendChild(td);
+  });
+  return tr;
+}
+
+// ── таблица планет ───────────────────────────────────────────────────────
+// Базовые колонки общие для обеих вкладок; хвост — либо 15 ресурсов, либо
+// 7 показателей среды, в зависимости от activeTab (renderAll переключает).
+const BASE_COLUMNS = [
+  { key:'starId',   label:'ЗВЕЗДА' },
+  { key:'zone',     label:'ЗОНА' },
+  { key:'type',     label:'ТИП ПЛАНЕТЫ' },
+  { key:'orbit',    label:'ОРБИТА' },
+  { key:'diameter', label:'⌀' },
+  { key:'water',    label:'ВОДА' },
+  { key:'life',     label:'ЖИЗНЬ' },
+  { key:'owner',    label:'ВЛАДЕЛЕЦ' },
+];
+function currentColumns() {
+  const tail = activeTab === 'env' ? ENV_FIELDS : RES_KEYS.map(k => ({ key:'res.'+k, label: RESOURCES[k] }));
+  return BASE_COLUMNS.concat(tail);
+}
+
+function buildTableHead() {
+  const row = document.getElementById('table-head-row');
+  row.innerHTML = '';
+  currentColumns().forEach(col => {
+    const th = document.createElement('th');
+    th.dataset.col = col.key;
+    th.innerHTML = col.label + ' <span class="arrow"></span>';
+    th.onclick = () => {
+      if (sortCol === col.key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      else { sortCol = col.key; sortDir = 'asc'; }
+      renderAll();
+    };
+    row.appendChild(th);
+  });
+}
+
+function sortValue(r, key) {
+  if (key.startsWith('res.')) return r.res[key.slice(4)] || 0;
+  if (key === 'starId') return r.starId;
+  return r[key];
+}
+
+function renderTable(rows) {
+  const sorted = [...rows].sort((a, b) => {
+    const av = sortValue(a, sortCol), bv = sortValue(b, sortCol);
+    if (typeof av === 'string') {
+      const cmp = av.localeCompare(bv);
+      return sortDir === 'asc' ? cmp : -cmp;
+    }
+    return sortDir === 'asc' ? av - bv : bv - av;
+  });
+
+  const tbody = document.getElementById('planets-tbody');
+  tbody.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  sorted.forEach(r => frag.appendChild(buildRow(r)));
+  tbody.appendChild(frag);
+
+  document.querySelectorAll('#table-head-row th').forEach(th => {
+    const active = th.dataset.col === sortCol;
+    th.classList.toggle('sorted', active);
+    th.querySelector('.arrow').textContent = active ? (sortDir === 'asc' ? '▲' : '▼') : '';
+  });
+
+  document.getElementById('footer-shown').textContent = sorted.length.toLocaleString();
+  document.getElementById('footer-total').textContent = allRows.length.toLocaleString();
+}
+
+function buildRow(r) {
+  const tr = document.createElement('tr');
+
+  const starTd = document.createElement('td');
+  const st = STAR_TYPES[r.starType] || { name:r.starType, color:'#667788' };
+  const starLabel = r.starType === 'stable' ? (FACTIONS[r.faction] || {}).name || 'стабильный мир' : st.name;
+  starTd.innerHTML = `<span class="col-type"><span class="type-dot" style="background:${st.color}"></span>#${r.starId} · ${starLabel}</span>`;
+  tr.appendChild(starTd);
+
+  td(tr, 'col-num', r.zone);
+
+  const typeTd = document.createElement('td');
+  const pt = PLANET_TYPES[r.type] || { name:r.type, color:'#888' };
+  typeTd.innerHTML = `<span class="col-type"><span class="type-dot" style="background:${pt.color}"></span>${pt.name}</span>`;
+  tr.appendChild(typeTd);
+
+  td(tr, 'col-num', r.orbit);
+  td(tr, 'col-num', r.diameter);
+  td(tr, 'col-num', r.water);
+
+  const lifeTd = document.createElement('td');
+  lifeTd.className = r.life ? 'life-yes' : 'life-no';
+  lifeTd.textContent = r.life ? '● есть' : '— нет';
+  tr.appendChild(lifeTd);
+
+  const ownerTd = document.createElement('td');
+  const f = FACTIONS[r.owner] || FACTIONS.none;
+  ownerTd.innerHTML = `<span class="owner-box" style="background:${f.color}"></span> ${f.name}`;
+  tr.appendChild(ownerTd);
+
+  if (activeTab === 'env') {
+    ENV_FIELDS.forEach(f => td(tr, 'col-num', r[f.key]));
+  } else {
+    RES_KEYS.forEach(key => td(tr, 'col-num', r.res[key] || 0));
+  }
+
+  return tr;
+}
+function td(tr, cls, val) {
+  const el = document.createElement('td');
+  el.className = cls;
+  el.textContent = val;
+  tr.appendChild(el);
+}
+
+// ── вкладки: РЕСУРСЫ / СРЕДА ПЛАНЕТ — разные сводки и хвост колонок таблицы ──
+function setTab(tab) {
+  activeTab = tab;
+  document.getElementById('tab-res').classList.toggle('active', tab === 'res');
+  document.getElementById('tab-env').classList.toggle('active', tab === 'env');
+  document.getElementById('res-summary-wrap').style.display = tab === 'res' ? '' : 'none';
+  document.getElementById('env-summary-wrap').style.display = tab === 'env' ? '' : 'none';
+  sortCol = 'starId';
+  sortDir = 'asc';
+  buildTableHead();
+  renderAll();
+}
+document.getElementById('tab-res').onclick = () => setTab('res');
+document.getElementById('tab-env').onclick = () => setTab('env');
+
+// ── перерисовка при смене фильтра ──────────────────────────────────────
+function renderAll() {
+  const rows = allRows.filter(passesFilter);
+  if (activeTab === 'env') renderEnvSummary(rows); else renderResourceSummary(rows);
+  renderTable(rows);
+}
+
+// ── запуск ────────────────────────────────────────────────────────────
+buildZoneFilters();
+buildStarTypeFilters();
+buildPlanetTypeFilters();
+buildTableHead();
+document.getElementById('btn-refresh').onclick = load;
+load();
+</script>
+</body>
+</html>
