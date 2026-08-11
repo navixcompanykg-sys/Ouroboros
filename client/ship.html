@@ -241,6 +241,12 @@ const planetLocal = World.planetPos;
 
 function onWorld(w){
   shipView = w.online ? w.ship : null;
+  // Корабль на поверхности — обычно сразу на planet.html, но пока
+  // landingInProgress (клик «ПОСАДКА» ниже, ещё идёт animateLanding прямо
+  // тут) — не перехватываем: World.land() уведомляет подписчиков ДО того,
+  // как код после await успевает начать анимацию, иначе она не успевала бы
+  // проиграться ни разу — редирект случался бы раньше первого кадра.
+  if(shipView && shipView.landed && !landingInProgress){ location.href = 'planet.html'; return; }
   // в межзвёздном перелёте вокруг буквально пустота — ни системы, ни целей
   currentStar = (w.online && !(w.ship.transit && w.ship.transit.mode === 'interstellar'))
     ? w.star : null;
@@ -248,6 +254,19 @@ function onWorld(w){
   if(starId !== lastStarId){
     selectedTarget = null; // цель принадлежала прошлой системе — тут её объектов нет
     lastStarId = starId;
+  }
+  // Цель не выбрана вручную (свежий заход на экран — например, редирект
+  // сюда с карты системы/сектора сразу после прокладки курса) — подхватываем
+  // её из состояния корабля: летит куда-то или уже стоит у планеты. Без
+  // этого «ПОСАДКА» не появлялась бы сама по прибытии, требуя повторного
+  // клика по цели в списке (прилёт на планету не меняет starId, поэтому
+  // сброс выше тут не помогает).
+  if(!selectedTarget && shipView){
+    if(shipView.transit && shipView.transit.mode === 'system'){
+      selectedTarget = { kind: shipView.transit.targetKind, index: shipView.transit.targetPlanetIndex };
+    } else if(shipView.atPlanetIndex >= 0){
+      selectedTarget = { kind:'planet', index: shipView.atPlanetIndex };
+    }
   }
   renderObjectList();
   renderRadarBlips();
@@ -358,18 +377,45 @@ function renderRadarBlips(){
   });
 }
 
-// ── кнопка «ЛЕТЕТЬ» над радаром: видна только при выбранной цели ───────────
+// ── кнопка над радаром: «ЛЕТЕТЬ» к выбранной цели, а у уже достигнутой
+// планеты — «ПОСАДКА» вместо простого исчезновения (было упущено при
+// добавлении экрана «Планета»: кнопка тут пряталась молча). Газовые
+// гиганты твёрдой поверхности не имеют — как и на карте системы, кнопка
+// для них не показывается вовсе.
+let flyBtnMode = 'fly'; // 'fly' | 'land'
 function updateFlyUI(){
   const btn = document.getElementById('radar-fly-btn');
   if(!selectedTarget || !currentStar || !shipView){ btn.classList.remove('show'); return; }
   const alreadyThere = !shipView.transit && shipView.systemStarId === currentStar.id &&
     selectedTarget.kind === 'planet' && shipView.atPlanetIndex === selectedTarget.index;
-  if(alreadyThere){ btn.classList.remove('show'); return; }
+  if(alreadyThere){
+    if(shipView.landed){ btn.classList.remove('show'); return; } // уже сел — сейчас перекинет на planet.html
+    const p = currentStar.planets && currentStar.planets[selectedTarget.index];
+    if(p && p.type === 'gas'){ btn.classList.remove('show'); return; }
+    flyBtnMode = 'land';
+    btn.textContent = 'ПОСАДКА';
+    btn.classList.add('show');
+    return;
+  }
+  flyBtnMode = 'fly';
+  btn.textContent = 'ЛЕТЕТЬ';
   btn.classList.add('show');
 }
+// Пока идёт посадка (после ответа сервера, до конца анимации) — не даём
+// onWorld() перехватить и увести сразу на planet.html: анимация должна
+// проиграть один раз целиком, а не быть пропущена гонкой опроса.
+let landingInProgress = false;
 document.getElementById('radar-fly-btn').addEventListener('click', async (e) => {
   e.stopPropagation(); // не давать клику всплыть до #radar-wrap (открыл бы карту)
   if(!selectedTarget || !currentStar) return;
+  if(flyBtnMode === 'land'){
+    landingInProgress = true;
+    try{
+      await World.land();
+      animateLanding(); // прямо здесь, на HUD корабля — см. §2.1.3 ТЗ_UI.md
+    }catch(err){ landingInProgress = false; toast('Не удалось сесть: ' + err.message); }
+    return;
+  }
   try{
     const data = await World.navigate(selectedTarget.kind, currentStar.id,
       selectedTarget.kind === 'planet' ? selectedTarget.index : 0);
@@ -377,6 +423,41 @@ document.getElementById('radar-fly-btn').addEventListener('click', async (e) => 
     updateFlyUI();
   }catch(err){ toast('Не удалось проложить курс: ' + err.message); }
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// АНИМАЦИЯ ПОСАДКИ — прямо на HUD корабля, не на карте системы: сервер уже
+// авторитетно посадил корабль (Landed=true), это только визуальный переход
+// к экрану «Планета». Мир здесь рисуется в масштабе 1:1 без свободной
+// камеры (пространство вращается вокруг неподвижного корабля, §2.1.2) — «лететь
+// к центру планеты» тут не воспроизвести буквально, поэтому вместо
+// перемещения корабль на месте уменьшается и тает, а мир вокруг слегка
+// приближается — тот же смысл («корабль уменьшается, проваливаясь в
+// посадку»), в системе координат этого экрана.
+// ══════════════════════════════════════════════════════════════════════════
+const LANDING_ANIM_MS = 4200;
+function animateLanding(){
+  // #space анимирует transform через CSS-transition .25s (для плавных
+  // манёвров, applySpaceRotation) — на покадровое обновление зума эта
+  // transition наложилась бы каждый кадр и дала вязкое отставание вместо
+  // плавного приближения. На время посадки — прямое обновление без нее.
+  spaceEl.style.transition = 'none';
+  const t0 = performance.now();
+  function step(now){
+    const frac = Math.min(1, (now - t0) / LANDING_ANIM_MS);
+    const ease = frac * frac * (3 - 2 * frac); // smoothstep — плавные разгон/торможение
+    const shipScale = Math.max(0.0001, 1 - ease);
+    shipWrap.style.transform = `translate(-50%,-50%) scale(${shipScale})`;
+    shipWrap.style.opacity = String(1 - ease * 0.9);
+    spaceZoom = 1 + ease * 0.18; // лёгкое приближение мира — ощущение погружения
+    applySpaceRotation();
+    if(frac < 1){
+      requestAnimationFrame(step);
+    } else {
+      location.href = 'planet.html';
+    }
+  }
+  requestAnimationFrame(step);
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 // СЛОЙ МИРА В МАСШТАБЕ 1:1
@@ -488,6 +569,7 @@ document.getElementById('btn-menu').onclick = ()=>openModal('МЕНЮ', 'Заг�
 // корабль (ТЗ_UI.md §2.3): в межзвёздном перелёте показывать нечего кроме
 // самого сектора, иначе — система, в которой корабль находится сейчас.
 function openMapForShipLocation(){
+  if(shipView && shipView.landed){ location.href = 'planet.html'; return; }
   location.href = (shipView && shipView.transit && shipView.transit.mode === 'interstellar') ? 'galaxy.html' : 'system.html';
 }
 document.getElementById('btn-galaxy').onclick = openMapForShipLocation;
@@ -566,7 +648,8 @@ function updateSteerLabels(){
 // разворачивает мир против часовой стрелки (то, что было впереди, уходит влево), и наоборот.
 const spaceEl = document.getElementById('space');
 let spaceAngle = 0;
-function applySpaceRotation(){ spaceEl.style.transform = `rotate(${spaceAngle}deg)`; }
+let spaceZoom = 1; // 1 обычно, растёт только во время анимации посадки (animateLanding)
+function applySpaceRotation(){ spaceEl.style.transform = `rotate(${spaceAngle}deg) scale(${spaceZoom})`; }
 
 function wireSteer(el, dir){
   const sign = dir === 'left' ? 1 : -1; // left → мир вращается по часовой, right → против часовой

@@ -49,6 +49,48 @@ const World = (() => {
     red:'Красный карлик', yellow:'Жёлтый карлик', blue:'Синий гигант',
     white:'Белый карлик', neutron:'Нейтронная звезда', stable:'Стабильный мир',
   };
+  // Типы гексов поверхности планеты (server/planets.go generateSurface,
+  // ТЗ_UI.md §5). Цвета продолжают палитру архивного Planet UI (§43
+  // OUROBOROS_design.md) там, где типы совпадают.
+  // wasteland/steppe раньше был одним типом с двумя смыслами в названии —
+  // разделены по признаку жизни (generateSurface): пустошь никогда не
+  // появляется на живой атмосферной планете, и наоборот, степь никогда не
+  // появляется без жизни — однозначность вместо общей метки.
+  const SURFACE_TYPES = {
+    water:     { name:'Вода',            color:'#2a6fdd' },
+    icecap:    { name:'Ледяная шапка',   color:'#d8f2ff' },
+    mountains: { name:'Горы',            color:'#887766' },
+    hills:     { name:'Холмы',           color:'#a08868' },
+    wasteland: { name:'Пустошь',         color:'#9c9464' },
+    steppe:    { name:'Степь',           color:'#8fa050' },
+    desert:    { name:'Пустыня',         color:'#cc9944' },
+    forest:    { name:'Леса',            color:'#336633' },
+    jungle:    { name:'Джунгли',         color:'#1f7a3d' },
+  };
+  // Здания (server/buildings.go, ТЗ_Экономика.md §12/§15). Только каталог
+  // названий для отображения — сама модель (кто где стоит) приходит с
+  // сервера через World.planetSurfaceDetail, ничего не разыгрывается тут.
+  const BUILDING_TYPES = {
+    mine:            'Горнодобывающая шахта',
+    atmo_collector:  'Атмосферный собиратель',
+    bio_extractor:   'Биоэкстрактор',
+    hydro_farm:      'Гидроминеральная ферма',
+    factory_metal:   'Металлургический завод',
+    factory_chem:    'Химический завод',
+    factory_elec:    'Электроинженерный завод',
+    lab:             'Лаборатория передовых систем',
+    housing:         'Жилой модуль',
+    h2_generator:    'Водородный генератор',
+    solar_panel:     'Солнечная панель',
+    battery:         'Планетарная батарея',
+    fort:            'Форт-казарма',
+    shipyard:        'Верфь',
+    adv_components:  'Завод улучшенных компонентов',
+    radio:           'Радиостанция',
+    science_center:  'Научный центр',
+    crypto_farm:     'Криптоферма',
+    transport_node:  'Транспортный узел',
+  };
   // Ресурсы: ключ с сервера → имя. Шкала 0–10 000 у.е. (ТЗ.md §2.5).
   const RESOURCES = {
     silicates:'Силикаты', iron:'Железо', refractory:'Тугоплавкие',
@@ -294,13 +336,35 @@ const World = (() => {
   const land   = () => post('api/ship/land');
   const launch = () => post('api/ship/launch');
 
+  // planetSurfaceDetail — гекс-карта ОДНОЙ планеты С РЕСУРСАМИ по гексам
+  // (server/main.go handlePlanetSurface). Намеренно НЕ часть общего опроса
+  // (state/refresh/subscribe) — эти данные нужны только экрану планеты и
+  // только для той планеты, на которой сейчас стоит корабль, а раздувать
+  // ими секундный опрос всего сектора (/api/galaxy) незачем — см. комментарий
+  // у SurfaceHex.res на сервере. Кэш на пару секунд — экран планеты
+  // пересоздаёт запрос при каждом клике по гексу, а не только при заходе.
+  // Возвращает {surface:[...], buildings:[...]} — buildings те же самые, что
+  // и Planet.buildings в /api/galaxy (список небольшой, тоже там есть), но
+  // раз экран и так делает отдельный запрос по гексам, проще брать их
+  // отсюда же, а не собирать из двух источников.
+  let surfaceDetailCache = null; // {key, at, promise}
+  async function planetSurfaceDetail(starId, planetIndex){
+    const key = starId + ':' + planetIndex;
+    const fresh = surfaceDetailCache && surfaceDetailCache.key === key && (Date.now() - surfaceDetailCache.at) < 5000;
+    if(fresh) return surfaceDetailCache.promise;
+    const promise = fetch(`api/planet/surface?starId=${starId}&planetIndex=${planetIndex}`, {cache:'no-store'})
+      .then(res => { if(!res.ok) throw new Error('HTTP ' + res.status); return res.json(); });
+    surfaceDetailCache = { key, at: Date.now(), promise };
+    return promise;
+  }
+
   return {
-    FACTIONS, PLANET_TYPES, STAR_COLORS, STAR_NAMES, RESOURCES, SCALE, SEC_PER_MONTH,
+    FACTIONS, PLANET_TYPES, SURFACE_TYPES, BUILDING_TYPES, STAR_COLORS, STAR_NAMES, RESOURCES, SCALE, SEC_PER_MONTH,
     state, subscribe, refresh, start,
     gameMonths, clock,
     planetPos, shipPos, shipSectorPos,
     orbitalPeriodHours, formatPeriod,
     starLabel, starColor, planetLabel, planetColor,
-    navigate, land, launch,
+    navigate, land, launch, planetSurfaceDetail,
   };
 })();

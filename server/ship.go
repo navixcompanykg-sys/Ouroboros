@@ -235,6 +235,7 @@ var (
 	ErrNotLanded      = errors.New("корабль не на поверхности")
 	ErrUnknownTarget  = errors.New("неизвестная цель")
 	ErrBadPlanetIndex = errors.New("неверный индекс планеты")
+	ErrNoSolidSurface = errors.New("у газового гиганта нет твёрдой поверхности")
 )
 
 // Navigate прокладывает курс на звезду (kind="star") или на планету в ТЕКУЩЕЙ
@@ -343,9 +344,9 @@ func (sh *Ship) Navigate(sim *Sim, now time.Time, kind string, starID, planetIdx
 }
 
 // Land высаживает корабль на планету, у которой он сейчас находится
-// (AtPlanetIndex ≥ 0). Заглушка — просто переключает флаг, без описания
-// поверхности/колонии (ТЗ.md: планетарный интерфейс распишем отдельно).
-func (sh *Ship) Land(now time.Time) error {
+// (AtPlanetIndex ≥ 0). Газовые гиганты твёрдой поверхности не имеют —
+// посадка на них отклоняется (см. Planet.Surface, planets.go).
+func (sh *Ship) Land(sim *Sim, now time.Time) error {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 	sh.resolveTransit(now)
@@ -358,6 +359,13 @@ func (sh *Ship) Land(now time.Time) error {
 	}
 	if sh.AtPlanetIndex < 0 {
 		return ErrNoPlanetHere
+	}
+	star, found := sim.Object(sh.SystemStarID)
+	if !found || sh.AtPlanetIndex >= len(star.Planets) {
+		return ErrNoPlanetHere
+	}
+	if star.Planets[sh.AtPlanetIndex].Type == "gas" {
+		return ErrNoSolidSurface
 	}
 	sh.Landed = true
 	sh.LandedPlanetIndex = sh.AtPlanetIndex

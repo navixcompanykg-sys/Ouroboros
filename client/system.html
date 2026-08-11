@@ -65,13 +65,6 @@
     opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 
-  #landed-overlay{position:absolute;inset:0;background:rgba(4,6,15,0.95);z-index:70;
-    display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;}
-  #landed-overlay.show{display:flex;}
-  #landed-overlay .lo-title{font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--ok);}
-  #landed-overlay .lo-text{font-family:var(--mono);font-size:9px;color:var(--text);line-height:1.8;}
-  #landed-overlay .info-btn{font-size:10px;padding:8px 20px;}
-
   #transit-overlay{position:absolute;inset:0;background:rgba(4,6,15,0.9);z-index:65;
     display:none;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px;text-align:center;}
   #transit-overlay.show{display:flex;}
@@ -115,12 +108,6 @@
   <div id="transit-overlay">
     <div class="to-title">КОРАБЛЬ В МЕЖЗВЁЗДНОМ ПЕРЕЛЁТЕ</div>
     <div class="to-text" id="to-text">—</div>
-  </div>
-
-  <div id="landed-overlay">
-    <div class="lo-title">ПОСАДКА ВЫПОЛНЕНА</div>
-    <div class="lo-text" id="lo-text">—</div>
-    <div class="info-btn" id="btn-launch">ВЗЛЕТЕТЬ</div>
   </div>
 
   <div id="offline">
@@ -339,6 +326,14 @@ function onWorld(w){
   renderSystem();
   updateBottomBar();
   updateOverlays();
+  if(shipView.landed && !landingAnimating && !redirectingToPlanet){
+    // Уже на поверхности не из-за нашей анимации (посадка теперь всегда
+    // проигрывается на ship.html, ТЗ_UI.md §2.1.3 — сюда её больше не
+    // передают; это просто прямой заход на этот экран, пока корабль давно
+    // сел) — сразу на planet.html.
+    redirectingToPlanet = true;
+    location.href = 'planet.html';
+  }
 }
 
 function showOffline(msg){
@@ -587,7 +582,8 @@ function renderInfo(){
 
   const isHere = shipView && shipView.systemStarId === star.id && shipView.atPlanetIndex === selected.index && !shipView.transit;
   if(isHere && !shipView.landed){
-    actionsEl.appendChild(makeBtn('ПОСАДКА', 'land', land));
+    // Газовые гиганты твёрдой поверхности не имеют — сесть некуда (ship.go Land).
+    if(p.type !== 'gas') actionsEl.appendChild(makeBtn('ПОСАДКА', 'land', () => land(selected.index)));
   } else if(!shipView.landed) {
     actionsEl.appendChild(makeBtn('ЛЕТЕТЬ', '', () => navigate('planet', selected.index)));
   }
@@ -606,40 +602,72 @@ function makeBtn(label, cls, onClick){
 async function navigate(kind, planetIndex){
   try{
     shipView = await World.navigate(kind, star.id, planetIndex ?? 0);
-    toast('Курс проложен');
-    applyShipPosition();
-    renderInfo();
+    // Полёт наблюдают с HUD корабля (§2), не с карты — курс проложен, сразу
+    // туда, не дожидаясь отдельного клика.
+    location.href = 'ship.html';
   }catch(e){ toast('Не удалось проложить курс: ' + e.message); }
 }
-async function land(){
+// ══════════════════════════════════════════════════════════════════════════
+// ПОСАДКА — сервер переключает Landed сразу (авторитетное состояние), а
+// клиент поверх этого проигрывает СВОЮ визуальную анимацию: корабль летит от
+// точки стоянки к центру планеты и уменьшается в размере по мере приближения
+// (ТЗ). 3–5 секунд, по окончании — переход в client/planet.html. Пока
+// анимация идёт, landingAnimating=true не даёт обычному applyShipPosition()
+// (кадр) и onWorld() (переход на planet.html без анимации) вмешаться.
+// ══════════════════════════════════════════════════════════════════════════
+const LANDING_ANIM_MS = 4200;
+let landingAnimating = false;
+let redirectingToPlanet = false;
+
+async function land(planetIndex){
+  // ДО await: World.land() уведомляет подписчиков (notify() внутри post())
+  // синхронно, ещё до того, как управление вернётся сюда после await — без
+  // этого флага onWorld() успевал бы увидеть landed=true с ещё не
+  // выставленным landingAnimating и увести на planet.html раньше первого
+  // кадра анимации (та же гонка, что была в ship.html).
+  landingAnimating = true;
   try{
     shipView = await World.land();
-    updateOverlays();
-  }catch(e){ toast('Не удалось сесть: ' + e.message); }
+    toast('Посадка…');
+    animateLanding(planetIndex);
+  }catch(e){ landingAnimating = false; toast('Не удалось сесть: ' + e.message); }
 }
-document.getElementById('btn-launch').onclick = async () => {
-  try{
-    shipView = await World.launch();
-    updateOverlays();
-    toast('Взлёт выполнен');
-  }catch(e){ toast('Не удалось взлететь: ' + e.message); }
-};
 
-// ── оверлеи: посадка / меж-звёздный перелёт ────────────────────────────────
-function updateOverlays(){
-  const landedOv = document.getElementById('landed-overlay');
-  const transitOv = document.getElementById('transit-overlay');
-  if(!shipView){ landedOv.classList.remove('show'); transitOv.classList.remove('show'); return; }
+function animateLanding(planetIndex){
+  landingAnimating = true;
+  const startLoc = World.shipPos();
+  const startPos = shipLocalToScreen(startLoc.x, startLoc.y);
+  const baseScale = shipMarkerScale();
+  const t0 = performance.now();
 
-  if(shipView.landed){
-    landedOv.classList.add('show');
-    transitOv.classList.remove('show');
-    const p = star && star.planets ? star.planets[shipView.landedPlanetIndex] : null;
-    const t = p ? (PLANET_TYPES[p.type]||{name:p.type}).name : '—';
-    document.getElementById('lo-text').textContent = `Вы на поверхности: ${t}.\nПланетарный интерфейс ещё не реализован — заглушка.`;
-    return;
+  function step(now){
+    const frac = Math.min(1, (now - t0) / LANDING_ANIM_MS);
+    const ease = frac * frac * (3 - 2 * frac); // smoothstep — плавные разгон/торможение
+    // Цель анимации — ЖИВОЙ центр планеты (она продолжает вращаться вокруг
+    // звезды, пока идёт посадка), не точка на момент клика.
+    const p = star && star.planets ? star.planets[planetIndex] : null;
+    const targetLoc = p ? planetLocal(p, gameMonths()) : startLoc;
+    const targetPos = shipLocalToScreen(targetLoc.x, targetLoc.y);
+    const x = startPos.x + (targetPos.x - startPos.x) * ease;
+    const y = startPos.y + (targetPos.y - startPos.y) * ease;
+    const scaleNow = Math.max(0.0001, baseScale * (1 - ease));
+    if(shipNode) shipNode.setAttribute('transform', `translate(${x},${y}) scale(${scaleNow})`);
+    if(frac < 1){
+      requestAnimationFrame(step);
+    } else {
+      redirectingToPlanet = true;
+      location.href = 'planet.html';
+    }
   }
-  landedOv.classList.remove('show');
+  requestAnimationFrame(step);
+}
+
+// ── оверлей меж-звёздного перелёта ─────────────────────────────────────────
+// Оверлей посадки убран: посадка теперь ведёт на отдельный экран
+// (planet.html) через animateLanding, а не показывает заглушку поверх карты.
+function updateOverlays(){
+  const transitOv = document.getElementById('transit-overlay');
+  if(!shipView){ transitOv.classList.remove('show'); return; }
 
   if(shipView.transit && shipView.transit.mode === 'interstellar'){
     transitOv.classList.add('show');
@@ -684,7 +712,7 @@ document.getElementById('btn-sector').onclick = () => { location.href = 'galaxy.
 // FPS или уход вкладки в фон картинку не сдвигают.
 function frame(){
   applyPlanetPositions();
-  applyShipPosition();
+  if(!landingAnimating) applyShipPosition();
   requestAnimationFrame(frame);
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -57,6 +58,7 @@ func main() {
 
 	clk = NewClock(*speed)
 	sim = NewSim(seed)
+	forceHabitableCapitals(sim)
 	ship = NewShip(findCapitalID(sim), findCapitalRadius(sim))
 	initFleets(sim)
 	stop := make(chan struct{})
@@ -67,6 +69,7 @@ func main() {
 	mux.HandleFunc("/api/time", handleTime)
 	mux.HandleFunc("/api/speed", handleSpeed)
 	mux.HandleFunc("/api/galaxy", handleGalaxy)
+	mux.HandleFunc("/api/planet/surface", handlePlanetSurface)
 	mux.HandleFunc("/api/stats", handleStats)
 	mux.HandleFunc("/api/events", handleEvents)
 	mux.HandleFunc("/api/ship", handleShip)
@@ -134,6 +137,67 @@ func findCapitalRadius(sim *Sim) float64 {
 	return 30
 }
 
+// forceHabitableCapitals — в каждой из 4 стабильных систем (столица +
+// 3 вассала, ТЗ.md §2.1) одна планета в зоне обитания принудительно
+// становится живой и получает стартовую колонию. Вызывается один раз при
+// старте сервера сразу после генерации сектора — правит уже готовые
+// объекты sim постфактум, не встраивается в сам генератор (planets.go),
+// чтобы не усложнять его отдельным случаем «эта планета обязана быть живой».
+//
+// «Зона обитания» в этой кодовой базе не отдельное понятие — ей
+// соответствует тип планеты `rocky` (жизнь физически возможна только на
+// rocky/ice, см. lifeChanceCap в planets.go), rocky предпочтительнее ice как
+// более многообещающий/типичный вариант.
+func forceHabitableCapitals(sim *Sim) {
+	objects, _ := sim.Snapshot()
+	for _, star := range objects {
+		if star.Type != "star" || star.StarType != "stable" {
+			continue
+		}
+		idx := -1
+		for i, p := range star.Planets {
+			if p.Type == "rocky" {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			for i, p := range star.Planets {
+				if p.Type == "ice" {
+					idx = i
+					break
+				}
+			}
+		}
+		if idx < 0 {
+			// Защитный случай — не ожидается на реальной генерации (стабильные
+			// системы получают несколько планет через обычный generatePlanets,
+			// пересекающий все орбитальные полосы), но без rocky/ice
+			// принудительная жизнь физически невозможна (lifeChanceCap) —
+			// берём первую планету с твёрдой поверхностью и меняем её тип.
+			for i, p := range star.Planets {
+				if p.Type != "gas" {
+					idx = i
+					star.Planets[i].Type = "rocky"
+					break
+				}
+			}
+		}
+		if idx < 0 {
+			log.Printf("forceHabitableCapitals: у звезды #%d (%s) нет ни одной планеты с твёрдой поверхностью — пропущено", star.ID, star.Faction)
+			continue
+		}
+		// Отдельный детерминированный поток, не общий поток генерации сектора
+		// (sim.rng) — иначе порядок этого вызова сдвинул бы все последующие
+		// броски, и сектор перестал бы быть воспроизводимым по сиду.
+		rng := rand.New(rand.NewSource(int64(star.ID)*1000 + int64(idx)))
+		recomputeAsHabitable(rng, &star.Planets[idx], star.StarType, star.R, star.SystemRadius)
+		bootstrapColony(&star.Planets[idx])
+		log.Printf("столица %s: планета #%d (%s) сделана обитаемой, стартовая колония — %d зданий",
+			star.Faction, idx, star.Planets[idx].Type, len(star.Planets[idx].Buildings))
+	}
+}
+
 // noCache — на время разработки: иначе телефон закеширует старый HTML и правки
 // не будут видны без ручной очистки кеша.
 func noCache(h http.Handler) http.Handler {
@@ -193,6 +257,36 @@ func handleGalaxy(w http.ResponseWriter, r *http.Request) {
 		Seq     uint64    `json:"seq"`
 		Objects []*Object `json:"objects"`
 	}{Snapshot: snap, Seed: seed, Seq: seq, Objects: objects})
+}
+
+// GET /api/planet/surface?starId=N&planetIndex=N — гекс-карта ОДНОЙ планеты
+// С РЕСУРСАМИ по гексам (SurfaceHexDetail). Отдельный от /api/galaxy
+// эндпоинт намеренно: тот опрашивается раз в секунду для всего сектора
+// сразу, а ресурсы по гексам (до 15 ключей на гекс, до 61 гекса на планету)
+// раздули бы его на мегабайты за тик ради данных, нужных только для ОДНОЙ
+// планеты — той, на которую сейчас смотрит игрок (client/planet.html), и то
+// не каждый кадр, а один раз при посадке. См. SurfaceHex.res в planets.go.
+func handlePlanetSurface(w http.ResponseWriter, r *http.Request) {
+	starID := int(parseUint(r.URL.Query().Get("starId")))
+	planetIndex := int(parseUint(r.URL.Query().Get("planetIndex")))
+	star, found := sim.Object(starID)
+	if !found || star.Type != "star" || planetIndex < 0 || planetIndex >= len(star.Planets) {
+		http.Error(w, "планета не найдена", http.StatusNotFound)
+		return
+	}
+	p := star.Planets[planetIndex]
+	connected := connectedHexes(&p)
+	hexes := make([]SurfaceHexDetail, len(p.Surface))
+	for i, h := range p.Surface {
+		hexes[i] = SurfaceHexDetail{
+			Q: h.Q, R: h.R, Type: h.Type, Crater: h.Crater, Res: h.res,
+			Connected: connected[[2]int{h.Q, h.R}],
+		}
+	}
+	writeJSON(w, struct {
+		Surface   []SurfaceHexDetail `json:"surface"`
+		Buildings []Building         `json:"buildings"`
+	}{Surface: hexes, Buildings: p.Buildings})
 }
 
 // GET /api/stats — сводка по сектору для диагностики и тестов. Читает её и
@@ -322,13 +416,13 @@ func handleShipNavigate(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /api/ship/land — посадка на планету, у которой корабль сейчас
-// находится. Заглушка, см. ship.go.
+// находится (кроме газовых гигантов — см. ship.go Land).
 func handleShipLand(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "нужен POST", http.StatusMethodNotAllowed)
 		return
 	}
-	if err := ship.Land(time.Now()); err != nil {
+	if err := ship.Land(sim, time.Now()); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

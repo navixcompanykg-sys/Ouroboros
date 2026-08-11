@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>УРОБОРОС — Планета</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap');
+  :root {
+    --bg:#04060f; --panel-bg:rgba(6,12,28,0.92); --border:rgba(60,130,200,0.18);
+    --accent:#2a7fff; --accent2:#00e5ff; --text:#8baac8; --text-bright:#cce4ff;
+    --mono:'Share Tech Mono',monospace; --sans:'Rajdhani',sans-serif;
+    --gold:#ffcf6b; --ok:#44cc88; --err:#ff5544; --warn:#ff8060;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;}
+  html,body{height:100%;background:#000;}
+  body{font-family:var(--sans);color:var(--text);display:flex;align-items:center;justify-content:center;}
+
+  #screen{position:relative;flex-shrink:0;
+    width:min(92vw, 400px, calc(94vh * 390 / 844));
+    aspect-ratio:390/844;
+    background:var(--bg);overflow:hidden;
+    border-radius:34px;border:2px solid #14161e;
+    box-shadow:0 0 0 1px rgba(255,255,255,0.03), 0 20px 60px rgba(0,0,0,0.7);
+    display:flex;flex-direction:column;}
+
+  header{flex-shrink:0;height:32px;display:flex;align-items:center;justify-content:space-between;
+    padding:0 10px;border-bottom:1px solid var(--border);z-index:10;line-height:1.3;}
+  #btn-galaxy-map{font-family:var(--mono);font-size:6.5px;letter-spacing:.5px;color:var(--accent2);cursor:pointer;}
+  #hdr-title{font-family:var(--mono);font-size:8px;letter-spacing:1.5px;color:var(--accent2);text-align:center;}
+  #btn-system-map{font-family:var(--mono);font-size:6.5px;letter-spacing:.5px;color:var(--text);opacity:.7;cursor:pointer;text-align:right;}
+
+  /* ── ряды кнопок (сверху/снизу) — заглушки ─────────────────────────── */
+  .action-row{flex-shrink:0;display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:7px 8px;z-index:10;}
+  .action-btn{font-family:var(--mono);font-size:7.5px;letter-spacing:.5px;text-align:center;
+    border:1.2px solid var(--accent);color:var(--text-bright);background:rgba(42,127,255,0.06);
+    padding:8px 2px;cursor:pointer;line-height:1.3;}
+  .action-btn:active{background:rgba(42,127,255,0.18);border-color:var(--accent2);color:var(--accent2);}
+  #row-top{border-bottom:1px solid var(--border);background:var(--panel-bg);}
+  /* Боковые отступы шире обычных — освобождают место под круглые кнопки
+     «Ремонт»/«Взлёт» (46px + отступ от края), которые лежат абсолютным слоем
+     поверх этого ряда: без запаса они перекрывали крайние кнопки раздела. */
+  #row-bottom{border-top:1px solid var(--border);background:var(--panel-bg);padding-left:62px;padding-right:62px;}
+
+  /* ── панель сведений над картой: планета целиком ИЛИ выбранный гекс ──── */
+  #info-panel{flex-shrink:0;font-family:var(--mono);font-size:6.5px;color:var(--text);
+    text-align:center;line-height:1.55;padding:3px 8px 5px;}
+  #info-panel b{color:var(--accent2);font-weight:400;}
+  #info-panel .info-title{font-family:var(--sans);font-weight:600;font-size:10px;color:var(--text-bright);
+    letter-spacing:.5px;margin-bottom:1px;}
+  #info-panel .info-hint{color:var(--text);opacity:.55;font-size:6px;margin-top:2px;}
+  #res-list{display:flex;flex-wrap:wrap;justify-content:center;gap:3px 7px;margin-top:2px;}
+  .res-chip{white-space:nowrap;}
+  .res-chip b{color:var(--gold);}
+
+  /* ── карта поверхности ──────────────────────────────────────────────── */
+  #map-outer{flex:1;display:flex;flex-direction:column;overflow:hidden;padding:6px;min-height:0;}
+  #map-wrap{position:relative;width:100%;flex:1;min-height:0;}
+  #hexmap{width:100%;height:100%;display:block;}
+  .planet-bg-outer{pointer-events:none;}
+  .planet-bg-inner{pointer-events:none;}
+  .hex{cursor:pointer;stroke:rgba(0,0,0,0.35);stroke-width:1;}
+  .hex:active{opacity:.75;}
+  .hex-selected{stroke:#fff !important;stroke-width:1.6 !important;}
+  /* Гекс с постройкой, но вне транспортной сети (изолирован) — темнее и с
+     красноватой обводкой: ресурсы с него не идут на склад (ТЗ_Экономика.md §15). */
+  .hex-isolated{opacity:.45;stroke:var(--err) !important;stroke-width:1.2 !important;}
+  .crater-dot{fill:rgba(0,0,0,0.4);pointer-events:none;}
+  /* 7 точек застройки на гекс (центр + 6 углов) — пока заглушки, места под будущие здания */
+  .build-slot{fill:rgba(4,6,15,0.55);stroke:rgba(204,228,255,0.55);stroke-width:0.5;cursor:pointer;}
+  .build-slot:hover,.build-slot:active{fill:rgba(0,229,255,0.5);stroke:#fff;}
+  /* Занятый слот (есть здание) — плотнее закрашен, отличим от свободных точек */
+  .build-slot-filled{fill:rgba(255,207,107,0.75);stroke:var(--gold);}
+  /* Кольцо на весь гекс — маркер транспортного узла, виден без выбора гекса */
+  .hex-node-ring{stroke:var(--accent2);stroke-width:1.6;stroke-dasharray:3 2;pointer-events:none;}
+
+  /* ── список строений выбранного гекса, под картой ────────────────────── */
+  #hex-buildings{flex-shrink:0;max-height:0;overflow:hidden;transition:max-height .2s ease-out;
+    border-top:1px solid var(--border);background:var(--panel-bg);}
+  #hex-buildings.show{max-height:90px;overflow-y:auto;}
+  #hex-buildings-inner{padding:5px 8px;}
+  #hex-buildings .hb-title{font-family:var(--mono);font-size:6.5px;letter-spacing:1px;color:var(--accent2);margin-bottom:3px;}
+  #hex-buildings .hb-empty{font-family:var(--mono);font-size:6.5px;color:var(--text);opacity:.6;}
+  .hb-row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:6.5px;
+    padding:2px 0;border-bottom:1px solid rgba(255,255,255,0.05);}
+  .hb-row .hb-name{color:var(--text-bright);}
+  .hb-row .hb-prod{color:var(--gold);}
+
+  /* ── угловые круглые кнопки (взлёт / ремонт) ───────────────────────── */
+  .corner-btn{position:absolute;bottom:10px;width:46px;height:46px;border-radius:50%;
+    background:var(--panel-bg);border:1.5px solid var(--accent);backdrop-filter:blur(6px);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:25;
+    font-family:var(--mono);font-size:8px;letter-spacing:.5px;color:var(--accent2);text-align:center;line-height:1.15;}
+  .corner-btn:active{border-color:var(--accent2);background:rgba(0,229,255,0.1);}
+  #btn-launch{right:12px;border-color:var(--ok);color:var(--ok);}
+  #btn-launch:active{background:rgba(68,204,136,0.14);border-color:var(--ok);}
+  #btn-repair{left:12px;}
+
+  #toast{position:absolute;left:50%;bottom:66px;transform:translateX(-50%) translateY(10px);
+    background:var(--panel-bg);border:1px solid var(--accent2);color:var(--accent2);
+    font-family:var(--mono);font-size:9px;letter-spacing:.5px;padding:7px 12px;z-index:60;
+    max-width:80%;text-align:center;line-height:1.5;white-space:pre-line;
+    opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  #offline{position:absolute;inset:0;background:rgba(4,6,15,0.94);z-index:80;
+    display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center;}
+  #offline.show{display:flex;}
+  #offline .off-title{font-family:var(--mono);font-size:11px;letter-spacing:1px;color:#ff8060;}
+  #offline .off-text{font-family:var(--mono);font-size:8px;color:var(--text);line-height:1.8;}
+</style>
+</head>
+<body>
+<div id="screen">
+
+  <header>
+    <div id="btn-galaxy-map">← ГАЛАКТИКА</div>
+    <div id="hdr-title">ПЛАНЕТА</div>
+    <div id="btn-system-map">СИСТЕМА<br>→</div>
+  </header>
+
+  <div id="row-top" class="action-row">
+    <div class="action-btn" data-label="СТРОИТЕЛЬСТВО">СТРОИТЕЛЬ-<br>СТВО</div>
+    <div class="action-btn" data-label="ОБОРОНА">ОБОРОНА</div>
+    <div class="action-btn" data-label="ПРАВИТЕЛЬСТВО">ПРАВИТЕЛЬ-<br>СТВО</div>
+    <div class="action-btn" data-label="ПРОИЗВОДСТВО">ПРОИЗВОД-<br>СТВО</div>
+  </div>
+
+  <div id="info-panel">—</div>
+
+  <div id="map-outer">
+    <div id="map-wrap">
+      <svg id="hexmap" viewBox="-120 -100 240 200" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+  </div>
+
+  <div id="hex-buildings">
+    <div id="hex-buildings-inner">
+      <div class="hb-title">СТРОЕНИЯ НА ГЕКСЕ</div>
+      <div id="hb-rows"></div>
+    </div>
+  </div>
+
+  <div id="row-bottom" class="action-row">
+    <div class="action-btn" data-label="КОСМОДРОМ">КОСМОДРОМ</div>
+    <div class="action-btn" data-label="БИРЖА">БИРЖА</div>
+    <div class="action-btn" data-label="СКЛАД">СКЛАД</div>
+    <div class="action-btn" data-label="ДИПЛОМАТИЯ">ДИПЛОМА-<br>ТИЯ</div>
+  </div>
+
+  <div id="btn-repair" class="corner-btn">РЕМОНТ</div>
+  <div id="btn-launch" class="corner-btn">ВЗЛЁТ</div>
+
+  <div id="toast"></div>
+
+  <div id="offline">
+    <div class="off-title">НЕТ СВЯЗИ С СЕРВЕРОМ</div>
+    <div class="off-text" id="off-text"></div>
+  </div>
+
+</div>
+
+<script src="world.js"></script>
+<script>
+'use strict';
+// ══════════════════════════════════════════════════════════════════════════
+// Масштаб «Планета» (ТЗ_UI.md §5). Показывается, когда корабль СЕЛ на
+// поверхность (ship.landed) — попасть сюда можно только через анимацию
+// посадки в system.html или прямым переходом с флотом, уже находящимся на
+// планете (galaxy.html, ship.html). Сама поверхность — гекс-карта (радиус
+// 2/3/4 по размеру планеты, server/planets.go planetHexRadius), сгенерирована
+// сервером один раз при создании планеты — клиент её не разыгрывает, только
+// рисует (CLAUDE.md: «клиент только отображает»).
+//
+// Ресурсы по гексам — ОТДЕЛЬНЫЙ запрос (World.planetSurfaceDetail), не часть
+// общего опроса /api/galaxy: раздувать секундный опрос всего сектора данными,
+// нужными только для одной, сейчас открытой планеты, незачем (см. комментарий
+// у SurfaceHex.res на сервере). Загружается один раз при заходе на экран.
+//
+// Все разделы (Строительство/Оборона/Правительство/Производство сверху,
+// Космодром/Биржа/Склад/Дипломатия снизу), кнопка ремонта, 7 точек застройки
+// на гексе и список строений — заглушки (строений в игре пока не существует
+// вовсе). Рабочая только ВЗЛЁТ: POST /api/ship/launch и возврат на карту
+// системы.
+// ══════════════════════════════════════════════════════════════════════════
+const { SURFACE_TYPES, PLANET_TYPES, RESOURCES, BUILDING_TYPES } = World;
+
+const svg = document.getElementById('hexmap');
+const SVGNS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs){
+  const e = document.createElementNS(SVGNS, tag);
+  for(const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+// ── геометрия гекс-сетки: axial (q,r), pointy-top ────────────────────────
+// Пиксельная высота гекса зависит только от r — r и есть широта (r=0 экватор,
+// r=±радиус планеты полюс), см. комментарий у generateSurface на сервере.
+const HEX_SIZE = 13;
+function hexCenter(q, r){
+  return { x: HEX_SIZE * Math.sqrt(3) * (q + r/2), y: HEX_SIZE * 1.5 * r };
+}
+function hexCorners(cx, cy){
+  const pts = [];
+  for(let i=0;i<6;i++){
+    const a = Math.PI/180 * (60*i - 30);
+    pts.push({ x: cx + HEX_SIZE*Math.cos(a), y: cy + HEX_SIZE*Math.sin(a) });
+  }
+  return pts;
+}
+function hexPointsAttr(corners){
+  return corners.map(p => p.x.toFixed(2) + ',' + p.y.toFixed(2)).join(' ');
+}
+// hexSideSlots — 6 точек на серединах СТОРОН гекса, слегка утопленные внутрь
+// (не на самой границе). Вершины и середины рёбер гекса — общие с соседними
+// гексами (вершина принадлежит сразу 3 гексам, середина ребра — 2), точка
+// точно на границе визуально и по смыслу не «внутри одного гекса». Утопленная
+// точка однозначно принадлежит этому гексу — только так работает правило
+// «7 построек на гекс», не деля точки с соседями.
+function hexSideSlots(cx, cy){
+  const apothem = HEX_SIZE * Math.sqrt(3) / 2; // расстояние от центра до середины стороны
+  const insetR = apothem * 0.78;
+  const pts = [];
+  for(let i=0;i<6;i++){
+    const a = Math.PI/180 * (60*i); // середины сторон pointy-top гекса: 0°,60°,...,300°
+    pts.push({ x: cx + insetR*Math.cos(a), y: cy + insetR*Math.sin(a) });
+  }
+  return pts;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ИКОНКИ ЗДАНИЙ — простые векторные силуэты, по одной на тип (19 штук,
+// BUILDING_TYPES в world.js), чтобы на карте сразу было видно, что где
+// стоит, а не только по цвету занятого слота. Координаты каждой иконки —
+// в единичном круге (-1..1), рисуются внутри <g transform="translate(..)
+// scale(..)">, поэтому сама фигура не знает о реальном размере точки
+// застройки. Заливка/обводка — везде var(--bg): тёмный силуэт поверх
+// золотого занятого слота, единый стиль без цветового кодирования по типу
+// (типов 19 — раздельные цвета только запутали бы, силуэта достаточно).
+const BUILDING_ICON_DEFS = {
+  // Горнодобывающая шахта — гора
+  mine: [
+    {tag:'polygon', attrs:{points:'0,-0.95 0.85,0.8 -0.85,0.8', fill:'var(--bg)'}},
+  ],
+  // Атмосферный собиратель — тарелка-антенна на мачте
+  atmo_collector: [
+    {tag:'line', attrs:{x1:0, y1:0.15, x2:0, y2:-0.85, stroke:'var(--bg)', 'stroke-width':0.2}},
+    {tag:'circle', attrs:{cx:0, cy:0.35, r:0.42, fill:'none', stroke:'var(--bg)', 'stroke-width':0.22}},
+  ],
+  // Биоэкстрактор — капля
+  bio_extractor: [
+    {tag:'path', attrs:{d:'M 0 -0.95 C 0.55 -0.1 0.72 0.35 0.72 0.55 C 0.72 0.85 0.35 0.95 0 0.95 C -0.35 0.95 -0.72 0.85 -0.72 0.55 C -0.72 0.35 -0.55 -0.1 0 -0.95 Z', fill:'var(--bg)'}},
+  ],
+  // Гидроминеральная ферма — лист
+  hydro_farm: [
+    {tag:'path', attrs:{d:'M 0 0.95 C 0 0.3 -0.15 -0.5 -0.85 -0.85 C -0.6 0.1 -0.35 0.7 0 0.95 Z', fill:'var(--bg)'}},
+    {tag:'path', attrs:{d:'M 0 0.95 C 0 0.3 0.15 -0.5 0.85 -0.85 C 0.6 0.1 0.35 0.7 0 0.95 Z', fill:'var(--bg)'}},
+  ],
+  // Металлургический завод — корпус с трубой
+  factory_metal: [
+    {tag:'rect', attrs:{x:-0.8, y:-0.15, width:1.6, height:1.05, fill:'var(--bg)'}},
+    {tag:'rect', attrs:{x:0.15, y:-0.9, width:0.28, height:0.75, fill:'var(--bg)'}},
+  ],
+  // Химический завод — колба
+  factory_chem: [
+    {tag:'path', attrs:{d:'M -0.25 -0.9 L -0.25 -0.15 L -0.75 0.75 C -0.85 0.95 -0.7 1 -0.5 1 L 0.5 1 C 0.7 1 0.85 0.95 0.75 0.75 L 0.25 -0.15 L 0.25 -0.9 Z', fill:'var(--bg)'}},
+    {tag:'line', attrs:{x1:-0.35, y1:-0.9, x2:0.35, y2:-0.9, stroke:'var(--bg)', 'stroke-width':0.16}},
+  ],
+  // Электроинженерный завод — микросхема
+  factory_elec: [
+    {tag:'rect', attrs:{x:-0.55, y:-0.55, width:1.1, height:1.1, rx:0.08, fill:'var(--bg)'}},
+    {tag:'line', attrs:{x1:-0.28, y1:-0.9, x2:-0.28, y2:-0.55, stroke:'var(--bg)', 'stroke-width':0.14}},
+    {tag:'line', attrs:{x1:0.28, y1:-0.9, x2:0.28, y2:-0.55, stroke:'var(--bg)', 'stroke-width':0.14}},
+    {tag:'line', attrs:{x1:-0.28, y1:0.55, x2:-0.28, y2:0.9, stroke:'var(--bg)', 'stroke-width':0.14}},
+    {tag:'line', attrs:{x1:0.28, y1:0.55, x2:0.28, y2:0.9, stroke:'var(--bg)', 'stroke-width':0.14}},
+  ],
+  // Лаборатория передовых систем — атом
+  lab: [
+    {tag:'circle', attrs:{cx:0, cy:0, r:0.18, fill:'var(--bg)'}},
+    {tag:'ellipse', attrs:{cx:0, cy:0, rx:0.9, ry:0.34, fill:'none', stroke:'var(--bg)', 'stroke-width':0.14}},
+    {tag:'ellipse', attrs:{cx:0, cy:0, rx:0.9, ry:0.34, fill:'none', stroke:'var(--bg)', 'stroke-width':0.14, transform:'rotate(60)'}},
+    {tag:'ellipse', attrs:{cx:0, cy:0, rx:0.9, ry:0.34, fill:'none', stroke:'var(--bg)', 'stroke-width':0.14, transform:'rotate(120)'}},
+  ],
+  // Жилой модуль — дом
+  housing: [
+    {tag:'polygon', attrs:{points:'0,-0.95 0.85,-0.15 0.85,0.9 -0.85,0.9 -0.85,-0.15', fill:'var(--bg)'}},
+  ],
+  // Водородный генератор — молния
+  h2_generator: [
+    {tag:'polygon', attrs:{points:'0.15,-0.95 -0.55,0.1 0,0.1 -0.15,0.95 0.55,-0.15 0.05,-0.15', fill:'var(--bg)'}},
+  ],
+  // Солнечная панель — сетка-панель
+  solar_panel: [
+    {tag:'rect', attrs:{x:-0.85, y:-0.55, width:1.7, height:1.1, rx:0.05, fill:'none', stroke:'var(--bg)', 'stroke-width':0.15}},
+    {tag:'line', attrs:{x1:-0.28, y1:-0.55, x2:-0.28, y2:0.55, stroke:'var(--bg)', 'stroke-width':0.12}},
+    {tag:'line', attrs:{x1:0.28, y1:-0.55, x2:0.28, y2:0.55, stroke:'var(--bg)', 'stroke-width':0.12}},
+    {tag:'line', attrs:{x1:-0.85, y1:0, x2:0.85, y2:0, stroke:'var(--bg)', 'stroke-width':0.12}},
+  ],
+  // Планетарная батарея — аккумулятор
+  battery: [
+    {tag:'rect', attrs:{x:-0.7, y:-0.5, width:1.4, height:1, rx:0.08, fill:'var(--bg)'}},
+    {tag:'rect', attrs:{x:0.7, y:-0.2, width:0.18, height:0.4, fill:'var(--bg)'}},
+  ],
+  // Форт-казарма — щит
+  fort: [
+    {tag:'path', attrs:{d:'M 0 -0.95 L 0.72 -0.6 L 0.72 0.15 C 0.72 0.6 0.4 0.9 0 0.98 C -0.4 0.9 -0.72 0.6 -0.72 0.15 L -0.72 -0.6 Z', fill:'var(--bg)'}},
+  ],
+  // Верфь — корпус корабля с мачтой
+  shipyard: [
+    {tag:'polygon', attrs:{points:'-0.85,-0.05 0.85,-0.05 0.55,0.6 -0.55,0.6', fill:'var(--bg)'}},
+    {tag:'line', attrs:{x1:0, y1:-0.05, x2:0, y2:-0.95, stroke:'var(--bg)', 'stroke-width':0.16}},
+  ],
+  // Завод улучшенных компонентов — гайка-болт
+  adv_components: [
+    {tag:'polygon', attrs:{points:'0,-0.95 0.82,-0.48 0.82,0.48 0,0.95 -0.82,0.48 -0.82,-0.48', fill:'none', stroke:'var(--bg)', 'stroke-width':0.18}},
+    {tag:'circle', attrs:{cx:0, cy:0, r:0.32, fill:'var(--bg)'}},
+  ],
+  // Радиостанция — мачта с волнами сигнала
+  radio: [
+    {tag:'line', attrs:{x1:0, y1:0.95, x2:0, y2:-0.25, stroke:'var(--bg)', 'stroke-width':0.18}},
+    {tag:'circle', attrs:{cx:0, cy:-0.55, r:0.12, fill:'var(--bg)'}},
+    {tag:'path', attrs:{d:'M -0.5 -0.55 A 0.7 0.7 0 0 1 0.5 -0.55', fill:'none', stroke:'var(--bg)', 'stroke-width':0.14}},
+    {tag:'path', attrs:{d:'M -0.8 -0.3 A 1.1 1.1 0 0 1 0.8 -0.3', fill:'none', stroke:'var(--bg)', 'stroke-width':0.12}},
+  ],
+  // Научный центр — звезда
+  science_center: [
+    {tag:'polygon', attrs:{points:'0,-0.95 0.22,-0.3 0.9,-0.3 0.35,0.12 0.56,0.8 0,0.4 -0.56,0.8 -0.35,0.12 -0.9,-0.3 -0.22,-0.3', fill:'var(--bg)'}},
+  ],
+  // Криптоферма — монета
+  crypto_farm: [
+    {tag:'polygon', attrs:{points:'0,-0.95 0.85,0 0,0.95 -0.85,0', fill:'none', stroke:'var(--bg)', 'stroke-width':0.16}},
+    {tag:'line', attrs:{x1:0, y1:-0.5, x2:0, y2:0.5, stroke:'var(--bg)', 'stroke-width':0.14}},
+  ],
+  // Транспортный узел — хаб с расходящимися лучами (гекс уже обведён пунктиром отдельно)
+  transport_node: [
+    {tag:'line', attrs:{x1:0, y1:0, x2:0, y2:-0.9, stroke:'var(--bg)', 'stroke-width':0.16}},
+    {tag:'line', attrs:{x1:0, y1:0, x2:0.78, y2:0.45, stroke:'var(--bg)', 'stroke-width':0.16}},
+    {tag:'line', attrs:{x1:0, y1:0, x2:-0.78, y2:0.45, stroke:'var(--bg)', 'stroke-width':0.16}},
+    {tag:'circle', attrs:{cx:0, cy:0, r:0.26, fill:'var(--bg)'}},
+  ],
+};
+const BUILDING_ICON_DEFAULT = [
+  {tag:'circle', attrs:{cx:0, cy:0, r:0.5, fill:'var(--bg)'}},
+];
+function buildingIcon(type, cx, cy, s){
+  const g = el('g', {transform:`translate(${cx.toFixed(2)},${cy.toFixed(2)}) scale(${s.toFixed(2)})`, 'pointer-events':'none'});
+  (BUILDING_ICON_DEFS[type] || BUILDING_ICON_DEFAULT).forEach(shape => g.appendChild(el(shape.tag, shape.attrs)));
+  return g;
+}
+
+// ── состояние выбора ───────────────────────────────────────────────────
+let selectedHex = null;   // {q,r,type,crater} — из planet.surface (без ресурсов)
+let hexPolyByKey = {};    // "q:r" → <polygon> — для подсветки выбора
+let hexRingByKey = {};    // "q:r" → <polygon> обводка — маркер транспортного узла
+let currentPlanet = null;
+let currentStar = null;
+let planetDetail = null;  // {surface,buildings} — с сервера, содержит connected и ресурсы по гексам
+
+// buildingsByHex — Planet.buildings (уже в общем /api/galaxy, доп. запрос не
+// нужен) сгруппированные по гексу — для точек застройки и кольца узла.
+function buildingsByHex(planet){
+  const map = {};
+  (planet.buildings || []).forEach(b => {
+    const key = b.q + ':' + b.r;
+    (map[key] = map[key] || []).push(b);
+  });
+  return map;
+}
+
+let renderedPlanetKey = null; // «starId:planetIndex» — поверхность статична, перерисовываем один раз
+function renderSurface(star, planet){
+  const key = star.id + ':' + planet.i;
+  if(key === renderedPlanetKey) return;
+  renderedPlanetKey = key;
+  svg.innerHTML = '';
+  hexPolyByKey = {};
+  hexRingByKey = {};
+  selectedHex = null;
+  planetDetail = null;
+
+  if(!planet.surface || !planet.surface.length){
+    svg.appendChild(el('text', {x:0, y:0, 'text-anchor':'middle', fill:'var(--text)',
+      'font-family':'var(--mono)', 'font-size':9}));
+    svg.lastChild.textContent = 'нет доступной поверхности';
+    return;
+  }
+
+  // ── фоновое изображение планеты, нижний слой ─────────────────────────
+  // Пока без текстур — просто диск в тон типа планеты, слегка больше самой
+  // гекс-сетки (намёк на не заснятую сканером поверхность за её краем).
+  // Текстуры добавятся позже поверх этого же слоя, сама гекс-карта их не
+  // коснётся — порядок отрисовки (фон → гексы → точки застройки) останется.
+  let maxHexR = 0;
+  planet.surface.forEach(h => { maxHexR = Math.max(maxHexR, Math.abs(h.r)); });
+  const bgR = maxHexR * HEX_SIZE * 1.5 + HEX_SIZE * 1.5;
+  const bgColor = (PLANET_TYPES[planet.type] || {color:'#556'}).color;
+  svg.appendChild(el('circle', {class:'planet-bg-outer', cx:0, cy:0, r:bgR.toFixed(1), fill:bgColor, 'fill-opacity':0.14}));
+  svg.appendChild(el('circle', {class:'planet-bg-inner', cx:0, cy:0, r:(bgR*0.62).toFixed(1), fill:bgColor, 'fill-opacity':0.10}));
+
+  const byHex = buildingsByHex(planet);
+
+  planet.surface.forEach(hex => {
+    const {x, y} = hexCenter(hex.q, hex.r);
+    const corners = hexCorners(x, y);
+    const t = SURFACE_TYPES[hex.type] || {color:'#666'};
+    const key = hex.q + ':' + hex.r;
+    const buildingsHere = byHex[key] || [];
+    const poly = el('polygon', {class:'hex', points: hexPointsAttr(corners), fill: t.color});
+    poly.addEventListener('click', () => selectHex(hex, poly));
+    svg.appendChild(poly);
+    hexPolyByKey[key] = poly;
+
+    // Кольцо-маркер транспортного узла — виден на карте даже не выбирая гекс
+    // (ТЗ_UI.md §5.3): узел ничего не добывает, но продлевает сеть дальше.
+    if(buildingsHere.some(b => b.type === 'transport_node')){
+      const ring = el('polygon', {class:'hex-node-ring', points: hexPointsAttr(corners), fill:'none'});
+      svg.appendChild(ring);
+      hexRingByKey[key] = ring;
+    }
+
+    if(hex.crater){
+      // несколько мелких тёмных кружков — декоративные кратеры, без своей логики
+      const seed = (hex.q*31 + hex.r*17 + 7) >>> 0;
+      const n = 2 + (seed % 3);
+      for(let i=0;i<n;i++){
+        const ang = ((seed*13 + i*97) % 360) * Math.PI/180;
+        const dist = HEX_SIZE * (0.2 + ((seed + i*53) % 40)/100);
+        const r2 = HEX_SIZE * (0.08 + ((seed + i*29) % 10)/100);
+        svg.appendChild(el('circle', {
+          class:'crater-dot', cx:(x+Math.cos(ang)*dist).toFixed(2), cy:(y+Math.sin(ang)*dist).toFixed(2), r:r2.toFixed(2),
+        }));
+      }
+    }
+
+    // 7 точек застройки: центр + 6 углов гекса. Первые N (по числу реальных
+    // зданий на гексе) закрашены плотнее — «слот занят»; какое именно здание
+    // в какой из 7 точек стоит, модель не различает (Building привязан к
+    // гексу целиком, не к конкретному слоту) — сама застройка через клик
+    // всё ещё заглушка.
+    const slotR = 1.9;
+    const slots = [{x, y}, ...hexSideSlots(x, y)];
+    slots.forEach((p, i) => {
+      const filled = i < buildingsHere.length;
+      const dot = el('circle', {
+        class:'build-slot' + (filled ? ' build-slot-filled' : ''),
+        cx:p.x.toFixed(2), cy:p.y.toFixed(2), r:slotR,
+      });
+      dot.addEventListener('click', (e) => {
+        e.stopPropagation(); // не открывать/менять выбор гекса поверх точки
+        selectHex(hex, poly);
+        toast(filled
+          ? (BUILDING_TYPES[buildingsHere[i].type] || buildingsHere[i].type) + ' — см. список строений ниже'
+          : 'Место застройки — заглушка, строить пока нельзя');
+      });
+      svg.appendChild(dot);
+      // Иконка здания поверх занятого слота — какое здание в какой из 7
+      // точек попало, решает порядок в buildingsHere (не привязка модели
+      // к конкретному слоту, см. комментарий у Building в buildings.go).
+      if(filled){
+        svg.appendChild(buildingIcon(buildingsHere[i].type, p.x, p.y, slotR * 0.8));
+      }
+    });
+  });
+
+  // клик по фону (не по гексу/точке) — снять выбор, вернуться к сводке планеты
+  svg.querySelectorAll('.planet-bg-outer, .planet-bg-inner').forEach(bg => {
+    bg.style.pointerEvents = 'none'; // фон декоративный, клики сквозь него — на пустую область SVG
+  });
+  svg.addEventListener('click', (e) => {
+    if(e.target === svg) deselectHex();
+  });
+
+  // Связность — отдельным запросом (ресурсы по гексам туда же, см.
+  // World.planetSurfaceDetail): не блокируем первую отрисовку картой, гексы
+  // без строений тускнеть не должны, а построенные-но-отключённые — тускнеют,
+  // как только ответ придёт.
+  World.planetSurfaceDetail(star.id, planet.i).then(detail => {
+    if (renderedPlanetKey !== key) return; // успели уйти на другую планету
+    planetDetail = detail;
+    detail.surface.forEach(h => {
+      if (h.connected) return;
+      const hexKey = h.q + ':' + h.r;
+      if ((byHex[hexKey] || []).length > 0 && hexPolyByKey[hexKey]) {
+        hexPolyByKey[hexKey].classList.add('hex-isolated');
+      }
+    });
+  }).catch(() => {});
+}
+
+function selectHex(hex, poly){
+  if(selectedHex && hexPolyByKey[selectedHex.q + ':' + selectedHex.r]){
+    hexPolyByKey[selectedHex.q + ':' + selectedHex.r].classList.remove('hex-selected');
+  }
+  selectedHex = hex;
+  poly.classList.add('hex-selected');
+  renderHexInfo(hex);
+  renderHexBuildings(hex);
+}
+function deselectHex(){
+  if(!selectedHex) return;
+  const poly = hexPolyByKey[selectedHex.q + ':' + selectedHex.r];
+  if(poly) poly.classList.remove('hex-selected');
+  selectedHex = null;
+  renderPlanetInfo(currentStar, currentPlanet);
+  hideHexBuildings();
+}
+
+// ── панель сведений: планета целиком (по умолчанию) ─────────────────────
+function renderPlanetInfo(star, planet){
+  const t = PLANET_TYPES[planet.type] || { name: planet.type };
+  document.getElementById('hdr-title').textContent = t.name.toUpperCase();
+  document.getElementById('info-panel').innerHTML =
+    `<div class="info-title">${t.name}</div>` +
+    `орбита ${planet.orbit} · система «${World.starLabel(star)}» · гексов: <b>${(planet.surface||[]).length}</b><br>` +
+    `вода: <b>${planet.water}/100</b> · жизнь: <b>${planet.life ? 'есть' : 'нет'}</b> · температура: <b>${planet.temp}K</b> · давление: <b>${planet.pressure}</b>` +
+    `<div class="info-hint">выберите гекс на карте — характеристики участка</div>`;
+}
+
+// ── панель сведений: выбранный гекс (тип, ресурсы, население, строения) ──
+// Население всегда 0 — колонизации/роста населения в игре ещё нет (фаза 2,
+// ТЗ_Экономика.md §11); строений и связность — уже настоящие данные.
+function renderHexInfo(hex){
+  const t = SURFACE_TYPES[hex.type] || { name: hex.type };
+  const buildingsHere = (currentPlanet.buildings || []).filter(b => b.q === hex.q && b.r === hex.r);
+  document.getElementById('hdr-title').textContent = `ГЕКС ${hex.q},${hex.r}`;
+  document.getElementById('info-panel').innerHTML =
+    `<div class="info-title">${t.name}${hex.crater ? ' · в кратерах' : ''}</div>` +
+    `население: <b>0</b> · строений: <b>${buildingsHere.length}/7</b>` +
+    `<div id="res-list">загрузка ресурсов…</div>`;
+
+  World.planetSurfaceDetail(currentStar.id, currentPlanet.i).then(detail => {
+    if(!selectedHex || selectedHex.q !== hex.q || selectedHex.r !== hex.r) return; // успели выбрать другой гекс
+    const found = detail.surface.find(h => h.q === hex.q && h.r === hex.r);
+    const resList = document.getElementById('res-list');
+    if(!resList) return;
+    const entries = found && found.res ? Object.entries(found.res).sort((a,b) => b[1]-a[1]) : [];
+    resList.innerHTML = entries.length
+      ? entries.map(([key,val]) => `<span class="res-chip">${RESOURCES[key]||key}: <b>${val}</b></span>`).join('')
+      : '<span class="res-chip" style="opacity:.6">нет заметных ресурсов</span>';
+    if(found && buildingsHere.length > 0 && !found.connected){
+      resList.insertAdjacentHTML('beforeend', '<span class="res-chip" style="color:var(--warn)">⚠ изолирован — не поставляет ресурсы на склад</span>');
+    }
+  }).catch(() => {
+    const resList = document.getElementById('res-list');
+    if(resList) resList.textContent = 'не удалось загрузить ресурсы';
+  });
+}
+
+// ── список строений выбранного гекса, под картой ────────────────────────
+function renderHexBuildings(hex){
+  const buildingsHere = (currentPlanet.buildings || []).filter(b => b.q === hex.q && b.r === hex.r);
+  const rows = document.getElementById('hb-rows');
+  rows.innerHTML = buildingsHere.length
+    ? buildingsHere.map(b => `<div class="hb-row"><span class="hb-name">${BUILDING_TYPES[b.type] || b.type}</span><span class="hb-prod">—</span></div>`).join('')
+    : '<div class="hb-empty">На этом гексе ничего не построено.</div>';
+  document.getElementById('hex-buildings').classList.add('show');
+}
+function hideHexBuildings(){
+  document.getElementById('hex-buildings').classList.remove('show');
+}
+
+// ── подписка на мир ───────────────────────────────────────────────────────
+function onWorld(w){
+  if(!w.online){
+    showOffline('Экран работает только через сервер.<br>Запустите <b>server</b> и откройте адрес заново.<br><br>' + (w.error || ''));
+    return;
+  }
+  const ship = w.ship;
+  if(!ship.landed){
+    // Не на поверхности — этому экрану тут делать нечего.
+    location.href = 'ship.html';
+    return;
+  }
+  const star = w.objects.find(o => o.id === ship.systemStarId);
+  const planet = star && star.planets ? star.planets[ship.landedPlanetIndex] : null;
+  if(!star || !planet) return; // состав сектора ещё не пришёл — подождём следующего опроса
+  hideOffline();
+  currentStar = star;
+  currentPlanet = planet;
+  renderSurface(star, planet);
+  if(selectedHex) renderHexInfo(selectedHex); else renderPlanetInfo(star, planet);
+}
+
+function showOffline(msg){
+  document.getElementById('off-text').innerHTML = msg;
+  document.getElementById('offline').classList.add('show');
+}
+function hideOffline(){
+  document.getElementById('offline').classList.remove('show');
+}
+
+// ── тост ────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+// ── кнопки-заглушки (все разделы сверху/снизу + ремонт) ────────────────
+document.querySelectorAll('.action-btn').forEach(btn => {
+  btn.onclick = () => toast(`«${btn.dataset.label}» — заглушка, ещё не реализовано`);
+});
+document.getElementById('btn-repair').onclick = () => toast('«РЕМОНТ» — заглушка, ещё не реализовано');
+
+// ── навигация по экранам ────────────────────────────────────────────────
+document.getElementById('btn-galaxy-map').onclick = () => { location.href = 'galaxy.html'; };
+document.getElementById('btn-system-map').onclick = () => { location.href = 'system.html'; };
+
+// ── взлёт — единственная рабочая кнопка ──────────────────────────────────
+document.getElementById('btn-launch').onclick = async () => {
+  try{
+    await World.launch();
+    toast('Взлёт выполнен');
+    location.href = 'system.html';
+  }catch(e){ toast('Не удалось взлететь: ' + e.message); }
+};
+
+World.subscribe(onWorld);
+World.start();
+</script>
+<script src="admin-panel.js"></script>
+</body>
+</html>

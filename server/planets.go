@@ -365,9 +365,18 @@ var planetDiameter = map[string][2]float64{
 // запасу водяного льда (ключ "waterIce" в resourceDefs) — сама по себе не
 // является ресурсом на шкале 0–10 000.
 var waterRange = map[string][2]float64{
-	"core":  {0, 0},
-	"lava":  {0, 2},
-	"rocky": {30, 60},
+	"core": {0, 0},
+	"lava": {0, 2},
+	// Нижняя граница снижена с 30 до 5: раньше каменистая планета не могла
+	// быть суше 30% гидросферы, и суша физически не могла занять больше
+	// ~45–70% поверхности (см. generateSurface) — «джунглевый мир» с
+	// маленьким океаном (как архивный архетип «ДЖУНГЛИ» ≥35%, §43
+	// OUROBOROS_design.md) был математически недостижим ни при каком
+	// исходе жизни/климата. Диапазон остаётся ассиметричным (5–60, не
+	// 5–90): rollLife ниже линейно завязан на воду (потолок шанса 50% у
+	// камня при water=100) — оставляя верх на 60 мы не даём каменистой
+	// планете залезть в типично ледяной диапазон воды (50–90).
+	"rocky": {5, 60},
 	"ice":   {50, 90},
 	"gas":   {45, 55},
 }
@@ -397,6 +406,467 @@ type Planet struct {
 	Volcanic    int `json:"volcanic"`  // вулканическая активность, усл. ед. 0–100
 	Radiation   int `json:"radiation"` // уровень радиации на поверхности, усл. ед. 0–100
 	Toxicity    int `json:"toxicity"`  // токсичность среды, усл. ед. 0–100
+
+	// Surface — гекс-карта поверхности, радиус зависит от размера планеты
+	// (см. planetHexRadius), nil у газовых гигантов (твёрдой поверхности
+	// нет, сесть нельзя).
+	Surface []SurfaceHex `json:"surface,omitempty"`
+
+	// Buildings — здания колонии (server/buildings.go). В отличие от
+	// SurfaceHex.res список небольшой (десятки записей на колонию) и не
+	// раздувает общий /api/galaxy — экспортируется как есть, omitempty
+	// оставляет неколонизированные планеты без этого поля вовсе.
+	Buildings []Building `json:"buildings,omitempty"`
+}
+
+// ── поверхность планеты: гекс-карта, радиус по размеру планеты, ТЗ_UI.md §5 ─
+//
+// Раскладка axial, pointy-top: q — «долгота», r — «широта». При переводе в
+// пиксели (x=√3·(q+r/2), y=1.5·r — стандартная формула для pointy-top)
+// высота гекса на экране зависит ТОЛЬКО от r, поэтому r и есть широта: r=0 —
+// экватор, r=±радиус — полюс. Генерируется один раз при создании планеты тем
+// же потоком rng, что и остальные её параметры (см. makePlanet) —
+// переигрывать нечем, вся симуляция авторитетна на сервере (CLAUDE.md).
+//
+// Радиус сетки — не константа, а функция диаметра планеты (planetHexRadius):
+// малая — 2 (19 гексов), средняя — 3 (37), большая — 4 (61 гекс, гексагон
+// радиуса N: 3N²+3N+1). Спутники (радиус 1, 7 гексов) зарезервированы под
+// будущую механику — планеты пока их не получают, planetHexRadius для них
+// не вызывается.
+// planetHexRadius — радиус гекс-сетки по диаметру планеты. Диаметр —
+// уже существующая величина (planetDiameter), общий диапазон у твердотельных
+// типов (core/lava/rocky/ice — только они получают поверхность) 0.50–0.87
+// клети; сеточный радиус планеты — не отдельный случайный бросок, а прямая
+// функция ЭТОГО диаметра, иначе «большая по гексам» планета могла бы
+// оказаться визуально меньше «средней» на карте системы — рассинхрон между
+// экранами.
+//
+// Диапазон переводится в непрерывную шкалу размера 1–3 и округляется до
+// целого: границы округления (1.5 и 2.5) делят диапазон на 25%/50%/25%, то
+// есть средний размер — самый частый исход, малый и большой — реже, как и
+// ожидается от слов «малая/средняя/большая» (не поровну на трети).
+func planetHexRadius(diameter float64) int {
+	const dMin, dMax = 0.50, 0.87 // общий диапазон core..ice (planetDiameter)
+	frac := min(1, max(0, (diameter-dMin)/(dMax-dMin)))
+	size := 1 + 2*frac // 1..3
+	switch {
+	case size < 1.5:
+		return 2 // малая — 19 гексов
+	case size < 2.5:
+		return 3 // средняя — 37 гексов
+	default:
+		return 4 // большая — 61 гекс
+	}
+}
+
+// SurfaceHex — один гекс карты поверхности.
+type SurfaceHex struct {
+	Q      int    `json:"q"`
+	R      int    `json:"r"`
+	Type   string `json:"type"`             // water|icecap|mountains|hills|wasteland|steppe|desert|forest|jungle
+	Crater bool   `json:"crater,omitempty"` // безатмосферные миры — кратеры на суше (нечем сгорать метеоритам)
+
+	// res — концентрация ресурсов ЭТОГО гекса (см. distributeHexResources).
+	// Строчная буква — НЕ экспортируется и потому НИКОГДА не попадает в
+	// JSON (ни через этот тип, ни через `Planet.Surface` в общем
+	// `/api/galaxy`, который опрашивается раз в секунду для ВСЕГО сектора):
+	// 15 ресурсов × до 61 гекса × сотни планет раздуло бы этот ответ на
+	// мегабайты за тик. Наружу отдаётся отдельным лёгким эндпоинтом только
+	// для ОДНОЙ конкретной планеты — см. handlePlanetSurface в main.go и
+	// SurfaceHexDetail ниже.
+	res map[string]int
+}
+
+// addRes — прибавляет к гексу концентрацию ресурса (равномерный фон и
+// месторождение могут лечь на один и тот же гекс, поэтому «прибавить», а не
+// «установить»).
+func (h *SurfaceHex) addRes(key string, val int) {
+	if val <= 0 {
+		return
+	}
+	if h.res == nil {
+		h.res = make(map[string]int, 4)
+	}
+	h.res[key] += val
+}
+
+// SurfaceHexDetail — ТО ЖЕ самое, что SurfaceHex, но с ресурсами наружу.
+// Отдельный экспортируемый тип, а не просто «убрать строчную букву» у
+// SurfaceHex.res: если сделать res обычным полем Planet.Surface, оно утечёт
+// в общий /api/galaxy вместе со всем остальным составом планеты — весь смысл
+// отдельного эндпоинта в том, чтобы структура ответа ФИЗИЧЕСКИ не могла
+// содержать лишнего, а не полагаться на то, что где-то не забудут omitempty.
+type SurfaceHexDetail struct {
+	Q         int            `json:"q"`
+	R         int            `json:"r"`
+	Type      string         `json:"type"`
+	Crater    bool           `json:"crater,omitempty"`
+	Res       map[string]int `json:"res,omitempty"`
+	Connected bool           `json:"connected"` // подключён ли гекс к транспортной сети — см. connectedHexes, buildings.go
+}
+
+// generateSurface — тип каждого гекса по его широте (r) и характеристикам
+// планеты.
+//
+// Пустыня — не «привязана к экватору», а следствие ДВУХ причин, любой из
+// них достаточно: планета в среднем СУХАЯ ЦЕЛИКОМ (dryness>0.6 — тогда
+// пустыня доминирует везде, не только у экватора: иначе лавовая планета с
+// водой ~0% всё равно рисовалась бы наполовину «пустошью» без всякой
+// climatической причины) или конкретная точка ГОРЯЧАЯ и ЗАМЕТНО суше
+// среднего (heat>0.7 && dryness>0.4 — локальная жаркая пустыня на не
+// обязательно сухой планете, как Сахара на в целом влажной Земле).
+//
+// Пустошь/степь — раньше был один тип с двумя смыслами в названии;
+// разделены по признаку жизни, без неоднозначности: если на планете есть
+// жизнь (`life`) и атмосфера, незанятая лесом/джунглями/пустыней суша —
+// «степь» (трава, а не голая земля); если жизни нет (или нет атмосферы —
+// открытая биосфера невозможна) — «пустошь». Пустошь никогда не появляется
+// НА ЖИВОЙ атмосферной планете, и наоборот — это и есть однозначность.
+//
+// Горы/холмы — доля растёт вместе с тектонической активностью планеты
+// (`volcanic`), а не фиксированный процент на глаз: у по-настоящему
+// вулканического мира горы способны занять БОЛЬШУЮ часть поверхности
+// (замер по сектору: вулканизм в среднем 6–33 по типам, у редких лавовых
+// планет — за 60 из 100), у спокойного — почти отсутствуют.
+//
+// Ледяная шапка — площадь у полюсов зависит от температуры планеты явно
+// (`icecapThreshold`), не только от общего сдвига пояса `heatBias`: у
+// холодной планеты шапка простирается почти до середины пути к экватору, у
+// жаркой — держится у самого полюса. Требует ненулевой гидросферы (лёд —
+// замёрзшая вода), но НЕ требует атмосферы — замёрзшие залежи в вечной тени
+// кратеров возможны и на безвоздушном теле (как на Меркурии/Луне), в
+// отличие от жидкой воды.
+//
+// heatBias сдвигает пояса (пустыня/джунгли/шапка) по планете ЦЕЛИКОМ —
+// жаркий мир «выталкивает» их ближе к полюсам, холодный «затягивает» ближе
+// к экватору, а не красит гекс на месте в изоляции — иначе широтный рисунок
+// был бы одинаковым что у мира-печки, что у мира-ледника. Леса/джунгли/
+// степь требуют жизни (`life`); вода/леса/джунгли/степь требуют атмосферы
+// (`pressure ≥ atmoThreshold`) — без неё нечем удерживать жидкую воду и
+// открытую биосферу, а сама поверхность — в кратерах. Газовые гиганты
+// твёрдой поверхности не имеют — nil.
+func generateSurface(rng *rand.Rand, pt string, water, temp, pressure, volcanic int, life bool, hexRadius int) []SurfaceHex {
+	if pt == "gas" {
+		return nil
+	}
+	const atmoThreshold = 12
+	hexRadiusF := float64(hexRadius)
+	wFrac := float64(water) / 100
+	hasAtmo := pressure >= atmoThreshold
+	tectonic := float64(volcanic) / 100
+	// -1 холодная планета целиком, 0 нейтрально, +1 жаркая — калибровка
+	// игровая, не физическая (та же оговорка, что у envRoll: направление
+	// честное, абсолютные цифры подогнаны под шкалу карты).
+	heatBias := min(1, max(-1, (float64(temp)-650)/900))
+	coldness := min(1, max(0, -heatBias))
+	// холодная планета — шапка простирается почти до половины пути к
+	// экватору (порог падает до 0.50); жаркая — держится у самого полюса
+	// (порог у потолка 0.85). Прямой ответ на «шапки должны зависеть от
+	// температуры», а не только на общий сдвиг пояса heatBias ниже.
+	icecapThreshold := 0.85 - coldness*0.35
+
+	hexCount := 3*hexRadius*hexRadius + 3*hexRadius + 1
+	hexes := make([]SurfaceHex, 0, hexCount)
+	for r := -hexRadius; r <= hexRadius; r++ {
+		qMin := max(-hexRadius, -hexRadius-r)
+		qMax := min(hexRadius, hexRadius-r)
+		for q := qMin; q <= qMax; q++ {
+			lat := math.Abs(float64(r)) / hexRadiusF // 0 экватор, 1 полюс
+			jitter := (rng.Float64() - 0.5) * 0.22
+			effLat := min(1, max(0, lat-heatBias*0.32+jitter))
+			heat := 1 - effLat // 0 у полюса, 1 у экватора — уже с учётом heatBias/джиттера
+
+			var typ string
+			crater := false
+
+			switch {
+			case pt == "core":
+				// Голое ядро — кора и атмосфера сожжены близостью звезды
+				// (planetTypeAt выше), никакой климатической/тектонической
+				// истории для рельефа не осталось. Почти сплошная пустошь в
+				// кратерах, редкие горы — ударный рельеф, а не тектоника.
+				// Осознанно без холмов/пустынь/степей/воды как отдельных
+				// зон: их разнообразие подразумевает климат, которого у
+				// голого ядра нет — иначе оно было бы неотличимо от обычной
+				// каменистой планеты с низким давлением.
+				if rng.Float64() < 0.08 {
+					typ = "mountains"
+				} else {
+					typ = "wasteland"
+				}
+				crater = true
+
+			case effLat > icecapThreshold && wFrac > 0.08:
+				typ = "icecap"
+				crater = !hasAtmo && rng.Float64() < 0.4
+
+			case hasAtmo && wFrac > 0.05 && rng.Float64() < wFrac*(1-effLat*0.6)*1.1:
+				typ = "water"
+
+			case rng.Float64() < 0.06+tectonic*0.6:
+				typ = "mountains"
+				crater = !hasAtmo && rng.Float64() < 0.5
+
+			case rng.Float64() < 0.09+tectonic*0.12:
+				typ = "hills"
+				crater = !hasAtmo && rng.Float64() < 0.35
+
+			default:
+				dryness := 1 - wFrac
+				switch {
+				// Джунгли/лес/степь — ПЕРВЫМИ, раньше пустыни, и шанс НЕ
+				// падает до нуля даже при скудной воде (плавучая база
+				// 0.14–0.18), только растёт вместе с ней. Раньше был жёсткий
+				// порог (wFrac>0.2 и т.п.) плюс проверка пустыни ПЕРЕД
+				// жизнью — вместе они гарантированно душили «джунглевый мир
+				// с маленьким океаном» (rocky теперь до 5% воды, см.
+				// waterRange выше): при низкой воде жизнь не успевала бы
+				// добраться до броска джунглей вообще. Теперь жизнь на
+				// скудной воде жмётся к немногим оазисам (~15–25% шанс), а
+				// не исчезает целиком — планета читается как «в основном
+				// пустыня, но местами настоящая зелень», а не бинарно.
+				case life && hasAtmo && heat > 0.5 && rng.Float64() < min(0.92, 0.18+wFrac*0.75):
+					typ = "jungle"
+				case life && hasAtmo && heat <= 0.4 && rng.Float64() < min(0.85, 0.14+wFrac*0.65):
+					typ = "forest"
+				case life && hasAtmo && rng.Float64() < min(0.75, 0.14+wFrac*0.55):
+					// жизнь есть, до леса/джунглей не дотянула — травянистая
+					// степь, а не голая пустошь.
+					typ = "steppe"
+				case dryness > 0.6:
+					// планета в среднем сухая ЦЕЛИКОМ (и не набрала зелени
+					// выше) — пустыня доминирует везде, не только у экватора
+					typ = "desert"
+					crater = !hasAtmo && rng.Float64() < 0.5
+				case heat > 0.7 && dryness > 0.4:
+					// не обязательно сухая планета, но здесь жарко и заметно
+					// суше среднего, а зелень выше не подошла — локальная
+					// пустыня (Сахара на в целом влажной Земле)
+					typ = "desert"
+					crater = !hasAtmo && rng.Float64() < 0.5
+				default:
+					typ = "wasteland"
+					crater = !hasAtmo && rng.Float64() < 0.4
+				}
+			}
+
+			hexes = append(hexes, SurfaceHex{Q: q, R: r, Type: typ, Crater: crater})
+		}
+	}
+	return hexes
+}
+
+// ── распределение ресурсов планеты по гексам ────────────────────────────────
+//
+// Planet.Res — концентрация ресурса НА ВСЮ ПЛАНЕТУ (0–10000 у.е., см.
+// resourceDefs). Экономика (ТЗ по добыче) требует концентрацию НА ГЕКС: одна
+// шахта занимает гекс и добывает ровно его долю, добыча суммируется, застроив
+// все гексы — добыча выходит на планетарный потолок (общую концентрацию).
+//
+// Модель для каждого ресурса — одна из двух:
+//  1. «фон + месторождения»: uniformFrac планетарного запаса размазана по
+//     ВСЕМ гексам (±35% шум на гекс), остаток — в numDeposits «богатых»
+//     точках со случайным (экспоненциальным — часть месторождений заметно
+//     богаче других, не поровну) разбросом. Металлы/руды/радиоактивные —
+//     сильно в сторону месторождений (низкий uniformFrac) и тяготеют к
+//     горам/холмам (геологическая интуиция: жилы в твёрдой породе, а не в
+//     осадочных равнинах) — это и даёт смысл сканеру из ТЗ по экономике:
+//     «исследовать планету для выявления участков с наивысшей
+//     концентрацией» бессмысленно, если всё размазано ровно. Газы —
+//     наоборот, ближе к равномерному фону (атмосфера/подпочва пронизывает
+//     планету целиком), без тяготения к горам.
+//  2. «привязка к биому»: водяной лёд и все 4 биогенных ресурса физически
+//     привязаны к тому, ЧТО за гекс — вода/лёд лежат на гексах типа
+//     вода/ледяная шапка, биомасса гуще в джунглях/лесах и т.д. Прямое
+//     продолжение bioSurfFactor из архива (§43 OUROBOROS_design.md,
+//     archive/docs), адаптированное на 8 (теперь 9) типов поверхности этой
+//     версии вместо старых 7 категорий v1.
+func distributeHexResources(rng *rand.Rand, hexes []SurfaceHex, res map[string]int) {
+	if len(hexes) == 0 {
+		return
+	}
+	for _, rd := range resourceDefs {
+		total := res[rd.Key]
+		if total <= 0 {
+			continue
+		}
+		switch {
+		case rd.Key == "waterIce" || rd.Cat == catBio:
+			distributeBiomeCorrelated(hexes, rd.Key, total)
+		case rd.Cat == catMetals:
+			distributeUniformDeposits(rng, hexes, rd.Key, total, 0.20, 4, true)
+		case rd.Cat == catNuclear:
+			distributeUniformDeposits(rng, hexes, rd.Key, total, 0.15, 3, true)
+		case rd.Cat == catFuel:
+			distributeUniformDeposits(rng, hexes, rd.Key, total, 0.65, 2, false)
+		case rd.Cat == catGas:
+			distributeUniformDeposits(rng, hexes, rd.Key, total, 0.45, 3, false)
+		default: // catBase не-водяное (силикаты, железо) — крустальный материал,
+			// заметно чаще в горах/холмах, но не так экстремально, как руды
+			distributeUniformDeposits(rng, hexes, rd.Key, total, 0.55, 3, true)
+		}
+	}
+}
+
+// distributeUniformDeposits — фон (uniformFrac × total, по всем гексам с
+// шумом) + numDeposits месторождений (остаток, неравномерно между собой).
+// preferMountain — месторождения втрое чаще ложатся на горы/холмы, если они
+// есть на планете, но не эксклюзивно (иначе безгористая планета не могла бы
+// иметь ни одного месторождения металлов вовсе).
+func distributeUniformDeposits(rng *rand.Rand, hexes []SurfaceHex, key string, total int, uniformFrac float64, numDeposits int, preferMountain bool) {
+	n := len(hexes)
+	uniformPool := float64(total) * uniformFrac
+	depositPool := float64(total) - uniformPool
+
+	shares := make([]float64, n)
+	sum := 0.0
+	for i := range shares {
+		shares[i] = 0.65 + rng.Float64()*0.7 // 0.65..1.35 — фон не идеально ровный
+		sum += shares[i]
+	}
+	for i := range hexes {
+		hexes[i].addRes(key, int(math.Round(uniformPool*shares[i]/sum)))
+	}
+
+	if numDeposits <= 0 || depositPool <= 0 {
+		return
+	}
+	weights := make([]float64, numDeposits)
+	wsum := 0.0
+	for i := range weights {
+		weights[i] = -math.Log(rng.Float64() + 1e-9) // экспоненциальный шум — месторождения не поровну
+		wsum += weights[i]
+	}
+	used := make(map[int]bool, numDeposits)
+	for i := 0; i < numDeposits; i++ {
+		idx := pickWeightedHex(rng, hexes, preferMountain, used)
+		if idx < 0 {
+			break
+		}
+		used[idx] = true
+		hexes[idx].addRes(key, int(math.Round(depositPool*weights[i]/wsum)))
+	}
+}
+
+// pickWeightedHex — случайный гекс, ещё не занятый под месторождение ЭТОГО
+// ресурса; при preferMountain горы/холмы втрое вероятнее.
+func pickWeightedHex(rng *rand.Rand, hexes []SurfaceHex, preferMountain bool, used map[int]bool) int {
+	weights := make([]float64, len(hexes))
+	sum := 0.0
+	for i, h := range hexes {
+		if used[i] {
+			continue
+		}
+		w := 1.0
+		if preferMountain && (h.Type == "mountains" || h.Type == "hills") {
+			w = 3.0
+		}
+		weights[i] = w
+		sum += w
+	}
+	if sum <= 0 {
+		return -1
+	}
+	x := rng.Float64() * sum
+	for i, w := range weights {
+		x -= w
+		if x <= 0 && w > 0 {
+			return i
+		}
+	}
+	for i := len(hexes) - 1; i >= 0; i-- {
+		if !used[i] {
+			return i
+		}
+	}
+	return -1
+}
+
+// distributeBiomeCorrelated — весь запас размазан пропорционально «весу»
+// биома гекса (hexBioWeight), а не случайно: физически осмысленнее, чем
+// равномерный фон + месторождения — вода лежит там, где гекс типа «вода»,
+// а не где повезло броску.
+func distributeBiomeCorrelated(hexes []SurfaceHex, key string, total int) {
+	n := len(hexes)
+	weights := make([]float64, n)
+	sum := 0.0
+	for i, h := range hexes {
+		weights[i] = hexBioWeight(key, h.Type)
+		sum += weights[i]
+	}
+	if sum <= 0 {
+		return
+	}
+	for i := range hexes {
+		hexes[i].addRes(key, int(math.Round(float64(total)*weights[i]/sum)))
+	}
+}
+
+// hexBioWeight — во сколько раз гекс данного типа богаче среднего для
+// конкретного ресурса. Адаптация bioSurfFactor из архива (§43
+// OUROBOROS_design.md): «biomass: forests×2.5+plains», «phosphates:
+// sea×1.8+plains×0.4», «carbonates: sea+plains+tundra», «bitumens:
+// plains+sea×0.5+mountains×0.3» — перенесено на 9 типов этой версии вместо
+// исходных 7 (моря→вода, тундра/равнины→степь/пустошь).
+func hexBioWeight(key, hexType string) float64 {
+	switch key {
+	case "waterIce":
+		switch hexType {
+		case "icecap":
+			return 3.0
+		case "water":
+			return 1.0
+		default:
+			return 0.05 // тонкий след вечной мерзлоты даже вдали от полюсов
+		}
+	case "biomass":
+		switch hexType {
+		case "jungle":
+			return 2.5
+		case "forest":
+			return 2.0
+		case "steppe":
+			return 1.2
+		case "water":
+			return 0.5
+		default:
+			return 0.05
+		}
+	case "phosphates":
+		switch hexType {
+		case "water":
+			return 1.8
+		case "jungle":
+			return 1.0
+		case "steppe":
+			return 0.8
+		default:
+			return 0.1
+		}
+	case "carbonates":
+		switch hexType {
+		case "water":
+			return 1.5
+		case "steppe":
+			return 1.0
+		case "wasteland":
+			return 0.6
+		default:
+			return 0.3
+		}
+	case "bitumens":
+		switch hexType {
+		case "wasteland":
+			return 1.2
+		case "water":
+			return 0.8
+		case "mountains":
+			return 0.5
+		default:
+			return 0.2
+		}
+	}
+	return 1.0
 }
 
 // ── орбитальное движение планет (третий закон Кеплера) ─────────────────────
@@ -634,33 +1104,17 @@ func generatePlanets(rng *rand.Rand, starType string, starR, starMassSolar float
 	return planets, sysR
 }
 
-func makePlanet(rng *rand.Rand, starType string, starR, orbit, sysR float64, idx int, starWealth, starMassSolar float64) Planet {
-	pt := planetTypeAt(starType, orbit, sysR)
-	dr := planetDiameter[pt]
-	wr := waterRange[pt]
-
+// generatePlanetResources — цикл по resourceDefs: база × редкость ×
+// звёздные/секторные множители × логнормальный разброс, с биологическими
+// гейтами (alive/hasBiosphereTrace) и особыми случаями (гелий-3, водяной
+// лёд). Вынесено из makePlanet отдельно, чтобы тем же путём пересчитывать
+// ресурсы уже существующей планеты при принудительной обитаемости (см.
+// recomputeAsHabitable), а не дублировать формулу.
+func generatePlanetResources(rng *rand.Rand, starType, pt string, starR, orbitNorm, orbitFrac, zoneMult, starWealth, hydro float64, alive, hasBiosphereTrace bool) map[string]int {
 	sm, ok := starMod[starType]
 	if !ok {
 		sm = starMod["yellow"]
 	}
-
-	// нормированное положение орбиты внутри системы — для бонуса гелия-3 и
-	// для непрерывного градиента orbitMod
-	orbitNorm := math.Min(1, orbit/systemRadiusMax)
-	orbitFrac := math.Min(1, orbit/sysR)
-	zoneMult := zoneScarcity(zoneOfR(starR))
-
-	// гидросфера — раньше воды и жизни, она нужна внутри цикла ресурсов
-	// (множитель к водяному льду, вход в оба броска жизни)
-	water := int(math.Round(wr[0] + rng.Float64()*(wr[1]-wr[0])))
-	hydro := float64(water) / 100
-
-	// жизнь — один раз до цикла ресурсов: alive гейтит biomass/phosphates,
-	// alive||extinct гейтит carbonates/bitumens (см. комментарий у rollLife)
-	alive := rollLife(rng, pt, water)
-	extinct := !alive && rollExtinctLife(rng, pt, water)
-	hasBiosphereTrace := alive || extinct
-
 	res := make(map[string]int, len(resourceDefs))
 	for _, rd := range resourceDefs {
 		base := rd.Base[pt]
@@ -694,6 +1148,32 @@ func makePlanet(rng *rand.Rand, starType string, starR, orbit, sysR float64, idx
 		}
 		res[rd.Key] = clampRes(v)
 	}
+	return res
+}
+
+func makePlanet(rng *rand.Rand, starType string, starR, orbit, sysR float64, idx int, starWealth, starMassSolar float64) Planet {
+	pt := planetTypeAt(starType, orbit, sysR)
+	dr := planetDiameter[pt]
+	wr := waterRange[pt]
+
+	// нормированное положение орбиты внутри системы — для бонуса гелия-3 и
+	// для непрерывного градиента orbitMod
+	orbitNorm := math.Min(1, orbit/systemRadiusMax)
+	orbitFrac := math.Min(1, orbit/sysR)
+	zoneMult := zoneScarcity(zoneOfR(starR))
+
+	// гидросфера — раньше воды и жизни, она нужна внутри цикла ресурсов
+	// (множитель к водяному льду, вход в оба броска жизни)
+	water := int(math.Round(wr[0] + rng.Float64()*(wr[1]-wr[0])))
+	hydro := float64(water) / 100
+
+	// жизнь — один раз до цикла ресурсов: alive гейтит biomass/phosphates,
+	// alive||extinct гейтит carbonates/bitumens (см. комментарий у rollLife)
+	alive := rollLife(rng, pt, water)
+	extinct := !alive && rollExtinctLife(rng, pt, water)
+	hasBiosphereTrace := alive || extinct
+
+	res := generatePlanetResources(rng, starType, pt, starR, orbitNorm, orbitFrac, zoneMult, starWealth, hydro, alive, hasBiosphereTrace)
 
 	owner := "none"
 	if rng.Float64() >= 0.55 {
@@ -702,6 +1182,11 @@ func makePlanet(rng *rand.Rand, starType string, starR, orbit, sysR float64, idx
 
 	diameter := math.Round((dr[0]+rng.Float64()*(dr[1]-dr[0]))*100) / 100
 	temp, pressure, volcanic, radiation, toxicity := envRoll(rng, starType, pt, orbit, diameter, dr, res)
+	hexRadius := planetHexRadius(diameter)
+	applyHexSizeMult(res, hexRadius)
+
+	surface := generateSurface(rng, pt, water, temp, pressure, volcanic, alive, hexRadius)
+	distributeHexResources(rng, surface, res)
 
 	return Planet{
 		Index:       idx,
@@ -719,7 +1204,67 @@ func makePlanet(rng *rand.Rand, starType string, starR, orbit, sysR float64, idx
 		Volcanic:    volcanic,
 		Radiation:   radiation,
 		Toxicity:    toxicity,
+		Surface:     surface,
 	}
+}
+
+// applyHexSizeMult — компенсация размытия концентрации на больших планетах.
+// Без поправки у большой планеты (61 гекс) на гекс приходится в среднем на
+// ~30% МЕНЬШЕ ресурса, чем у средней (37) при одном и том же суммарном
+// запасе — тот же Res делится на в 1,65 раза больше гексов. Компенсируем
+// ЧАСТИЧНО (корнем от отношения числа гексов к среднему 37, не линейно):
+// большая планета получает +28% к общему запасу, малая (19) — −28%.
+// Частичная, а не полная компенсация — размер планеты остаётся значимым
+// решением (большая требует больше шахт, чтобы выйти на тот же выход с
+// гектара, но даёт больший потолок), а не становится косметикой поверх
+// одинаковой плотности везде.
+func applyHexSizeMult(res map[string]int, hexRadius int) {
+	sizeMult := math.Sqrt(float64(3*hexRadius*hexRadius+3*hexRadius+1) / 37)
+	for k, v := range res {
+		res[k] = clampRes(float64(v) * sizeMult)
+	}
+}
+
+// recomputeAsHabitable — принудительно делает планету обитаемой «по
+// ресурсам»: не просто выставляет Life=true, а честно перегоняет её через
+// тот же конвейер генерации (ресурсы → поверхность → ресурсы по гексам),
+// которым прошла бы органически возникшая живая планета. Используется для
+// столичной планеты каждой из 4 стабильных систем (ТЗ_UI.md §5.2/CLAUDE.md,
+// forceHabitableCapitals в main.go) — игроку нужен гарантированно живой мир
+// для старта, а не рулетка rollLife.
+//
+// rng — ОТДЕЛЬНЫЙ детерминированный поток (не общий поток генерации сектора):
+// если использовать общий rng.Sim, порядок вызовов сместил бы все последующие
+// броски и сектор перестал бы быть воспроизводимым по сиду при добавлении
+// этой функции. starR/sysR — из звезды-владельца (Object.R/Object.SystemRadius),
+// на самой Planet эти параметры генерации не хранятся.
+//
+// envRoll НЕ перевызывается: температура/давление/вулканизм/радиация/
+// токсичность зависят от типа/размера/уже готовых res[volcanicGases]/
+// res[radioactives] — эти входы либо не меняются вовсе (Type/Diameter), либо
+// меняются только у биогенных ресурсов (не volcanicGases/radioactives),
+// поэтому пересчитывать нечего.
+func recomputeAsHabitable(rng *rand.Rand, p *Planet, starType string, starR, sysR float64) {
+	wr := waterRange[p.Type]
+	midWater := int(math.Round((wr[0] + wr[1]) / 2))
+	if p.Water < midWater {
+		p.Water = midWater // не портим уже хорошую воду, только подтягиваем скудную
+	}
+	p.Life = true
+	hydro := float64(p.Water) / 100
+
+	orbitNorm := math.Min(1, p.Orbit/systemRadiusMax)
+	orbitFrac := math.Min(1, p.Orbit/sysR)
+	zoneMult := zoneScarcity(zoneOfR(starR))
+	starWealth := rollStarWealth(rng) // свой бросок той же формулой — starWealth планеты нигде не хранится, используется только на лету при генерации
+
+	p.Res = generatePlanetResources(rng, starType, p.Type, starR, orbitNorm, orbitFrac, zoneMult, starWealth, hydro, true, true)
+
+	hexRadius := planetHexRadius(p.Diameter)
+	applyHexSizeMult(p.Res, hexRadius)
+
+	p.Surface = generateSurface(rng, p.Type, p.Water, p.Temperature, p.Pressure, p.Volcanic, true, hexRadius)
+	distributeHexResources(rng, p.Surface, p.Res)
 }
 
 // ── условия среды: температура, давление атмосферы, вулканическая

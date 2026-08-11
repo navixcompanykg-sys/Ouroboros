@@ -847,13 +847,10 @@ document.getElementById('bb-fly').onclick = async ()=>{
   if(selectedObject.type !== 'star'){ toast('Целью полёта может быть только звезда или планета — не туманность/астероид/ЧД'); return; }
   const name = selectedObject.stable ? FACTIONS[selectedObject.faction].name : `${STAR_NAMES[selectedObject.starType]} #${selectedObject.id}`;
   try{
-    const data = await World.navigate('star', selectedObject.id);
-    if(data.transit){
-      const eta = Math.max(0, (new Date(data.transit.arriveAt) - new Date(data.transit.departedAt))/1000);
-      toast(`${viewed ? viewed.name : 'Флот'} → курс на «${name}»\n${data.transit.mode==='interstellar'?'межзвёздный перелёт':'полёт внутри системы'}, ETA ~${eta.toFixed(0)} с`);
-    } else {
-      toast(`${viewed ? viewed.name : 'Флот'} уже в системе «${name}»`);
-    }
+    await World.navigate('star', selectedObject.id);
+    // Полёт наблюдают с HUD корабля (ТЗ_UI.md §2), не с карты сектора —
+    // курс проложен, сразу туда.
+    location.href = 'ship.html';
   }catch(e){ toast('Не удалось проложить курс: ' + e.message); }
 };
 World.subscribe(renderFleetLists);
@@ -877,7 +874,10 @@ const COLONIES = [
 
 document.getElementById('btn-back').onclick = ()=>toast('Главное меню (заглушка)');
 document.getElementById('btn-own-sector').onclick = ()=>toast('Карта своего сектора (заглушка) — переключение зума на локальный участок');
-document.getElementById('bb-back').onclick = ()=>{ location.href = 'ship.html'; };
+document.getElementById('bb-back').onclick = ()=>{
+  const ship = World.state.ship;
+  location.href = (ship && ship.landed) ? 'planet.html' : 'ship.html';
+};
 
 // ══════════════════════════════════════════════════════════════════════════
 // Маркер корабля на карте сектора.
