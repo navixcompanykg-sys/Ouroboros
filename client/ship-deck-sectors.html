@@ -1,0 +1,742 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Уроборос — сектора обстрела палуб (вспомогательный файл)</title>
+<style>
+  :root{
+    --bg:#04060f; --panel-bg:rgba(6,12,28,0.92); --border:rgba(60,130,200,0.18);
+    --accent:#2a7fff; --accent2:#00e5ff; --text:#8baac8; --text-bright:#cce4ff;
+    --mono:'Share Tech Mono',monospace; --sans:'Rajdhani',sans-serif;
+    --gold:#ffcf6b; --ok:#44cc88; --err:#ff5544; --warn:#ff8060;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);padding:16px;}
+  h1{font-family:var(--mono);font-size:14px;color:var(--text-bright);letter-spacing:1px;margin:0 0 6px;}
+  .note{font-family:var(--mono);font-size:10.5px;color:var(--text);opacity:.75;line-height:1.6;
+    border:1px dashed var(--border);padding:8px 10px;margin-bottom:14px;max-width:640px;}
+  .note b{color:var(--gold);font-weight:400;}
+  #sector-legend{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;max-width:900px;}
+  .legend-item{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9px;
+    color:var(--text-bright);border:1px solid var(--border);background:var(--panel-bg);padding:4px 7px;}
+  .legend-item b{color:var(--accent2);font-weight:400;}
+  .legend-item.citadel{border-color:var(--err);}
+  .legend-item.citadel b{color:var(--err);}
+  #toolbar{display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap;}
+  #export-btn{font-family:var(--mono);font-size:11px;letter-spacing:.5px;padding:8px 14px;
+    border:1.2px solid var(--ok);color:var(--ok);background:rgba(68,204,136,0.08);cursor:pointer;}
+  #export-btn:active{background:rgba(68,204,136,0.18);}
+  #storage-status{font-family:var(--mono);font-size:8.5px;color:var(--text);opacity:.6;}
+  #add-ship-btn{font-family:var(--mono);font-size:11px;letter-spacing:.5px;padding:8px 14px;
+    border:1.2px solid var(--gold);color:var(--gold);background:rgba(255,207,107,0.08);cursor:pointer;}
+  #add-ship-btn:active{background:rgba(255,207,107,0.18);}
+  #export-output{width:100%;max-width:900px;height:90px;background:rgba(0,0,0,0.4);color:var(--text);
+    font-family:var(--mono);font-size:9px;border:1px solid var(--border);padding:6px;display:none;}
+  #export-output.show{display:block;}
+
+  #ships{display:flex;flex-wrap:wrap;gap:22px;}
+  .ship-block{border:1px solid var(--border);background:var(--panel-bg);padding:10px;width:300px;}
+  .ship-name-row{display:flex;align-items:center;gap:6px;margin-bottom:8px;}
+  .ship-index{font-family:var(--mono);font-size:9px;color:var(--accent2);flex-shrink:0;}
+  .ship-name{flex:1;background:rgba(0,0,0,0.4);border:1px solid var(--border);color:var(--text-bright);
+    font-family:var(--mono);font-size:10px;padding:5px 6px;}
+  .ship-name:focus{outline:none;border-color:var(--accent2);}
+
+  .grid-wrap{position:relative;margin:0 auto;}
+  .sector-circle{position:absolute;left:0;top:0;border-radius:50%;
+    background-color:rgba(42,127,255,0.07);
+    background-image:repeating-conic-gradient(rgba(0,229,255,0.30) 0deg 1.3deg, transparent 1.3deg 60deg);}
+  .deck-grid{position:absolute;display:grid;gap:1px;background:rgba(60,130,200,0.35);
+    border:1px solid rgba(60,130,200,0.5);}
+  .deck-cell{background:rgba(6,12,28,0.15);display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:6.5px;color:var(--text-bright);opacity:.3;cursor:pointer;
+    user-select:none;}
+  .deck-cell:hover{opacity:.6;}
+  .deck-cell.built{background:rgba(6,12,28,0.75);opacity:1;border:1px solid rgba(0,229,255,0.4);}
+  .deck-cell.built:hover{opacity:.85;}
+  .deck-cell.citadel{border:1px solid var(--err);}
+  .deck-cell.citadel.built{background:rgba(255,85,68,0.35);color:var(--text-bright);font-weight:600;}
+  .bow-marker{position:absolute;right:-2px;top:50%;transform:translate(100%,-50%);
+    font-family:var(--mono);font-size:8px;color:var(--warn);letter-spacing:.5px;white-space:nowrap;}
+  .block-toolbar{display:flex;gap:6px;margin-top:8px;}
+  .block-btn{flex:1;text-align:center;font-family:var(--mono);font-size:8px;letter-spacing:.5px;
+    padding:5px 2px;border:1px solid var(--border);color:var(--text);cursor:pointer;background:transparent;}
+  .block-btn:hover{border-color:var(--accent2);color:var(--accent2);}
+  .deck-count{font-family:var(--mono);font-size:8px;color:var(--text);opacity:.7;margin-top:6px;text-align:center;}
+  .sector-stats{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
+  .ss-item{flex:1;min-width:40%;font-family:var(--mono);font-size:10.5px;color:var(--text-bright);
+    border:1px solid var(--border);padding:4px 5px;text-align:center;}
+  .ss-item b{color:var(--accent2);font-weight:400;margin-right:3px;}
+  .configure-btn{width:100%;margin-top:6px;text-align:center;font-family:var(--mono);font-size:9px;
+    letter-spacing:.5px;padding:7px 4px;border:1.2px solid var(--gold);color:var(--gold);cursor:pointer;
+    background:rgba(255,207,107,0.08);}
+  .configure-btn:hover{background:rgba(255,207,107,0.18);}
+
+  #module-modal-overlay{position:fixed;inset:0;background:rgba(4,6,15,0.88);z-index:100;
+    display:none;align-items:center;justify-content:center;padding:16px;}
+  #module-modal-overlay.show{display:flex;}
+  #module-modal{width:100%;max-width:560px;max-height:88vh;overflow-y:auto;background:var(--panel-bg);
+    border:1.5px solid var(--gold);padding:16px;}
+  #module-modal-title{font-family:var(--sans);font-weight:600;font-size:14px;color:var(--text-bright);
+    margin-bottom:2px;}
+  #module-modal-class{font-family:var(--mono);font-size:9px;color:var(--accent2);margin-bottom:6px;}
+  #module-modal-stats{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;margin-bottom:4px;
+    font-family:var(--mono);font-size:9px;color:var(--text);border:1px solid var(--border);padding:6px 8px;}
+  #module-modal-stats b{color:var(--text-bright);font-weight:400;}
+  #module-modal-stats-note{font-family:var(--mono);font-size:7px;color:var(--warn);opacity:.8;
+    margin-bottom:10px;}
+  #module-modal-components{max-height:110px;overflow-y:auto;margin-bottom:10px;border:1px solid var(--border);
+    padding:5px 8px;}
+  #module-modal-components-title{font-family:var(--mono);font-size:8px;color:var(--text);opacity:.6;
+    letter-spacing:.5px;margin-bottom:3px;}
+  .mmc-row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:8px;
+    color:var(--text-bright);padding:1.5px 0;}
+  #module-modal-total{font-family:var(--mono);font-size:11px;color:var(--gold);margin-bottom:10px;
+    letter-spacing:.5px;}
+  .mm-slots select{display:block;width:100%;margin-bottom:3px;}
+  .mm-slots select:last-child{margin-bottom:0;}
+  .mm-locked{display:block;width:100%;margin-bottom:3px;background:rgba(255,207,107,0.1);
+    border:1px solid var(--gold);color:var(--gold);font-family:var(--mono);font-size:8px;
+    padding:4px;text-align:center;}
+  #module-modal-table{width:100%;border-collapse:collapse;margin-bottom:12px;}
+  #module-modal-table th{font-family:var(--mono);font-size:8px;color:var(--text);opacity:.7;
+    text-align:left;padding:4px 6px;border-bottom:1px solid var(--border);}
+  #module-modal-table td{font-family:var(--mono);font-size:9px;color:var(--text-bright);
+    padding:4px 6px;border-bottom:1px solid var(--border);}
+  #module-modal-table select{width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border);
+    color:var(--text-bright);font-family:var(--mono);font-size:9px;padding:4px;}
+  #module-modal-table .mm-price{font-family:var(--mono);font-size:8px;color:var(--text);opacity:.75;
+    white-space:nowrap;}
+  #module-modal-empty{font-family:var(--mono);font-size:10px;color:var(--warn);margin-bottom:12px;}
+  #module-modal-close{width:100%;text-align:center;font-family:var(--mono);font-size:10px;
+    letter-spacing:.5px;padding:8px;border:1.2px solid var(--ok);color:var(--ok);cursor:pointer;}
+  #module-modal-close:hover{background:rgba(68,204,136,0.14);}
+</style>
+</head>
+<body>
+
+<h1>СЕКТОРА ОБСТРЕЛА ПАЛУБ — вспомогательный файл</h1>
+<div class="note">
+  Допущения (поправьте, если не так): сетка каждого корабля — <b>5 строк × 7 столбцов</b> (35 палуб),
+  каждая палуба визуально 1×2 (высота×ширина). Нос корабля — <b>справа</b> (последний столбец).
+  Круг — полупрозрачный, снизу, декоративный фон-ориентир (6 лучей через 60°). Сама привязка «палуба →
+  сектор» — <b>не формула по углу, а ручная таблица</b> (MANUAL_SECTOR_ROWS), заданная построчно один в
+  один по присланной раскладке (0-5 — 6 секторов бортов/носа/кормы, растут <b>по часовой стрелке</b> от
+  направления на нос). <b>Отдельный, 7-й сектор (6) — центральная палуба</b> (клетка «Ц» в раскладке):
+  её поражение — уничтожение корабля; попадание по ней возможно только если с угла обстрела (данного
+  сектора) не осталось других целых палуб — выделена на схеме красным. Названия секторов — в легенде ниже.
+  Стартовые 20 карточек ниже — не предел, кнопкой «+ ДОБАВИТЬ КОРАБЛЬ» дописывайте сколько нужно
+  (библиотека кораблей для ИИ). Впишите название, кликом по клетке отметьте занятые палубы (клик снова — стереть),
+  кнопкой «Настроить модули» откройте таблицу и назначьте модуль на каждую занятую палубу — цена и масса
+  живые, из /api/economy (те же данные, что в конструкторе на планете). Крейсер/Баржа — 6 палуб (24
+  модуля), Линкор/Лайнер — 12 (36), Дредноут/Танкер — 22 (44). Центральная палуба всегда получает СОЖ +
+  Радар первыми слотами (не редактируются). Двигатель можно поставить в слот, если среди уже построенных
+  палуб левее (той же строки, ближе к корме) нет ни одной, кроме целиком заполненных двигателями —
+  непостроенные клетки в счёт не идут (если левее вообще ничего не построено, ставить можно), а вот
+  построенная-но-не-двигательная палуба блокирует опцию в списке. Под каждой схемой — сводка по секторам (ПП — суммарная прочность палуб сектора, ОМ —
+  число орудийных модулей, ЗП — число модулей защитного поля; центральная палуба в эту сводку не входит).
+  В окне настройки модулей — масса/прочность/энергетика/список компонентов/итоговая цена всей сборки.
+</div>
+
+<div id="sector-legend"></div>
+
+<div id="toolbar">
+  <button id="add-ship-btn">+ ДОБАВИТЬ КОРАБЛЬ</button>
+  <button id="export-btn">Экспорт JSON (имена + палуба→сектор+модуль)</button>
+  <span id="storage-status">—</span>
+</div>
+<textarea id="export-output" readonly></textarea>
+
+<div id="ships"></div>
+
+<div id="module-modal-overlay">
+  <div id="module-modal">
+    <div id="module-modal-title">—</div>
+    <div id="module-modal-class">—</div>
+    <div id="module-modal-stats"></div>
+    <div id="module-modal-stats-note">* Энергетика — условная оценка, формул для неё нет в ТЗ_Корабль.md (как ускорение/огневая мощь на планете).</div>
+    <div id="module-modal-components">
+      <div id="module-modal-components-title">КОМПОНЕНТЫ ДЛЯ СБОРКИ (ТУ1-3, готовые, не сырьё)</div>
+      <div id="module-modal-components-body"></div>
+    </div>
+    <div id="module-modal-total">—</div>
+    <div id="module-modal-empty" style="display:none;">Нет занятых палуб — сперва отметьте клетки на схеме кликом.</div>
+    <table id="module-modal-table"><thead><tr>
+      <th>Палуба</th><th>Сектор</th><th>Модуль</th><th>Цена/масса</th>
+    </tr></thead><tbody></tbody></table>
+    <div id="module-modal-close">ЗАКРЫТЬ</div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const ROWS = 5, COLS = 7, CELLW = 34, CELLH = 17, SHIP_COUNT = 20, SECTOR_STEP_DEG = 60;
+const gridW = COLS * CELLW, gridH = ROWS * CELLH;
+const radius = Math.sqrt((gridW/2)**2 + (gridH/2)**2);
+const outer = Math.ceil(radius * 2);
+// Индекс сектора центральной палубы (цитадели) — последний, 7-й по счёту (6):
+// 6 угловых секторов (0-5) + цитадель. Сама позиция клетки задаётся 'Ц' в
+// MANUAL_SECTOR_ROWS ниже, не вычисляется отдельно.
+const CITADEL_SECTOR = 6;
+
+// Названия секторов (0°=нос, дальше по часовой стрелке — см. .note выше).
+// Сектор 6 — не угловой, это единая центральная палуба (цитадель).
+const SECTOR_NAMES = [
+  'Нос',
+  'Правый борт (носовой)',
+  'Правый борт (кормовой)',
+  'Корма',
+  'Левый борт (кормовой)',
+  'Левый борт (носовой)',
+  'Центральная палуба (цитадель)',
+];
+
+// Привязка «палуба → сектор» задана вручную, построчно (не формулой от угла —
+// прямое указание пользователя: «жёстко привязав»). Первый символ строки —
+// col0 (у кормы, слева), последний — col6 (у носа, справа), 'Ц' — центральная
+// палуба (цитадель). Ряды 4 и 5 приведены к точной зеркальной симметрии
+// относительно ряда 3 (зеркало рядов 2 и 1: сектор 4↔2, 5↔1, 3/0/Ц — на оси,
+// не меняются) — раньше была небольшая асимметрия, поправлено по просьбе
+// пользователя:
+//   1 (3445550) 2 (3345500) 3 (333Ц000) 4 (3321100) 5 (3221110)
+const MANUAL_SECTOR_ROWS = [
+  '3445550',
+  '3345500',
+  '333Ц000',
+  '3321100',
+  '3221110',
+];
+
+// Жёсткая привязка «палуба (row,col) → сектор» — фиксированная таблица
+// данных, а не формула, пересчитываемая на лету от геометрии/пикселей.
+// Сетка одинаковая для всех карточек, поэтому таблица общая.
+const DECK_SECTOR_MAP = {};
+for(let r = 0; r < ROWS; r++){
+  for(let c = 0; c < COLS; c++){
+    const ch = MANUAL_SECTOR_ROWS[r][c];
+    DECK_SECTOR_MAP[r + ':' + c] = ch === 'Ц' ? CITADEL_SECTOR : Number(ch);
+  }
+}
+function deckSector(r, c){ return DECK_SECTOR_MAP[r + ':' + c]; }
+
+// Те же 19 модулей и тот же ключ каркаса, что в client/planet.html (раздел
+// ВЕРФЬ) и server/economy.go (shipItemCosts) — цена/масса берутся живыми из
+// /api/economy. durability — те же значения, что в SHIP_MODULES planet.html
+// (ТЗ_Корабль.md §2/§4: 1=хрупкий/2=крепкий). powerGen/powerUse/accelBonus/
+// combatBonus — НОВЫЕ, условные оценки: энергетика нигде не описана в ТЗ
+// (как и ускорение/огневая мощь в planet.html), нужны только чтобы дать
+// заполненную панель характеристик из п.10 запроса пользователя. powerUse —
+// базовое потребление (в любом режиме), accelBonus/combatBonus — доп. расход
+// только в режиме ускорения/боя (только у двигателя/оружия/щита).
+const SHIP_MODULES = [
+  { key:'ship_life_support', name:'Система жизнеобеспечения', durability:1, powerGen:0,  powerUse:2 },
+  { key:'ship_colonist',     name:'Колониальный модуль',       durability:1, powerGen:0,  powerUse:2 },
+  { key:'ship_weapon_mount', name:'Оружейный модуль',          durability:2, powerGen:0,  powerUse:2, combatBonus:20 },
+  { key:'ship_solar_sail',   name:'Солнечный парус',           durability:1, powerGen:0,  powerUse:1 },
+  { key:'ship_engine',       name:'Двигатель',                 durability:2, powerGen:0,  powerUse:3, accelBonus:15 },
+  { key:'ship_reactor',      name:'Атомный реактор',           durability:2, powerGen:40, powerUse:2 },
+  { key:'ship_gas_storage',  name:'Газохранилище',             durability:2, powerGen:0,  powerUse:1 },
+  { key:'ship_battery',      name:'Аккумуляторы',              durability:1, powerGen:0,  powerUse:0 },
+  { key:'ship_repair',       name:'Ремонтный модуль',          durability:1, powerGen:0,  powerUse:2 },
+  { key:'ship_solar_panel',  name:'Солнечная панель',          durability:1, powerGen:8,  powerUse:0 },
+  { key:'ship_teleport',     name:'Телепорт-модуль',           durability:1, powerGen:0,  powerUse:4 },
+  { key:'ship_miner',        name:'Шахтёр',                    durability:2, powerGen:0,  powerUse:3 },
+  { key:'ship_radar',        name:'Радар',                     durability:1, powerGen:0,  powerUse:2 },
+  { key:'ship_ecm',          name:'Модуль РЭБ',                durability:1, powerGen:0,  powerUse:3 },
+  { key:'ship_computer',     name:'Вычислительный модуль',     durability:1, powerGen:0,  powerUse:2 },
+  { key:'ship_shield',       name:'Защитное поле',             durability:1, powerGen:0,  powerUse:2, combatBonus:15 },
+  { key:'ship_dock',         name:'Стыковочный док',           durability:2, powerGen:0,  powerUse:1 },
+  { key:'ship_hangar',       name:'Ангар',                     durability:2, powerGen:0,  powerUse:1 },
+  { key:'ship_cargo',        name:'Грузовой отсек',            durability:2, powerGen:0,  powerUse:0 },
+];
+function moduleDef(key){ return SHIP_MODULES.find(m => m.key === key); }
+// Обязательные модули центральной палубы (цитадели) — по прямому указанию
+// пользователя: СОЖ + Радар всегда стоят в первых слотах, не редактируются.
+const CITADEL_MANDATORY = ['ship_life_support', 'ship_radar'];
+
+// Класс корабля определяется числом палуб, а модулей на палубу — от класса
+// (ТЗ_Корабль.md §1, та же таблица, что SHIP_CLASSES в client/planet.html):
+// чем больше палуб, тем меньше слотов на КАЖДОЙ из них. Раньше здесь было
+// жёстко «1 палуба = 1 модуль» — ошибка, поправлено.
+// Крейсер/Баржа, Линкор/Лайнер и Дредноут/Танкер подняты по прямому указанию
+// пользователя (5→6, 10→12, 21→22 палуб) — perDeck у них не менялся, просто
+// выросло итоговое число слотов на корабль (24/36/44 соответственно).
+const SHIP_CLASS_TABLE = [
+  { decks:1,  perDeck:8, label:'Корвет/Шаттл' },
+  { decks:2,  perDeck:6, label:'Фрегат/Челнок' },
+  { decks:4,  perDeck:4, label:'Эсминец/Клипер' },
+  { decks:6,  perDeck:4, label:'Крейсер/Баржа' },
+  { decks:12, perDeck:3, label:'Линкор/Лайнер' },
+  { decks:22, perDeck:2, label:'Дредноут/Танкер' },
+  { decks:60, perDeck:1, label:'Станция/Ковчег' },
+];
+// Занятое число палуб в этом инструменте — произвольное (не обязано совпадать
+// с одним из 7 канонических значений), поэтому берём ближайший класс СВЕРХУ
+// (первый, чьё decks >= фактическому числу палуб) — а если палуб больше 60,
+// используем последний (1 модуль/палуба, как у Станции).
+function classFor(builtCount){
+  if(builtCount <= 0) return SHIP_CLASS_TABLE[0];
+  return SHIP_CLASS_TABLE.find(c => c.decks >= builtCount) || SHIP_CLASS_TABLE[SHIP_CLASS_TABLE.length - 1];
+}
+
+let economyData = null; // кэш GET /api/economy — грузится один раз, лениво
+let economyPromise = null;
+async function ensureEconomy(){
+  if(economyData) return economyData;
+  if(!economyPromise){
+    economyPromise = fetch('/api/economy').then(r => {
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(data => { economyData = data; return data; }).catch(err => {
+      economyData = { shipComponents: { items: [] } };
+      return economyData;
+    });
+  }
+  return economyPromise;
+}
+function shipItemInfo(key){
+  if(!economyData || !economyData.shipComponents) return null;
+  return economyData.shipComponents.items.find(i => i.key === key) || null;
+}
+
+document.getElementById('sector-legend').innerHTML = SECTOR_NAMES
+  .map((name, i) => `<div class="legend-item${i === CITADEL_SECTOR ? ' citadel' : ''}"><b>${i}</b>${name}</div>`).join('');
+
+// Состояние по каждому кораблю — не в DOM, отдельно: builtSet ("r:c" занятых
+// палуб) и moduleMap ("r:c" → ключ модуля, только для занятых). Индекс блока
+// в этом массиве совпадает с его порядковым номером на странице.
+const shipStates = [];
+
+function updateDeckCount(block, state){
+  block.querySelector('.deck-count').textContent = state.built.size + ' палуб(а/ы) занято из 35';
+}
+
+function redrawCell(cell, state){
+  const key = cell.dataset.row + ':' + cell.dataset.col;
+  const built = state.built.has(key);
+  cell.classList.toggle('built', built);
+}
+
+function buildShipBlock(index){
+  const block = document.createElement('div');
+  block.className = 'ship-block';
+  const state = { built: new Set(), modules: {} };
+  shipStates.push(state);
+
+  const nameRow = document.createElement('div');
+  nameRow.className = 'ship-name-row';
+  const idx = document.createElement('div');
+  idx.className = 'ship-index';
+  idx.textContent = '#' + (index + 1);
+  const nameInput = document.createElement('input');
+  nameInput.className = 'ship-name';
+  nameInput.placeholder = 'Название корабля ' + (index + 1);
+  nameInput.oninput = () => saveToStorage();
+  nameRow.append(idx, nameInput);
+
+  const gridWrap = document.createElement('div');
+  gridWrap.className = 'grid-wrap';
+  gridWrap.style.width = outer + 'px';
+  gridWrap.style.height = outer + 'px';
+
+  const circle = document.createElement('div');
+  circle.className = 'sector-circle';
+  circle.style.width = outer + 'px';
+  circle.style.height = outer + 'px';
+
+  const deckGrid = document.createElement('div');
+  deckGrid.className = 'deck-grid';
+  deckGrid.style.width = gridW + 'px';
+  deckGrid.style.height = gridH + 'px';
+  deckGrid.style.left = ((outer - gridW) / 2) + 'px';
+  deckGrid.style.top = ((outer - gridH) / 2) + 'px';
+  deckGrid.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
+  deckGrid.style.gridTemplateRows = `repeat(${ROWS}, 1fr)`;
+
+  for(let r = 0; r < ROWS; r++){
+    for(let c = 0; c < COLS; c++){
+      const cell = document.createElement('div');
+      const sector = deckSector(r, c);
+      const isCitadel = sector === CITADEL_SECTOR;
+      cell.className = 'deck-cell' + (isCitadel ? ' citadel' : '');
+      cell.dataset.row = r;
+      cell.dataset.col = c;
+      cell.dataset.sector = sector;
+      cell.title = 'Сектор ' + sector + ' — ' + SECTOR_NAMES[sector]
+        + (isCitadel ? '. Поражение = уничтожение корабля; доступна только когда в секторе обстрела не осталось других целых палуб.' : '')
+        + ' Клик — занять/освободить палубу.';
+      cell.textContent = isCitadel ? 'Ц' : sector;
+      cell.onclick = () => {
+        const key = r + ':' + c;
+        if(state.built.has(key)){ state.built.delete(key); delete state.modules[key]; }
+        else {
+          state.built.add(key);
+          if(isCitadel){
+            // СОЖ + Радар обязательны в ядре — ставим сразу при постройке
+            // палубы (п.6 запроса), число слотов зависит от текущего класса.
+            const cls = classFor(state.built.size);
+            state.modules[key] = CITADEL_MANDATORY.slice(0, cls.perDeck);
+          }
+        }
+        redrawCell(cell, state);
+        updateDeckCount(block, state);
+        renderSectorStats(block, state);
+        saveToStorage();
+      };
+      deckGrid.appendChild(cell);
+    }
+  }
+
+  const bow = document.createElement('div');
+  bow.className = 'bow-marker';
+  bow.textContent = 'НОС ▶';
+
+  gridWrap.append(circle, deckGrid, bow);
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'block-toolbar';
+  const clearBtn = document.createElement('div');
+  clearBtn.className = 'block-btn';
+  clearBtn.textContent = 'ОЧИСТИТЬ';
+  clearBtn.onclick = () => {
+    state.built.clear();
+    state.modules = {};
+    block.querySelectorAll('.deck-cell').forEach(cell => redrawCell(cell, state));
+    updateDeckCount(block, state);
+    renderSectorStats(block, state);
+    saveToStorage();
+  };
+  const fillBtn = document.createElement('div');
+  fillBtn.className = 'block-btn';
+  fillBtn.textContent = 'ЗАЛИТЬ ВСЁ';
+  fillBtn.onclick = () => {
+    block.querySelectorAll('.deck-cell').forEach(cell => {
+      const key = cell.dataset.row + ':' + cell.dataset.col;
+      state.built.add(key);
+      if(cell.classList.contains('citadel') && !state.modules[key]){
+        const cls = classFor(state.built.size);
+        state.modules[key] = CITADEL_MANDATORY.slice(0, cls.perDeck);
+      }
+      redrawCell(cell, state);
+    });
+    updateDeckCount(block, state);
+    renderSectorStats(block, state);
+    saveToStorage();
+  };
+  toolbar.append(clearBtn, fillBtn);
+
+  const deckCount = document.createElement('div');
+  deckCount.className = 'deck-count';
+  deckCount.textContent = '0 палуб(а/ы) занято из 35';
+
+  const sectorStatsEl = document.createElement('div');
+  sectorStatsEl.className = 'sector-stats';
+
+  const configureBtn = document.createElement('div');
+  configureBtn.className = 'configure-btn';
+  configureBtn.textContent = '⚙ НАСТРОИТЬ МОДУЛИ';
+  configureBtn.onclick = () => openModuleModal(index);
+
+  block.append(nameRow, gridWrap, toolbar, deckCount, sectorStatsEl, configureBtn);
+  renderSectorStats(block, state);
+  return block;
+}
+
+const shipsEl = document.getElementById('ships');
+const blocks = [];
+// Библиотека кораблей не ограничена стартовыми 20 — «+ ДОБАВИТЬ КОРАБЛЬ»
+// дописывает новую карточку с тем же индексом = текущая длина blocks (так
+// замыкания вроде configureBtn.onclick = () => openModuleModal(index) внутри
+// buildShipBlock всегда указывают на правильную карточку).
+function addShip(){
+  const index = blocks.length;
+  const b = buildShipBlock(index);
+  shipsEl.appendChild(b);
+  blocks.push(b);
+  return b;
+}
+for(let i = 0; i < SHIP_COUNT; i++) addShip();
+document.getElementById('add-ship-btn').onclick = () => {
+  addShip();
+  saveToStorage();
+};
+
+// ── автосохранение в localStorage — без него правка файла/перезагрузка
+// страницы стирала бы всё, что уже отмечено кликами (прогресс жил только в
+// памяти вкладки). Сохраняется на каждое изменение: клик по клетке,
+// очистить/залить, выбор модуля, ввод названия. ────────────────────────────
+const STORAGE_KEY = 'uroboros_ship_deck_sectors_v1';
+function saveToStorage(){
+  const data = blocks.map((b, i) => ({
+    name: b.querySelector('.ship-name').value,
+    built: [...shipStates[i].built],
+    modules: shipStates[i].modules,
+  }));
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }catch(e){ /* приватный режим/переполнение — не критично */ }
+  const status = document.getElementById('storage-status');
+  if(status) status.textContent = 'Автосохранено ' + new Date().toLocaleTimeString();
+}
+function loadFromStorage(){
+  let raw;
+  try{ raw = localStorage.getItem(STORAGE_KEY); }catch(e){ return; }
+  if(!raw) return;
+  let data;
+  try{ data = JSON.parse(raw); }catch(e){ return; }
+  while(blocks.length < data.length) addShip(); // библиотека была больше стартовых 20 — дораспаковать карточки
+  data.forEach((saved, i) => {
+    if(!blocks[i] || !saved) return;
+    const block = blocks[i];
+    const state = shipStates[i];
+    block.querySelector('.ship-name').value = saved.name || '';
+    state.built = new Set(saved.built || []);
+    state.modules = saved.modules || {};
+    block.querySelectorAll('.deck-cell').forEach(cell => redrawCell(cell, state));
+    updateDeckCount(block, state);
+    renderSectorStats(block, state);
+  });
+  const status = document.getElementById('storage-status');
+  if(status) status.textContent = 'Восстановлено из автосохранения';
+}
+loadFromStorage();
+
+// ── модалка «Настроить модули»: таблица занятых палуб + живая суммарная цена ──
+// state.modules[key] — МАССИВ модулей на палубе (не одно значение): число
+// слотов на палубу зависит от класса (см. SHIP_CLASS_TABLE/classFor выше).
+//
+// Энергетика (energyGen/energyUse*) — условные оценки поверх реальных
+// цены/массы/прочности (см. комментарий у SHIP_MODULES): выработка = сумма
+// powerGen (реактор/панель), потребление в полёте = сумма powerUse всех
+// стоящих модулей, в ускорении/бою — то же + accelBonus двигателей или
+// combatBonus оружия/щитов (п.10 запроса — «выработка/потребление в режиме
+// ускорения, свободного полёта и огня всех орудий и боевых систем»).
+function computeShipTotal(state){
+  const cls = classFor(state.built.size);
+  const frame = shipItemInfo('ship_frame');
+  let value = frame ? frame.totalValue * state.built.size : 0;
+  let mass = frame ? frame.totalMass * state.built.size : 0;
+  let durability = state.built.size * 3; // §2: голая палуба без брони = 3
+  let energyGen = 0, energyUseFlight = 0, accelExtra = 0, combatExtra = 0;
+  // components — прямой рецепт (economyShipItemView.Inputs с /api/economy):
+  // уже произведённые компоненты ТУ1-3 (и изредка сырьё, если рецепт item'а
+  // берёт его напрямую), а НЕ baseTotals (то полностью разворачивает всё до
+  // руды — корабль собирают из готовых компонентов, а не сырья, поправлено
+  // по прямому замечанию пользователя).
+  const components = {};
+  const addComponents = (inputs, mult) => (inputs || []).forEach(inp => {
+    if(!components[inp.key]) components[inp.key] = { name: inp.name, qty: 0 };
+    components[inp.key].qty += inp.qty * mult;
+  });
+  if(frame) addComponents(frame.inputs, state.built.size);
+
+  state.built.forEach(key => {
+    const slots = (state.modules[key] || []).slice(0, cls.perDeck);
+    slots.forEach(modKey => {
+      if(!modKey) return;
+      const info = shipItemInfo(modKey);
+      if(info){ value += info.totalValue; mass += info.totalMass; addComponents(info.inputs, 1); }
+      const def = moduleDef(modKey);
+      if(def){
+        durability += def.durability || 0;
+        energyGen += def.powerGen || 0;
+        energyUseFlight += def.powerUse || 0;
+        accelExtra += def.accelBonus || 0;
+        combatExtra += def.combatBonus || 0;
+      }
+    });
+  });
+
+  return {
+    value, mass, durability, components,
+    energyGen,
+    energyUseFlight,
+    energyUseAccel: energyUseFlight + accelExtra,
+    energyUseCombat: energyUseFlight + combatExtra,
+  };
+}
+
+// ── сводка по секторам: суммарная прочность (ПП), число орудийных модулей
+// (ОМ) и модулей защитного поля (ЗП) — по прямому указанию пользователя,
+// центральная палуба (цитадель) в эту разбивку НЕ входит (п.7). ────────────
+function sectorStats(state){
+  const cls = classFor(state.built.size);
+  const stats = {};
+  for(let s = 0; s < 6; s++) stats[s] = { pp: 0, om: 0, zp: 0 };
+  state.built.forEach(key => {
+    const [r, c] = key.split(':').map(Number);
+    const sector = deckSector(r, c);
+    if(sector === CITADEL_SECTOR) return;
+    let deckDur = 3;
+    (state.modules[key] || []).slice(0, cls.perDeck).forEach(modKey => {
+      if(!modKey) return;
+      const def = moduleDef(modKey);
+      if(def) deckDur += def.durability || 0;
+      if(modKey === 'ship_weapon_mount') stats[sector].om++;
+      if(modKey === 'ship_shield') stats[sector].zp++;
+    });
+    stats[sector].pp += deckDur;
+  });
+  return stats;
+}
+function renderSectorStats(block, state){
+  const stats = sectorStats(state);
+  block.querySelector('.sector-stats').innerHTML = Object.keys(stats).map(s => `
+    <div class="ss-item"><b>${s}</b> ПП${stats[s].pp} ОМ${stats[s].om} ЗП${stats[s].zp}</div>
+  `).join('');
+}
+
+// Двигатель можно поставить в слот палубы (r,c), если СРЕДИ ПОСТРОЕННЫХ палуб
+// левее (col < c, та же строка — «слева» = ближе к корме, нос справа) нет ни
+// одной, кроме целиком заполненных двигателями. Непостроенная клетка слева —
+// не «палуба» вовсе, пропускаем её (если левее совсем нет построенных палуб —
+// ставить можно). Построенная, но не полностью двигательная — блокирует
+// (п.5 запроса: «чтоб не устанавливался модуль задним числом»).
+function canPlaceEngine(state, cls, r, c){
+  for(let cc = 0; cc < c; cc++){
+    const leftKey = r + ':' + cc;
+    if(!state.built.has(leftKey)) continue; // не построена — не в счёт
+    const leftSlots = state.modules[leftKey] || [];
+    for(let s = 0; s < cls.perDeck; s++){
+      if(leftSlots[s] !== 'ship_engine') return false;
+    }
+  }
+  return true;
+}
+
+let moduleModalShipIndex = null;
+async function openModuleModal(index){
+  moduleModalShipIndex = index;
+  await ensureEconomy();
+  renderModuleModal();
+  document.getElementById('module-modal-overlay').classList.add('show');
+}
+function renderModuleModal(){
+  const index = moduleModalShipIndex;
+  const block = blocks[index];
+  const state = shipStates[index];
+  const name = block.querySelector('.ship-name').value.trim() || ('Корабль ' + (index + 1));
+  const cls = classFor(state.built.size);
+  document.getElementById('module-modal-title').textContent = 'Модули: ' + name;
+  document.getElementById('module-modal-class').textContent =
+    `Класс по числу палуб (ТЗ_Корабль.md §1): ${cls.label} — ${state.built.size} палуб(ы) → `
+    + `${cls.perDeck} модул${cls.perDeck === 1 ? 'ь' : 'я'} на КАЖДУЮ палубу`;
+
+  const keys = [...state.built].sort((a, b) => {
+    const [ra, ca] = a.split(':').map(Number), [rb, cb] = b.split(':').map(Number);
+    return (Number(deckSector(ra, ca)) - Number(deckSector(rb, cb))) || (ra - rb) || (ca - cb);
+  });
+
+  document.getElementById('module-modal-empty').style.display = keys.length ? 'none' : 'block';
+  document.getElementById('module-modal-table').style.display = keys.length ? 'table' : 'none';
+
+  const tbody = document.querySelector('#module-modal-table tbody');
+  tbody.innerHTML = keys.map(key => {
+    const [r, c] = key.split(':').map(Number);
+    const sector = deckSector(r, c);
+    const isCitadel = sector === CITADEL_SECTOR;
+    if(!state.modules[key]) state.modules[key] = [];
+    const slots = state.modules[key];
+    // Обязательные слоты цитадели — принудительно СОЖ+Радар, даже если палуба
+    // построена раньше этой правки (защита задним числом, п.6).
+    if(isCitadel) CITADEL_MANDATORY.forEach((mod, i) => { if(i < cls.perDeck) slots[i] = mod; });
+    let rowValue = 0, rowMass = 0;
+    const cells = [];
+    for(let s = 0; s < cls.perDeck; s++){
+      const current = slots[s] || '';
+      const info = current ? shipItemInfo(current) : null;
+      if(info){ rowValue += info.totalValue; rowMass += info.totalMass; }
+      if(isCitadel && s < CITADEL_MANDATORY.length){
+        const def = moduleDef(current);
+        cells.push(`<div class="mm-locked">🔒 ${def ? def.name : current} (обязательно)</div>`);
+        continue;
+      }
+      const options = ['<option value="">— пусто —</option>'].concat(SHIP_MODULES.map(m => {
+        const locked = m.key === 'ship_engine' && !canPlaceEngine(state, cls, r, c);
+        return `<option value="${m.key}"${m.key === current ? ' selected' : ''}${locked ? ' disabled' : ''}>`
+          + `${m.name}${locked ? ' (нет двигателей слева)' : ''}</option>`;
+      }));
+      cells.push(`<select data-slot="${s}">${options.join('')}</select>`);
+    }
+    const price = rowValue > 0 ? rowValue.toFixed(0) + ' кред.<br>' + rowMass.toFixed(0) + ' у.м.' : '—';
+    return `<tr data-key="${key}">
+      <td>${r},${c}${isCitadel ? ' (Ц)' : ''}</td>
+      <td>${SECTOR_NAMES[sector]}</td>
+      <td class="mm-slots">${cells.join('')}</td>
+      <td class="mm-price">${price}</td>
+    </tr>`;
+  }).join('');
+
+  tbody.querySelectorAll('tr').forEach(row => {
+    const key = row.dataset.key;
+    row.querySelectorAll('select').forEach(sel => {
+      sel.onchange = (e) => {
+        const slotIdx = Number(sel.dataset.slot);
+        if(!state.modules[key]) state.modules[key] = [];
+        state.modules[key][slotIdx] = e.target.value || null;
+        saveToStorage();
+        renderSectorStats(block, state);
+        renderModuleModal(); // перерисовать — обновит цену строки/слота, итог и блокировки двигателя
+      };
+    });
+  });
+
+  const totals = computeShipTotal(state);
+  document.getElementById('module-modal-stats').innerHTML = `
+    <div>Масса: <b>${totals.mass.toFixed(0)} у.м.</b></div>
+    <div>Прочность: <b>${totals.durability}</b></div>
+    <div>Выработка энергии*: <b>${totals.energyGen}</b></div>
+    <div>Потребление, полёт*: <b>${totals.energyUseFlight}</b></div>
+    <div>Потребление, ускорение*: <b>${totals.energyUseAccel}</b></div>
+    <div>Потребление, бой (орудия+щиты)*: <b>${totals.energyUseCombat}</b></div>
+  `;
+  const compRows = Object.values(totals.components).filter(c => c.qty > 0.01).sort((a, b) => b.qty - a.qty)
+    .map(c => `<div class="mmc-row"><span>${c.name}</span><span>${c.qty.toFixed(1)}</span></div>`).join('');
+  document.getElementById('module-modal-components-body').innerHTML = compRows || '<div class="mmc-row">пусто — не установлено ни одного модуля</div>';
+  document.getElementById('module-modal-total').textContent =
+    `Итого: ${totals.value.toFixed(0)} кред. · ${totals.mass.toFixed(0)} у.м. (каркас × ${state.built.size} палуб(ы) + модули)`;
+}
+document.getElementById('module-modal-close').onclick = () =>
+  document.getElementById('module-modal-overlay').classList.remove('show');
+
+document.getElementById('export-btn').onclick = async () => {
+  await ensureEconomy();
+  const data = blocks.map((b, i) => {
+    const name = b.querySelector('.ship-name').value.trim() || ('Корабль ' + (i + 1));
+    const state = shipStates[i];
+    const cls = classFor(state.built.size);
+    const cells = [...state.built].map(key => {
+      const [row, col] = key.split(':').map(Number);
+      const sector = deckSector(row, col);
+      const moduleKeys = (state.modules[key] || []).slice(0, cls.perDeck).filter(Boolean);
+      const moduleNames = moduleKeys.map(k => (SHIP_MODULES.find(m => m.key === k) || {}).name || k);
+      return {
+        row, col, sector, sectorName: SECTOR_NAMES[sector], isCitadel: sector === CITADEL_SECTOR,
+        moduleKeys, moduleNames,
+      };
+    });
+    const totals = computeShipTotal(state);
+    return {
+      name, rows: ROWS, cols: COLS, builtCount: state.built.size,
+      shipClass: cls.label, perDeck: cls.perDeck,
+      cells, totalValue: totals.value, totalMass: totals.mass, totalDurability: totals.durability,
+      energyGen: totals.energyGen, energyUseFlight: totals.energyUseFlight,
+      energyUseAccel: totals.energyUseAccel, energyUseCombat: totals.energyUseCombat,
+      components: totals.components, sectorStats: sectorStats(state),
+    };
+  });
+  const json = JSON.stringify(data, null, 2);
+  const out = document.getElementById('export-output');
+  out.value = json;
+  out.classList.add('show');
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'ship-deck-sectors.json';
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+</script>
+</body>
+</html>

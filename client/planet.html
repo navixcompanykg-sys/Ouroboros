@@ -91,6 +91,122 @@
     font-family:var(--mono);font-size:6.5px;padding:2px;text-align:right;}
   .wh-input:focus{outline:none;border-color:var(--accent2);}
   .wh-stub{font-family:var(--mono);font-size:7px;color:var(--text);opacity:.6;text-align:center;padding:30px 10px;line-height:1.9;}
+
+  /* ── строительство (СТРОИТЕЛЬСТВО, archive/server/ui/development.js — тот же
+     уровень готовности: UI полный, без бэкенда/тик-логики, фаза 2). Список
+     занимает область карты, как склад; окно конкретного здания — модалка
+     ПОВЕРХ всего экрана (в архиве это была постоянная боковая панель, здесь
+     по прямому ТЗ пользователя — всплывающее окно с кнопками
+     «Построить»/«Закрыть», а не отдельная колонка — на узком экране телефона
+     естественнее). */
+  #construction-view{flex:1;display:none;flex-direction:column;overflow:hidden;padding:6px;min-height:0;}
+  #construction-view.show{display:flex;}
+  #con-title{font-family:var(--sans);font-weight:600;font-size:11px;color:var(--text-bright);
+    letter-spacing:.5px;margin-bottom:4px;text-align:center;}
+  #con-stats{flex-shrink:0;border:1px solid var(--border);background:rgba(255,255,255,0.02);
+    padding:5px 7px;margin-bottom:6px;}
+  .con-stat-row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:6.5px;
+    color:var(--text);padding:1.5px 0;}
+  .con-stat-row b{color:var(--text-bright);font-weight:400;}
+  #con-list{flex:1;overflow-y:auto;min-height:0;}
+  .con-row{display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);
+    font-size:7px;color:var(--text-bright);padding:7px 6px;border-bottom:1px solid rgba(255,255,255,0.05);
+    cursor:pointer;}
+  .con-row:active{background:rgba(0,229,255,0.06);}
+  .con-row-count{color:var(--gold);flex-shrink:0;margin-left:6px;}
+  #con-modal-overlay{position:absolute;inset:0;background:rgba(4,6,15,0.88);z-index:40;
+    display:none;align-items:flex-end;justify-content:center;}
+  #con-modal-overlay.show{display:flex;}
+  #con-modal{width:100%;max-height:78%;background:var(--panel-bg);border-top:1.5px solid var(--accent2);
+    padding:12px 10px;overflow-y:auto;}
+  #con-modal-title{font-family:var(--sans);font-weight:600;font-size:12px;color:var(--text-bright);margin-bottom:2px;}
+  #con-modal-level{font-family:var(--mono);font-size:6.5px;color:var(--accent2);letter-spacing:.5px;margin-bottom:8px;}
+  .con-cost-row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:7px;
+    color:var(--text-bright);padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.05);}
+  .con-cost-row.lack{color:var(--err);}
+  #con-modal-desc{font-family:var(--mono);font-size:6.5px;color:var(--text);opacity:.75;line-height:1.7;
+    margin:9px 0 11px;}
+  #con-modal-actions{display:flex;gap:6px;}
+  .con-btn{flex:1;text-align:center;font-family:var(--mono);font-size:8px;letter-spacing:.5px;
+    padding:9px 4px;border:1.2px solid var(--accent);color:var(--text-bright);
+    background:rgba(42,127,255,0.06);cursor:pointer;}
+  .con-btn:active{background:rgba(42,127,255,0.18);border-color:var(--accent2);color:var(--accent2);}
+  #con-build-btn{border-color:var(--ok);color:var(--ok);}
+  #con-build-btn:active{background:rgba(68,204,136,0.14);}
+
+  /* ── верфь / строительство корабля (КОСМОДРОМ) ──────────────────────────
+     Тот же уровень готовности, что склад/строительство: полный рабочий UI,
+     без бэкенда (постройки корабля на сервере нет — server/ship.go знает
+     только один глобальный корабль без структуры, ТЗ_Корабль.md — теория).
+     Конфигурация — per-класс, в localStorage (в отличие от остальных
+     разделов: здесь явно просили «сохранить»/«загрузить», в памяти без
+     персистентности это было бы бессмысленно). */
+  #shipyard-view{flex:1;display:none;flex-direction:column;overflow:hidden;padding:6px;min-height:0;}
+  #shipyard-view.show{display:flex;}
+  #sy-title{font-family:var(--sans);font-weight:600;font-size:11px;color:var(--text-bright);
+    letter-spacing:.5px;margin-bottom:4px;text-align:center;}
+  #sy-class-select{flex-shrink:0;width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border);
+    color:var(--text-bright);font-family:var(--mono);font-size:8px;padding:5px;margin-bottom:5px;}
+  #sy-top{flex-shrink:0;display:flex;gap:6px;min-height:96px;max-height:33%;margin-bottom:5px;}
+  #sy-deck-grid{flex:1;display:grid;gap:2px;overflow-y:auto;align-content:start;
+    border:1px solid var(--border);padding:4px;background:rgba(255,255,255,0.02);}
+  .sdc{aspect-ratio:1;background:rgba(42,127,255,0.08);border:1px solid var(--accent);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;
+    font-family:var(--mono);color:var(--text-bright);line-height:1.2;}
+  .sdc.selected{border-color:var(--accent2);background:rgba(0,229,255,0.14);}
+  .sdc.sdc-core{border-color:var(--gold);border-width:2px;background:rgba(255,199,68,0.10);}
+  .sdc .sdc-slots{font-size:5.5px;}
+  .sdc .sdc-dur{font-size:5.5px;color:var(--gold);}
+  #sy-stats{flex:1;overflow-y:auto;border:1px solid var(--border);background:rgba(255,255,255,0.02);
+    padding:5px 7px;}
+  .sy-stat-row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:6.3px;
+    color:var(--text);padding:1.5px 0;}
+  .sy-stat-row b{color:var(--text-bright);font-weight:400;}
+  #sy-actions{flex-shrink:0;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:6px;}
+  #sy-actions .con-btn{font-size:6.3px;padding:7px 2px;}
+  #sy-slots-title{flex-shrink:0;font-family:var(--mono);font-size:6px;color:var(--text);opacity:.6;
+    letter-spacing:1px;margin-bottom:3px;}
+  #sy-slots{flex:1;overflow-y:auto;min-height:0;}
+  .sy-slot-row{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:4px;}
+  .sy-slot{aspect-ratio:1.3;border:1.2px solid var(--accent);display:flex;align-items:center;
+    justify-content:center;text-align:center;font-family:var(--mono);font-size:6px;color:var(--text);
+    opacity:.7;cursor:pointer;padding:3px;line-height:1.3;background:rgba(255,255,255,0.02);}
+  .sy-slot:active{background:rgba(42,127,255,0.14);}
+  .sy-slot.filled{color:var(--text-bright);opacity:1;border-color:var(--ok);background:rgba(68,204,136,0.08);}
+  .sy-slot.sy-slot-closed{cursor:default;border-style:dashed;border-color:var(--border);opacity:.3;
+    background:repeating-linear-gradient(45deg,rgba(255,255,255,0.03),rgba(255,255,255,0.03) 4px,transparent 4px,transparent 8px);}
+
+  #ship-picker-overlay{position:absolute;inset:0;background:rgba(4,6,15,0.9);z-index:45;
+    display:none;align-items:flex-end;justify-content:center;}
+  #ship-picker-overlay.show{display:flex;}
+  #ship-picker-modal{width:100%;max-height:70%;background:var(--panel-bg);border-top:1.5px solid var(--accent2);
+    padding:10px;}
+  #ship-picker-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+  #ship-picker-head div{font-family:var(--mono);font-size:9px;color:var(--accent2);letter-spacing:.5px;}
+  .sp-nav{width:26px;height:26px;border:1px solid var(--accent);color:var(--text-bright);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:var(--mono);font-size:11px;}
+  .sp-nav:active{border-color:var(--accent2);color:var(--accent2);}
+  #ship-picker-body{display:flex;gap:6px;}
+  .spc{flex:1;border:1px solid var(--border);padding:8px 6px;background:rgba(255,255,255,0.02);}
+  .spc.locked{opacity:.5;}
+  .spc-name{font-family:var(--sans);font-weight:600;font-size:9px;color:var(--text-bright);margin-bottom:3px;}
+  .spc-dur{font-family:var(--mono);font-size:6px;color:var(--gold);margin-bottom:2px;}
+  .spc-cost{font-family:var(--mono);font-size:6px;color:var(--text);opacity:.75;margin-bottom:6px;}
+  .spc-locked{font-family:var(--mono);font-size:6px;color:var(--warn);}
+  .spc-desc{font-family:var(--mono);font-size:5.3px;color:var(--text);opacity:.6;margin-bottom:4px;line-height:1.35;}
+  .spc-install{text-align:center;font-family:var(--mono);font-size:7px;letter-spacing:.5px;padding:6px 2px;
+    border:1.2px solid var(--ok);color:var(--ok);cursor:pointer;}
+  .spc-install:active{background:rgba(68,204,136,0.14);}
+  #ship-picker-close{margin-top:8px;}
+
+  #ship-build-overlay{position:absolute;inset:0;background:rgba(4,6,15,0.88);z-index:46;
+    display:none;align-items:flex-end;justify-content:center;}
+  #ship-build-overlay.show{display:flex;}
+  #ship-build-modal{width:100%;max-height:78%;background:var(--panel-bg);border-top:1.5px solid var(--ok);
+    padding:12px 10px;overflow-y:auto;}
+  #ship-build-title{font-family:var(--sans);font-weight:600;font-size:12px;color:var(--text-bright);margin-bottom:2px;}
+  #ship-build-summary{font-family:var(--mono);font-size:6.5px;color:var(--accent2);letter-spacing:.5px;margin-bottom:8px;}
+
   #map-wrap{position:relative;width:100%;flex:1;min-height:0;}
   #hexmap{width:100%;height:100%;display:block;}
   .planet-bg-outer{pointer-events:none;}
@@ -180,6 +296,63 @@
       <div class="wh-tab" data-wh-tab="transfer">⇄ ПЕРЕГРУЗКА</div>
     </div>
     <div id="wh-body"></div>
+  </div>
+
+  <div id="construction-view">
+    <div id="con-title">🏗 СТРОИТЕЛЬСТВО</div>
+    <div id="con-stats"></div>
+    <div id="con-list"></div>
+  </div>
+
+  <div id="con-modal-overlay">
+    <div id="con-modal">
+      <div id="con-modal-title">—</div>
+      <div id="con-modal-level"></div>
+      <div id="con-modal-costs"></div>
+      <div id="con-modal-desc"></div>
+      <div id="con-modal-actions">
+        <div id="con-build-btn" class="con-btn">ПОСТРОИТЬ</div>
+        <div id="con-close-btn" class="con-btn">ЗАКРЫТЬ</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="shipyard-view">
+    <div id="sy-title">🚀 ВЕРФЬ</div>
+    <select id="sy-class-select"></select>
+    <div id="sy-top">
+      <div id="sy-deck-grid"></div>
+      <div id="sy-stats"></div>
+    </div>
+    <div id="sy-actions">
+      <div class="con-btn" id="sy-save-btn">СОХРАНИТЬ</div>
+      <div class="con-btn" id="sy-load-btn">ЗАГРУЗИТЬ</div>
+      <div class="con-btn" id="sy-reset-btn">СБРОСИТЬ</div>
+      <div class="con-btn" id="sy-build-btn" style="border-color:var(--ok);color:var(--ok)">СТРОИТЬ</div>
+    </div>
+    <div id="sy-slots-title">МОДУЛИ ПАЛУБЫ — · выбрана палуба —</div>
+    <div id="sy-slots"></div>
+  </div>
+
+  <div id="ship-picker-overlay">
+    <div id="ship-picker-modal">
+      <div id="ship-picker-head">
+        <div class="sp-nav" id="ship-picker-prev">‹</div>
+        <div id="ship-picker-page">— / —</div>
+        <div class="sp-nav" id="ship-picker-next">›</div>
+      </div>
+      <div id="ship-picker-body"></div>
+      <div class="con-btn" id="ship-picker-close">ЗАКРЫТЬ</div>
+    </div>
+  </div>
+
+  <div id="ship-build-overlay">
+    <div id="ship-build-modal">
+      <div id="ship-build-title">—</div>
+      <div id="ship-build-summary"></div>
+      <div id="ship-build-costs"></div>
+      <div class="con-btn" id="ship-build-close">ЗАКРЫТЬ</div>
+    </div>
   </div>
 
   <div id="hex-buildings">
@@ -697,19 +870,28 @@ function whResInfo(key){
   return { mass: found ? found.mass : 1, price: found ? found.price : 0 };
 }
 
+const SECTION_LABELS = { warehouse: 'СКЛАД', construction: 'СТРОИТЕЛЬСТВО', shipyard: 'КОСМОДРОМ' };
 function setSection(name){
   activeSection = name;
   document.getElementById('map-outer').style.display = name === 'map' ? '' : 'none';
   document.getElementById('warehouse-view').classList.toggle('show', name === 'warehouse');
+  document.getElementById('construction-view').classList.toggle('show', name === 'construction');
+  document.getElementById('shipyard-view').classList.toggle('show', name === 'shipyard');
   document.getElementById('btn-repair').style.display = name === 'map' ? '' : 'none';
   document.querySelectorAll('.action-btn').forEach(b =>
-    b.classList.toggle('active-section', name === 'warehouse' && b.dataset.label === 'СКЛАД'));
+    b.classList.toggle('active-section', SECTION_LABELS[name] === b.dataset.label));
   if(name === 'map'){
     document.getElementById('hex-buildings').classList.toggle('show', !!selectedHex);
     if(selectedHex) renderHexInfo(selectedHex); else renderPlanetInfo(currentStar, currentPlanet);
   } else {
     document.getElementById('hex-buildings').classList.remove('show');
-    renderWarehouse();
+    // не тащим открытые окна между разделами
+    document.getElementById('con-modal-overlay').classList.remove('show');
+    document.getElementById('ship-picker-overlay').classList.remove('show');
+    document.getElementById('ship-build-overlay').classList.remove('show');
+    if(name === 'warehouse') renderWarehouse();
+    if(name === 'construction') renderConstruction();
+    if(name === 'shipyard') renderShipyard();
   }
 }
 
@@ -764,16 +946,554 @@ document.querySelectorAll('.wh-tab').forEach(tab => {
   };
 });
 
-// ── кнопки разделов сверху/снизу — только СКЛАД реализован (переключает
-// раздел на месте карты), остальные 7 + РЕМОНТ — по-прежнему тост ─────────
+// ══════════════════════════════════════════════════════════════════════════
+// СТРОИТЕЛЬСТВО (ТЗ_UI.md §5, archive/server/ui/development.js — «Мин.
+// развития», тот же уровень готовности: UI полный, без бэкенда). Список
+// зданий занимает область карты (как склад); окно конкретного здания —
+// модалка поверх всего экрана (по прямому ТЗ пользователя: список → окно с
+// компонентами и описанием → «Построить»/«Закрыть», не архивная постоянная
+// боковая панель — на телефонном экране список+модалка естественнее).
+//
+// Статистика (население/энергия) — не с сервера (посуточной симуляции нет
+// вовсе, buildings.go «фаза 1»), а честно посчитана из уже РЕАЛЬНО стоящих
+// на планете зданий (currentPlanet.buildings) по формулам ТЗ_Экономика.md:
+//  · §11.2 — 10 мест на посёлок (Жилой модуль), население всегда 0 (роста
+//    ещё нет, тот же принцип, что «население: 0» в renderHexInfo);
+//  · §12.1 — 1 энергия потребления на здание ЛЮБОГО типа, без исключений;
+//  · §12.2 — Водородный генератор +10 энергии, Солнечная панель +5;
+//  · «энергия на добычу» — потребление 4 добывающих типов отдельной строкой.
+// Стоимость постройки — из живого /api/economy (economy.buildings, тот же
+// резолвер, что и в админ-панели «Экономика»), «сколько на складе» — whState
+// (тот же склад, реализованный только что) — компонентов там никогда нет
+// (склад хранит только 16 сырьевых ключей, компонентов не производят), это
+// честно показывается как 0/N, не как отдельная ложь.
+// ══════════════════════════════════════════════════════════════════════════
+const BUILDING_MINING_TYPES = ['mine', 'atmo_collector', 'bio_extractor', 'hydro_farm'];
+const BUILDING_DESC = {
+  mine: 'Добыча руд: силикаты, железо, тугоплавкие, редкоземельные, платиноиды, радиоактивные.',
+  atmo_collector: 'Добыча газов, в т.ч. водорода.',
+  bio_extractor: 'Добыча воды и фосфатов.',
+  hydro_farm: 'Добыча битумов и биомассы.',
+  factory_metal: 'Производство компонентов ТУ1–ТУ3 (металлургия).',
+  factory_chem: 'Химреагенты, полимеры, биосинтетика, биоинженерия.',
+  factory_elec: 'Электроника, элементы питания, оружие, микроэлектроника и др.',
+  lab: 'Высококачественные сплавы, ядерные компоненты, роботы, антигравитация, аннигиляционные заряды.',
+  housing: '+10 мест для жителей. Энергию потребляет, но жителей на обслуживание не требует.',
+  h2_generator: 'Вырабатывает 10 энергии/сутки, расходуя водород.',
+  solar_panel: 'Вырабатывает 5 энергии/сутки от звезды.',
+  battery: 'Противокосмическая оборона планеты.',
+  fort: 'Производство штурмовиков, сухопутная оборона.',
+  shipyard: 'Строительство базовых кораблей.',
+  adv_components: 'Производство корабельных вооружений и авионики.',
+  radio: 'Связь, торговля.',
+  science_center: 'Исследования, чертежи.',
+  crypto_farm: 'Майнинг токенов на избыточной энергии.',
+  transport_node: 'Продлевает транспортную сеть колонии на соседний гекс — сам ничего не добывает и не производит.',
+};
+
+function conCountByType(){
+  const counts = {};
+  (currentPlanet.buildings || []).forEach(b => { counts[b.type] = (counts[b.type] || 0) + 1; });
+  return counts;
+}
+function conStats(){
+  const counts = conCountByType();
+  const housingCount = counts['housing'] || 0;
+  const totalBuildings = (currentPlanet.buildings || []).length;
+  let miningEnergy = 0, production = 0;
+  BUILDING_MINING_TYPES.forEach(t => { miningEnergy += counts[t] || 0; }); // §12.1: 1 энергия/здание
+  production += (counts['h2_generator'] || 0) * 10; // §12.2
+  production += (counts['solar_panel'] || 0) * 5;   // §12.2
+  const consumption = totalBuildings; // §12.1: 1 энергия/здание любого типа, без исключений
+  return {
+    population: 0, capacity: housingCount * 10, growth: 0, // §11.2 — рост населения не симулируется (фаза 2)
+    energyProduction: production, energyConsumption: consumption,
+    freeEnergy: production - consumption, miningEnergy,
+  };
+}
+
+async function renderConstruction(){
+  document.getElementById('hdr-title').textContent = 'СТРОИТЕЛЬСТВО';
+  await whEnsureEconomy();
+  const stats = conStats();
+  const energyCls = stats.freeEnergy < 0 ? 'color:var(--err)' : 'color:var(--ok)';
+  document.getElementById('con-stats').innerHTML = `
+    <div class="con-stat-row"><span>НАСЕЛЕНИЕ</span><b>${stats.population} / ${stats.capacity}</b></div>
+    <div class="con-stat-row"><span>ПРИРОСТ/СУТКИ</span><b>${stats.growth >= 0 ? '+' : ''}${stats.growth}</b></div>
+    <div class="con-stat-row"><span>ЭНЕРГИЯ СВОБОДНО</span><b style="${energyCls}">${stats.freeEnergy >= 0 ? '+' : ''}${stats.freeEnergy}</b></div>
+    <div class="con-stat-row"><span>ЭНЕРГИЯ НА ДОБЫЧУ</span><b>${stats.miningEnergy}</b></div>
+  `;
+
+  const counts = conCountByType();
+  const list = document.getElementById('con-list');
+  list.innerHTML = Object.keys(BUILDING_TYPES).map(type => `
+    <div class="con-row" data-btype="${type}">
+      <span class="con-row-name">${BUILDING_TYPES[type] || type}</span>
+      <span class="con-row-count">×${counts[type] || 0}</span>
+    </div>`).join('');
+  list.querySelectorAll('.con-row').forEach(row => {
+    row.onclick = () => openConstructionModal(row.dataset.btype);
+  });
+}
+
+function openConstructionModal(type){
+  const info = whEconomy && whEconomy.buildings ? whEconomy.buildings.find(b => b.type === type) : null;
+  const st = whGetState();
+  document.getElementById('con-modal-title').textContent = BUILDING_TYPES[type] || type;
+  document.getElementById('con-modal-level').textContent = info
+    ? `ТУ${info.level} · постройка ≈${info.buildDays} сут` : 'нет данных о стоимости';
+  const inputs = info ? info.inputs : [];
+  document.getElementById('con-modal-costs').innerHTML = inputs.length
+    ? inputs.map(inp => {
+        const have = (st.resources[inp.key] && st.resources[inp.key].qty) || 0; // компонентов на складе не бывает — 0 честно
+        return `<div class="con-cost-row${have < inp.qty ? ' lack' : ''}"><span>${inp.name}</span><span>${have} / ${inp.qty}</span></div>`;
+      }).join('')
+    : '<div class="con-cost-row">нет данных</div>';
+  document.getElementById('con-modal-desc').textContent = BUILDING_DESC[type] || '';
+  document.getElementById('con-modal-overlay').classList.add('show');
+}
+document.getElementById('con-close-btn').onclick = () => document.getElementById('con-modal-overlay').classList.remove('show');
+document.getElementById('con-build-btn').onclick = () =>
+  toast('«ПОСТРОИТЬ» — заглушка, посуточное строительство ещё не реализовано (фаза 2)');
+
+// ══════════════════════════════════════════════════════════════════════════
+// ВЕРФЬ / СТРОИТЕЛЬСТВО КОРАБЛЯ (КОСМОДРОМ, ТЗ_Корабль.md) — тот же уровень
+// готовности, что склад/строительство: полный рабочий UI, без бэкенда
+// (server/ship.go знает только один глобальный корабль без палуб/модулей —
+// постройка кораблей нигде не симулируется, это чистая теория ТЗ_Корабль.md).
+//
+// Классы/палубы/модули-на-палубу — §1. Рецепты палубы и всех 19 модулей —
+// живые, из /api/economy (economy.shipComponents.items, тот же расчёт, что
+// в панели «Экономика» — не отдельная копия чисел). Стройка требует Верфь
+// (базовое условие для чего угодно) и, для «продвинутых» модулей (оружие,
+// авионика — reactor/weapon_mount/teleport/radar/ecm/computer/shield),
+// дополнительно Завод улучшенных компонентов — по прямому требованию
+// пользователя «на планете должны быть соответствующие производства».
+//
+// Четыре характеристики — ускорение, огневая мощь, длительность полёта,
+// дальность прыжка — НЕ имеют формулы нигде в ТЗ (масса/прочность/спрос —
+// да, эти четыре — нет). Приняты простые, явно условные оценки (см.
+// shipComputeStats) — не баланс, а заглушка ради заполненной панели
+// характеристик, которую просил пользователь. Это открытый вопрос,
+// озвучен в чате отдельно.
+//
+// Конфигурация (класс → массив палуб → массив модулей) — localStorage, а не
+// просто память сессии: здесь явно попросили «Сохранить»/«Загрузить», в
+// памяти без персистентности эти две кнопки не имели бы смысла.
+// ══════════════════════════════════════════════════════════════════════════
+const SHIP_CLASSES = [
+  { key:'corvette',    military:'Корвет',   civilian:'Шаттл',  decks:1,  perDeck:8 },
+  { key:'frigate',     military:'Фрегат',   civilian:'Челнок', decks:2,  perDeck:6 },
+  { key:'destroyer',   military:'Эсминец',  civilian:'Клипер', decks:4,  perDeck:4 },
+  { key:'cruiser',     military:'Крейсер',  civilian:'Баржа',  decks:5,  perDeck:4 },
+  { key:'battleship',  military:'Линкор',   civilian:'Лайнер', decks:10, perDeck:3 },
+  { key:'dreadnought', military:'Дредноут', civilian:'Танкер', decks:21, perDeck:2 },
+  { key:'station',     military:'Станция',  civilian:'Ковчег', decks:60, perDeck:1 },
+];
+// durability: 1=хрупкий/2=крепкий (ТЗ_Корабль.md §2/§4). adv: требует Завод
+// улучшенных компонентов сверх Верфи (см. шапку раздела).
+const SHIP_MODULES = [
+  { key:'ship_life_support', name:'Система жизнеобеспечения', durability:1, adv:false },
+  { key:'ship_colonist',     name:'Колониальный модуль',       durability:1, adv:false },
+  { key:'ship_weapon_mount', name:'Оружейный модуль',          durability:2, adv:true  },
+  { key:'ship_solar_sail',   name:'Солнечный парус',           durability:1, adv:false },
+  { key:'ship_engine',       name:'Двигатель',                 durability:2, adv:false },
+  { key:'ship_reactor',      name:'Атомный реактор',           durability:2, adv:true  },
+  { key:'ship_gas_storage',  name:'Газохранилище',             durability:2, adv:false },
+  { key:'ship_battery',      name:'Аккумуляторы',              durability:1, adv:false },
+  { key:'ship_repair',       name:'Ремонтный модуль',          durability:1, adv:false },
+  { key:'ship_solar_panel',  name:'Солнечная панель',          durability:1, adv:false },
+  { key:'ship_teleport',     name:'Телепорт-модуль',           durability:1, adv:true  },
+  { key:'ship_miner',        name:'Шахтёр',                    durability:2, adv:false },
+  { key:'ship_radar',        name:'Радар',                     durability:1, adv:true  },
+  { key:'ship_ecm',          name:'Модуль РЭБ',                durability:1, adv:true  },
+  { key:'ship_computer',     name:'Вычислительный модуль',     durability:1, adv:true  },
+  { key:'ship_shield',       name:'Защитное поле',             durability:1, adv:true  },
+  { key:'ship_dock',         name:'Стыковочный док',           durability:2, adv:false },
+  { key:'ship_hangar',       name:'Ангар',                     durability:2, adv:false },
+  { key:'ship_cargo',        name:'Грузовой отсек',            durability:2, adv:false },
+];
+// Средний урон 6 «настоящих» типов оружия (ЭМИ-пушка/Луч захвата — 0 урона,
+// спецэффект, не считаем в «огневую мощь») — archive/docs/TZFleet.md §4.1.
+const WEAPON_AVG_DAMAGE = (80 + 180 + 150 + 220 + 200 + 400) / 6;
+
+// ── силуэт корабля на сетке палуб (присланный пользователем эскиз: не квадрат
+// «сторона=√палуб», а вытянутая/крестообразная форма, растущая в сложности
+// вместе с числом палуб) — по одной форме на каждое встречающееся в игре
+// число палуб (1/2/4/5/10/21), одна и та же для военного и гражданского
+// варианта класса (в эскизе у одного числа палуб несколько разных фигур —
+// это иллюстрация стиля, не единственно верный чертёж, поэтому здесь взята
+// одна каноническая форма на каждое число палуб, а не 14 отдельных копий) ──
+const SHIP_DECK_SHAPES = {
+  1: [[0,0]],
+  2: [[0,0],[0,1]],
+  // Клипер/Эсминец на уточнённом эскизе — сплошная ПРЯМАЯ линия, не квадрат
+  // 2×2 (это была ошибка первого прочтения) ───────────────────────────────
+  4: [[0,0],[1,0],[2,0],[3,0]],
+  // Крейсер — буква «Г»: верхний ряд из 4 клеток + 1 клетка снизу с края ──
+  5: [[0,0],[1,0],[2,0],[3,0],[0,1]],
+  // Линкор/Лайнер — симметричное сужение по краям (2-3-3-2), тот же
+  // ступенчатый характер, что на эскизе, но подогнано под decks=10 ────────
+  10: [
+    [1,0],[2,0],
+    [0,1],[1,1],[2,1],
+    [0,2],[1,2],[2,2],
+    [1,3],[2,3],
+  ],
+  // Дредноут/Танкер — «песочные часы»: узкий верх/низ, широкая середина в
+  // ОДНУ строку (не размытое пятно в 5 строк, как было раньше) — по
+  // устойчиво повторяющемуся на эскизе рисунку (пп. 15/17: 2-5-2, п.18: 3-6-3) ─
+  21: [
+    [3,0],[4,0],[5,0],[6,0],[7,0],
+    [0,1],[1,1],[2,1],[3,1],[4,1],[5,1],[6,1],[7,1],[8,1],[9,1],[10,1],
+    [3,2],[4,2],[5,2],[6,2],[7,2],
+  ],
+};
+// Станция/Ковчег (60 палуб) — отдельно: крест из 5 блоков 4×3=12 палуб (ровно
+// 60), в точности по присланной схеме — центральный блок обведён отдельно
+// («ядро»), в нём вместо обычных 19 модулей ставятся уникальные постройки
+// Станции (Ускоритель/Портал/Луч смерти, ТЗ_Корабль.md §7.2/7.3) или здания
+// колонии (§7.1); 4 «руки» — обычные палубы с обычными модулями.
+const STATION_BLOCK_W = 4, STATION_BLOCK_H = 3;
+const STATION_BLOCK_ORIGIN = [
+  { x: 4, y: 3 }, // 0: ядро
+  { x: 4, y: 0 }, // 1: верх
+  { x: 4, y: 6 }, // 2: низ
+  { x: 0, y: 3 }, // 3: лево
+  { x: 8, y: 3 }, // 4: право
+];
+function shipDeckGridPos(cls, i){
+  if(cls.key === 'station'){
+    const blockSize = STATION_BLOCK_W * STATION_BLOCK_H;
+    const origin = STATION_BLOCK_ORIGIN[Math.floor(i / blockSize)] || STATION_BLOCK_ORIGIN[0];
+    const within = i % blockSize;
+    return { col: origin.x + (within % STATION_BLOCK_W), row: origin.y + Math.floor(within / STATION_BLOCK_W) };
+  }
+  const shape = SHIP_DECK_SHAPES[cls.decks];
+  if(shape && shape[i]) return { col: shape[i][0], row: shape[i][1] };
+  const side = Math.max(1, Math.ceil(Math.sqrt(cls.decks))); // запасной вариант для нетабличного числа палуб
+  return { col: i % side, row: Math.floor(i / side) };
+}
+function shipGridBounds(cls){
+  let maxCol = 0, maxRow = 0;
+  for(let i = 0; i < cls.decks; i++){
+    const p = shipDeckGridPos(cls, i);
+    maxCol = Math.max(maxCol, p.col);
+    maxRow = Math.max(maxRow, p.row);
+  }
+  return { cols: maxCol + 1, rows: maxRow + 1 };
+}
+function shipCoreDeckSet(cls){
+  if(cls.key !== 'station') return new Set();
+  return new Set(Array.from({ length: STATION_BLOCK_W * STATION_BLOCK_H }, (_, i) => i));
+}
+// Уникальные постройки Станции — те же ключи/цены, что и в shipItemCosts
+// (server/economy.go, категория shipCatStation), доступны только в ядре.
+const SHIP_STATION_STRUCTURES = [
+  { key:'ship_accelerator',      name:'Ускоритель',      durability:3, adv:true },
+  { key:'ship_portal',           name:'Портал',           durability:3, adv:true },
+  { key:'ship_station_antigrav', name:'Антигравитатор',   durability:3, adv:true },
+  { key:'ship_death_ray',        name:'Луч смерти',       durability:3, adv:true },
+];
+
+let shipVariant = 'military'; // 'military' | 'civilian' — хранится по варианту в ключе состояния
+let shipSelectedClassIdx = 2; // Эсминец/Клипер — эталонный класс (ТЗ_Корабль.md §1)
+let shipSelectedDeck = 0;
+let shipState = {}; // "classKey:variant" → { modules: [][] }
+
+function shipCurrentClass(){ return SHIP_CLASSES[shipSelectedClassIdx]; }
+function shipStateKey(cls){ return cls.key + ':' + shipVariant; }
+function shipMakeEmptyState(cls){
+  return { modules: Array.from({length: cls.decks}, () => Array(cls.perDeck).fill(null)) };
+}
+function shipGetState(cls){
+  const key = shipStateKey(cls);
+  if(!shipState[key]) shipState[key] = shipMakeEmptyState(cls);
+  return shipState[key];
+}
+function shipItemInfo(key){
+  return whEconomy && whEconomy.shipComponents ? whEconomy.shipComponents.items.find(i => i.key === key) : null;
+}
+// Единая точка входа для «что стоит в слоте» — обычный модуль, уникальная
+// постройка Станции (тоже живёт в shipItemCosts) или здание колонии в ядре
+// (ключ вида "bld:housing", цена/масса — из whEconomy.buildings, тот же
+// резолвер, что и в СТРОИТЕЛЬСТВЕ/панели «Экономика»).
+function shipItemMassValue(modKey){
+  if(!modKey) return null;
+  if(modKey.startsWith('bld:')){
+    const type = modKey.slice(4);
+    const b = whEconomy && whEconomy.buildings ? whEconomy.buildings.find(x => x.type === type) : null;
+    return b ? { totalMass: b.totalMass, totalValue: b.totalValue, baseTotals: b.baseTotals } : null;
+  }
+  return shipItemInfo(modKey);
+}
+function shipItemDurability(modKey){
+  if(!modKey) return 0;
+  if(modKey.startsWith('bld:')) return 1; // здание в ядре станции — оценка, вне ТЗ
+  const station = SHIP_STATION_STRUCTURES.find(s => s.key === modKey);
+  if(station) return station.durability;
+  const mod = SHIP_MODULES.find(m => m.key === modKey);
+  return mod ? mod.durability : 0;
+}
+function shipSlotLabel(modKey){
+  if(!modKey) return '+ модуль';
+  if(modKey.startsWith('bld:')) return BUILDING_TYPES[modKey.slice(4)] || modKey;
+  const station = SHIP_STATION_STRUCTURES.find(s => s.key === modKey);
+  if(station) return station.name;
+  const mod = SHIP_MODULES.find(m => m.key === modKey);
+  return mod ? mod.name : modKey;
+}
+
+function shipComputeStats(cls, state){
+  const frame = shipItemInfo('ship_frame');
+  let totalMass = frame ? frame.totalMass * cls.decks : 0;
+  let totalValue = frame ? frame.totalValue * cls.decks : 0;
+  let durability = cls.decks * 3; // §2: голая палуба без брони = 3
+  let cargo = 0, engines = 0, weapons = 0, lifeSupport = 0, teleports = 0, computers = 0;
+  const baseTotals = {};
+  const addBase = (totals, mult) => Object.entries(totals || {}).forEach(([k,v]) => { baseTotals[k] = (baseTotals[k]||0) + v*mult; });
+  if(frame) addBase(frame.baseTotals, cls.decks);
+
+  state.modules.forEach(deck => deck.forEach(modKey => {
+    if(!modKey) return;
+    const info = shipItemMassValue(modKey);
+    if(info){ totalMass += info.totalMass; totalValue += info.totalValue; addBase(info.baseTotals, 1); }
+    durability += shipItemDurability(modKey);
+    if(modKey === 'ship_cargo') cargo += 1000;               // §4.19
+    if(modKey === 'ship_life_support'){ cargo += 200; lifeSupport++; } // §4.1
+    if(modKey === 'ship_engine') engines++;
+    if(modKey === 'ship_weapon_mount') weapons++;
+    if(modKey === 'ship_teleport') teleports++;
+    if(modKey === 'ship_computer') computers++;
+  }));
+
+  return {
+    totalMass, totalValue, durability, cargo, baseTotals,
+    // ── условные оценки, формулы нигде в ТЗ не заданы (см. шапку раздела) ──
+    acceleration: totalMass > 0 ? +(engines * 50000 / totalMass).toFixed(2) : 0,
+    firepower: Math.round(weapons * WEAPON_AVG_DAMAGE),
+    flightDays: lifeSupport * 30,
+    jumpRange: teleports > 0 ? +(1 + computers*0.5).toFixed(1) : 0,
+  };
+}
+
+function shipDeckDurability(deck){
+  let dur = 3;
+  deck.forEach(k => { dur += shipItemDurability(k); });
+  return dur;
+}
+
+// Станции (60 палуб, крест с ядром — см. SHIP_DECK_SHAPES/shipCoreDeckSet
+// выше) строятся ТОЛЬКО в открытом космосе, не на планетарной Верфи —
+// прямое указание пользователя: «максимальный корабль строящийся на
+// планете дредноут». Поэтому здесь Станция/Ковчег не предлагаются в списке
+// классов вовсе; сама форма палуб и логика ядра в коде остаются — пригодятся
+// для будущего экрана постройки в открытом космосе, если/когда он появится.
+function shipFillClassSelect(){
+  const sel = document.getElementById('sy-class-select');
+  sel.innerHTML = SHIP_CLASSES.filter(c => c.key !== 'station').map((c,i) => `
+    <option value="${SHIP_CLASSES.indexOf(c)}:military">${c.military} · ${c.decks} палуб(ы) × ${c.perDeck} модулей</option>
+    <option value="${SHIP_CLASSES.indexOf(c)}:civilian">${c.civilian} · ${c.decks} палуб(ы) × ${c.perDeck} модулей</option>
+  `).join('');
+  sel.value = shipSelectedClassIdx + ':' + shipVariant;
+  sel.onchange = () => {
+    const [idx, variant] = sel.value.split(':');
+    shipSelectedClassIdx = Number(idx);
+    shipVariant = variant;
+    shipSelectedDeck = 0;
+    renderShipyard();
+  };
+}
+
+async function renderShipyard(){
+  document.getElementById('hdr-title').textContent = 'ВЕРФЬ';
+  await whEnsureEconomy();
+  if(shipCurrentClass().key === 'station') shipSelectedClassIdx = 2; // защита: планетарная Верфь Станций не строит
+  shipFillClassSelect();
+  const cls = shipCurrentClass();
+  const state = shipGetState(cls);
+  if(shipSelectedDeck >= cls.decks) shipSelectedDeck = 0;
+  const stats = shipComputeStats(cls, state);
+
+  // ── сетка палуб: силуэт по присланному эскизу (SHIP_DECK_SHAPES/крест
+  // Станции), не плоский квадрат «сторона=√палуб» ────────────────────────
+  const grid = document.getElementById('sy-deck-grid');
+  const bounds = shipGridBounds(cls);
+  const coreSet = shipCoreDeckSet(cls);
+  grid.style.gridTemplateColumns = `repeat(${bounds.cols}, 1fr)`;
+  grid.innerHTML = '';
+  state.modules.forEach((deck, i) => {
+    const used = deck.filter(Boolean).length;
+    const pos = shipDeckGridPos(cls, i);
+    const cell = document.createElement('div');
+    cell.className = 'sdc' + (i === shipSelectedDeck ? ' selected' : '') + (coreSet.has(i) ? ' sdc-core' : '');
+    cell.style.gridColumn = String(pos.col + 1);
+    cell.style.gridRow = String(pos.row + 1);
+    cell.innerHTML = `<div class="sdc-slots">${used}/${cls.perDeck}</div><div class="sdc-dur">🛡${shipDeckDurability(deck)}</div>`;
+    cell.onclick = () => { shipSelectedDeck = i; renderShipyard(); };
+    grid.appendChild(cell);
+  });
+
+  // ── характеристики ──────────────────────────────────────────────────────
+  document.getElementById('sy-stats').innerHTML = `
+    <div class="sy-stat-row"><span>Прочность</span><b>${stats.durability}</b></div>
+    <div class="sy-stat-row"><span>Грузоподъёмность</span><b>${stats.cargo} у.м.</b></div>
+    <div class="sy-stat-row"><span>Ускорение*</span><b>${stats.acceleration}</b></div>
+    <div class="sy-stat-row"><span>Масса</span><b>${stats.totalMass.toFixed(0)} у.м.</b></div>
+    <div class="sy-stat-row"><span>Огневая мощь*</span><b>${stats.firepower}</b></div>
+    <div class="sy-stat-row"><span>Полёт без посадки*</span><b>${stats.flightDays} сут</b></div>
+    <div class="sy-stat-row"><span>Дальность прыжка*</span><b>${stats.jumpRange || '—'}</b></div>
+  `;
+
+  // ── слоты выбранной палубы: ряды по 4, лишнее сверх perDeck — перечёркнуто ──
+  const isCoreDeck = coreSet.has(shipSelectedDeck);
+  const slotsWrap = document.getElementById('sy-slots');
+  const deck = state.modules[shipSelectedDeck];
+  const rows = Math.max(1, Math.ceil(cls.perDeck / 4));
+  slotsWrap.innerHTML = '';
+  for(let r = 0; r < rows; r++){
+    const rowEl = document.createElement('div');
+    rowEl.className = 'sy-slot-row';
+    for(let c = 0; c < 4; c++){
+      const slotIdx = r*4 + c;
+      const box = document.createElement('div');
+      if(slotIdx >= cls.perDeck){
+        box.className = 'sy-slot sy-slot-closed';
+        box.textContent = '×';
+      } else {
+        const modKey = deck[slotIdx];
+        box.className = 'sy-slot' + (modKey ? ' filled' : '');
+        box.textContent = shipSlotLabel(modKey);
+        box.onclick = () => openModulePicker(slotIdx, isCoreDeck);
+      }
+      rowEl.appendChild(box);
+    }
+    slotsWrap.appendChild(rowEl);
+  }
+  document.getElementById('sy-slots-title').textContent = isCoreDeck
+    ? `ЯДРО СТАНЦИИ — постройки/здания, палуба ${shipSelectedDeck+1} из ${cls.decks}`
+    : `МОДУЛИ ПАЛУБЫ — выбрана палуба ${shipSelectedDeck+1} из ${cls.decks}`;
+}
+
+// ── карусель выбора модуля, по 2 на «слайд», пролистывание ‹/› ────────────
+// В обычной палубе — 19 модулей (SHIP_MODULES). В ядре Станции — вместо них
+// 4 уникальные постройки Станции + 19 зданий колонии (пользователь: «палубы
+// под размещение огромных устройств... или под размещение зданий»).
+let shipPickerSlot = null;
+let shipPickerPage = 0;
+let shipPickerCore = false;
+function openModulePicker(slotIdx, isCore){
+  shipPickerSlot = slotIdx;
+  shipPickerPage = 0;
+  shipPickerCore = !!isCore;
+  renderModulePicker();
+  document.getElementById('ship-picker-overlay').classList.add('show');
+}
+function shipPickerItems(){
+  if(!shipPickerCore) return SHIP_MODULES.map(m => ({ ...m, kind:'module' }));
+  const structures = SHIP_STATION_STRUCTURES.map(s => ({ ...s, kind:'station' }));
+  const buildings = Object.keys(BUILDING_TYPES).map(type => ({
+    key: 'bld:' + type, name: BUILDING_TYPES[type], durability: 1, adv: false,
+    kind: 'building', desc: BUILDING_DESC[type],
+  }));
+  return [...structures, ...buildings];
+}
+function renderModulePicker(){
+  const perPage = 2;
+  const items = shipPickerItems();
+  const totalPages = Math.max(1, Math.ceil(items.length / perPage));
+  shipPickerPage = Math.max(0, Math.min(totalPages-1, shipPickerPage));
+  const pageItems = items.slice(shipPickerPage*perPage, shipPickerPage*perPage + perPage);
+  const counts = conCountByType(); // те же реальные здания планеты, что и в «Строительстве»
+  const hasShipyard = (counts['shipyard'] || 0) > 0;
+  const hasAdv = (counts['adv_components'] || 0) > 0;
+  document.getElementById('ship-picker-body').innerHTML = pageItems.map(item => {
+    const info = shipItemMassValue(item.key);
+    const locked = !hasShipyard || (item.adv && !hasAdv);
+    const reason = !hasShipyard ? 'нужна Верфь' : 'нужен Завод улучшенных компонентов';
+    return `<div class="spc${locked ? ' locked' : ''}">
+      <div class="spc-name">${item.name}</div>
+      <div class="spc-dur">Прочность +${item.durability}</div>
+      ${item.kind === 'building' ? `<div class="spc-desc">${item.desc || ''}</div>` : ''}
+      <div class="spc-cost">${info ? info.totalValue.toFixed(0) + ' кред. · ' + info.totalMass.toFixed(0) + ' у.м.' : 'нет данных'}</div>
+      ${locked ? `<div class="spc-locked">${reason}</div>` : `<div class="spc-install" data-mkey="${item.key}">УСТАНОВИТЬ</div>`}
+    </div>`;
+  }).join('');
+  document.getElementById('ship-picker-page').textContent = (shipPickerPage+1) + ' / ' + totalPages;
+  document.querySelectorAll('.spc-install').forEach(btn => {
+    btn.onclick = () => installModule(shipPickerSlot, btn.dataset.mkey);
+  });
+}
+document.getElementById('ship-picker-prev').onclick = () => { shipPickerPage--; renderModulePicker(); };
+document.getElementById('ship-picker-next').onclick = () => { shipPickerPage++; renderModulePicker(); };
+document.getElementById('ship-picker-close').onclick = () => document.getElementById('ship-picker-overlay').classList.remove('show');
+
+function installModule(slotIdx, moduleKey){
+  const cls = shipCurrentClass();
+  const state = shipGetState(cls);
+  state.modules[shipSelectedDeck][slotIdx] = moduleKey;
+  document.getElementById('ship-picker-overlay').classList.remove('show');
+  // все слоты палубы заняты — переходим на первую палубу со свободным местом
+  // (пользователь: «автоматически выделяется новая палуба, ещё не занятая модулями»)
+  const deckFull = state.modules[shipSelectedDeck].slice(0, cls.perDeck).every(Boolean);
+  if(deckFull){
+    const nextFree = state.modules.findIndex(d => d.slice(0, cls.perDeck).some(s => !s));
+    if(nextFree >= 0) shipSelectedDeck = nextFree;
+  }
+  renderShipyard();
+}
+
+// ── панель кнопок: сохранить/загрузить/сбросить/строить ───────────────────
+document.getElementById('sy-save-btn').onclick = () => {
+  const cls = shipCurrentClass();
+  localStorage.setItem('ship_config_' + shipStateKey(cls), JSON.stringify(shipGetState(cls)));
+  toast(`Конфигурация «${shipVariant === 'military' ? cls.military : cls.civilian}» сохранена`);
+};
+document.getElementById('sy-load-btn').onclick = () => {
+  const cls = shipCurrentClass();
+  const raw = localStorage.getItem('ship_config_' + shipStateKey(cls));
+  if(!raw){ toast('Нет сохранённой конфигурации для этого класса'); return; }
+  try{ shipState[shipStateKey(cls)] = JSON.parse(raw); shipSelectedDeck = 0; renderShipyard(); toast('Конфигурация загружена'); }
+  catch(e){ toast('Не удалось загрузить сохранение'); }
+};
+document.getElementById('sy-reset-btn').onclick = () => {
+  const cls = shipCurrentClass();
+  shipState[shipStateKey(cls)] = shipMakeEmptyState(cls);
+  shipSelectedDeck = 0;
+  renderShipyard();
+  toast('Модули палуб сброшены');
+};
+document.getElementById('sy-build-btn').onclick = () => {
+  const cls = shipCurrentClass();
+  const state = shipGetState(cls);
+  const stats = shipComputeStats(cls, state);
+  const counts = conCountByType();
+  if(!(counts['shipyard'] || 0)){
+    toast('Нужна Верфь на планете — без неё корабли не строят');
+    return;
+  }
+  const label = shipVariant === 'military' ? cls.military : cls.civilian;
+  document.getElementById('ship-build-title').textContent = 'Постройка: ' + label;
+  document.getElementById('ship-build-summary').textContent =
+    `Масса ≈${stats.totalMass.toFixed(0)} у.м. · Стоимость ≈${stats.totalValue.toFixed(0)} кред. · ${cls.decks} палуб(ы)`;
+  const rows = Object.entries(stats.baseTotals).filter(([,v]) => v > 0.01).sort((a,b) => b[1]-a[1])
+    .map(([k,v]) => `<div class="con-cost-row"><span>${RESOURCES[k]||k}</span><span>${v.toFixed(1)}</span></div>`).join('');
+  document.getElementById('ship-build-costs').innerHTML = rows || '<div class="con-cost-row">пусто — не установлено ни одного модуля</div>';
+  document.getElementById('ship-build-overlay').classList.add('show');
+};
+document.getElementById('ship-build-close').onclick = () => document.getElementById('ship-build-overlay').classList.remove('show');
+
+// ── кнопки разделов сверху/снизу — реализованы СКЛАД, СТРОИТЕЛЬСТВО и
+// КОСМОДРОМ (переключают раздел на месте карты), остальные 5 + РЕМОНТ —
+// по-прежнему тост ─────────────────────────────────────────────────────
 document.querySelectorAll('.action-btn').forEach(btn => {
   btn.onclick = () => {
-    if(btn.dataset.label === 'СКЛАД'){
-      setSection(activeSection === 'warehouse' ? 'map' : 'warehouse');
-      return;
-    }
-    if(activeSection === 'warehouse') setSection('map'); // любой другой раздел — вернуться к карте первым делом
-    toast(`«${btn.dataset.label}» — заглушка, ещё не реализовано`);
+    const label = btn.dataset.label;
+    if(label === 'СКЛАД'){ setSection(activeSection === 'warehouse' ? 'map' : 'warehouse'); return; }
+    if(label === 'СТРОИТЕЛЬСТВО'){ setSection(activeSection === 'construction' ? 'map' : 'construction'); return; }
+    if(label === 'КОСМОДРОМ'){ setSection(activeSection === 'shipyard' ? 'map' : 'shipyard'); return; }
+    if(activeSection !== 'map') setSection('map'); // любой другой раздел — вернуться к карте первым делом
+    toast(`«${label}» — заглушка, ещё не реализовано`);
   };
 });
 document.getElementById('btn-repair').onclick = () => toast('«РЕМОНТ» — заглушка, ещё не реализовано');
