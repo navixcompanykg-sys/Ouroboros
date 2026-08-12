@@ -1,0 +1,68 @@
+{
+  "resources": {
+    "biomass": {
+      "price": 150,
+      "mass": 5
+    },
+    "bitumens": {
+      "price": 280,
+      "mass": 7
+    },
+    "carbonates": {
+      "price": 80,
+      "mass": 6
+    },
+    "helium3": {
+      "price": 475,
+      "mass": 1
+    },
+    "hydrogen": {
+      "price": 5,
+      "mass": 2
+    },
+    "inertGases": {
+      "price": 30,
+      "mass": 3
+    },
+    "iron": {
+      "price": 10,
+      "mass": 12
+    },
+    "lightRare": {
+      "price": 105,
+      "mass": 14
+    },
+    "metal_hydrogen": {
+      "price": 51625,
+      "mass": 28
+    },
+    "phosphates": {
+      "price": 325,
+      "mass": 8
+    },
+    "platinoids": {
+      "price": 390,
+      "mass": 16
+    },
+    "radioactives": {
+      "price": 210,
+      "mass": 18
+    },
+    "refractory": {
+      "price": 80,
+      "mass": 10
+    },
+    "silicates": {
+      "price": 5,
+      "mass": 8
+    },
+    "volcanicGases": {
+      "price": 55,
+      "mass": 4
+    },
+    "waterIce": {
+      "price": 15,
+      "mass": 5
+    }
+  }
+}

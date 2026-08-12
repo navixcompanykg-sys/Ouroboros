@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>УРОБОРОС — Экономика</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap');
+  :root {
+    --bg:#04060f; --panel-bg:rgba(6,12,28,0.92); --border:rgba(60,130,200,0.18);
+    --accent:#2a7fff; --accent2:#00e5ff; --text:#8baac8; --text-bright:#cce4ff;
+    --mono:'Share Tech Mono',monospace; --sans:'Rajdhani',sans-serif;
+    --gold:#ffcf6b; --ok:#44cc88; --err:#ff5544; --warn:#ff8060;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{background:var(--bg);color:var(--text);font-family:var(--sans);height:100%;}
+  body{display:flex;flex-direction:column;overflow:hidden;}
+
+  header{flex-shrink:0;display:flex;align-items:center;gap:14px;padding:8px 16px;
+    border-bottom:1px solid var(--border);background:var(--panel-bg);}
+  .logo{font-family:var(--mono);font-size:12px;letter-spacing:3px;color:var(--accent2);white-space:nowrap;}
+  .logo span{color:var(--text);opacity:.6;letter-spacing:1px;}
+  .hdr-sync{font-family:var(--mono);font-size:9px;letter-spacing:1px;color:var(--text);display:flex;align-items:center;gap:5px;}
+  .hdr-dot{width:6px;height:6px;border-radius:50%;background:var(--text);}
+  .hdr-dot.ok{background:var(--ok);box-shadow:0 0 4px var(--ok);}
+  .hdr-dot.err{background:var(--err);}
+  .hdr-time{font-family:var(--mono);font-size:9px;color:var(--text);opacity:.6;}
+  .hdr-actions{margin-left:auto;display:flex;gap:8px;}
+  .btn{font-family:var(--mono);font-size:10px;letter-spacing:1px;background:transparent;
+    border:1px solid var(--border);color:var(--text);padding:5px 12px;cursor:pointer;white-space:nowrap;}
+  .btn:hover{border-color:var(--accent2);color:var(--accent2);}
+
+  .note-bar{flex-shrink:0;padding:6px 16px;border-bottom:1px solid var(--border);
+    background:rgba(255,100,68,0.06);font-family:var(--mono);font-size:9px;color:var(--warn);
+    line-height:1.6;}
+
+  .tabs{flex-shrink:0;display:flex;gap:2px;padding:6px 16px 0;background:rgba(6,10,22,0.75);}
+  .tab-btn{font-family:var(--mono);font-size:9.5px;letter-spacing:1.5px;background:rgba(255,255,255,0.02);
+    border:1px solid var(--border);border-bottom:none;color:var(--text);opacity:.6;padding:6px 14px;cursor:pointer;}
+  .tab-btn:hover{opacity:.85;}
+  .tab-btn.active{opacity:1;color:var(--accent2);background:rgba(6,10,22,0.5);border-color:var(--accent2);}
+
+  .table-wrap{flex:1;overflow:auto;}
+  table.main{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:10.5px;min-width:900px;}
+  table.main thead{position:sticky;top:0;z-index:5;}
+  table.main thead tr{background:rgba(6,10,22,0.98);border-bottom:1px solid var(--border);}
+  table.main th{padding:6px 8px;text-align:left;font-size:9px;letter-spacing:1px;color:var(--text);
+    opacity:.65;font-weight:normal;white-space:nowrap;border-right:1px solid rgba(100,130,160,0.06);}
+  table.main th.sortable{cursor:pointer;}
+  table.main th.sortable:hover{opacity:1;color:var(--accent2);}
+  table.main th.sorted{opacity:1;color:var(--accent2);}
+  table.main th .arrow{margin-left:3px;opacity:.7;font-size:8px;}
+  table.main td{padding:4px 8px;white-space:nowrap;border-right:1px solid rgba(100,130,160,0.04);vertical-align:top;}
+  table.main tbody tr:hover{background:rgba(0,229,255,0.03);}
+  table.main tbody tr:nth-child(even){background:rgba(255,255,255,0.012);}
+  .col-num{text-align:right;color:var(--text-bright);}
+  table.main td.col-dim{color:var(--text);opacity:.7;white-space:normal;max-width:340px;}
+  .col-name{color:var(--text-bright);}
+  .tier-badge{display:inline-block;font-size:8.5px;padding:1px 5px;border:1px solid var(--border);margin-right:6px;}
+  .tier-1{color:#8baac8;} .tier-2{color:var(--accent2);} .tier-3{color:var(--gold);}
+  .incomplete-flag{color:var(--warn);font-size:9px;margin-top:2px;}
+  .unit-note{color:var(--text);opacity:.5;font-size:8.5px;margin-left:5px;}
+  tr.section-row td{padding:7px 8px;background:rgba(255,255,255,0.03);border-top:1px solid var(--border);
+    border-bottom:1px solid var(--border);font-family:var(--mono);font-size:9px;letter-spacing:1.5px;
+    color:var(--accent2);opacity:.9;}
+  .num-input{width:64px;background:rgba(0,0,0,0.4);border:1px solid var(--border);color:var(--text-bright);
+    font-family:var(--mono);font-size:10px;padding:2px 5px;text-align:right;}
+  .num-input:focus{outline:none;border-color:var(--accent2);}
+  .num-input.dirty{border-color:var(--gold);}
+  .reset-link{font-family:var(--mono);font-size:8px;color:var(--text);opacity:.5;cursor:pointer;margin-left:5px;}
+  .reset-link:hover{opacity:1;color:var(--accent2);}
+  .ratio-low{color:var(--err);}
+  .ratio-mid{color:var(--warn);}
+  .ratio-ok{color:var(--ok);}
+
+  .stub{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;}
+  .stub b{font-family:var(--mono);font-size:13px;letter-spacing:1px;color:var(--warn);}
+  .stub p{font-family:var(--mono);font-size:10px;color:var(--text);max-width:480px;text-align:center;line-height:1.8;}
+
+  .table-footer{flex-shrink:0;padding:5px 16px;background:var(--panel-bg);border-top:1px solid var(--border);
+    font-family:var(--mono);font-size:9px;color:var(--text);opacity:.7;}
+  .table-footer b{color:var(--text-bright);opacity:1;}
+
+  #offline{position:fixed;inset:0;background:rgba(4,6,15,0.95);z-index:80;
+    display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;}
+  #offline.show{display:flex;}
+  #offline .off-title{font-family:var(--mono);font-size:13px;letter-spacing:1px;color:var(--warn);}
+  #offline .off-text{font-family:var(--mono);font-size:10px;color:var(--text);line-height:1.8;text-align:center;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">УРОБОРОС <span>· ЭКОНОМИКА</span></div>
+  <div class="hdr-sync"><div class="hdr-dot" id="hdr-dot"></div><span id="hdr-sync-label">—</span></div>
+  <div class="hdr-time" id="hdr-time">—</div>
+  <div class="hdr-actions">
+    <button class="btn" id="btn-refresh">↻ ОБНОВИТЬ</button>
+    <button class="btn" onclick="window.open('planets.html','_blank')">СПИСОК ПЛАНЕТ</button>
+    <button class="btn" onclick="window.open('galaxy.html','_blank')">КАРТА СЕКТОРА</button>
+  </div>
+</header>
+
+<div class="note-bar">
+  Рецепты (табл. 2) и стоимость построек (табл. 3) — временные справочные значения из ТЗ_Экономика.md, администратором не редактируются.
+  Редактируются только цена и масса базовых ресурсов (табл. 1) — от них пересчитывается всё остальное.
+</div>
+
+<div class="tabs">
+  <div class="tab-btn active" id="tab-res">1 · РЕСУРСЫ</div>
+  <div class="tab-btn" id="tab-recipes">2 · РЕЦЕПТЫ</div>
+  <div class="tab-btn" id="tab-buildings">3 · ЗДАНИЯ</div>
+  <div class="tab-btn" id="tab-ship">4 · КОРАБЛЬ</div>
+  <div class="tab-btn" id="tab-summary">5 · СВОДКА</div>
+</div>
+
+<div class="table-wrap" id="wrap-res">
+  <table class="main" id="table-res">
+    <thead><tr>
+      <th>РЕСУРС</th><th class="sortable" data-col="sector">ЗАПАС В СЕКТОРЕ</th>
+      <th class="sortable" data-col="rarity">РЕДКОСТЬ</th>
+      <th class="sortable" data-col="recommended">РЕКОМЕНД. ЦЕНА</th>
+      <th>ЦЕНА (АДМИН)</th><th>МАССА, у.м. (АДМИН)</th>
+    </tr></thead>
+    <tbody id="body-res"></tbody>
+  </table>
+</div>
+
+<div class="table-wrap" id="wrap-recipes" style="display:none">
+  <table class="main" id="table-recipes">
+    <thead><tr>
+      <th>КОМПОНЕНТ / ЗДАНИЕ</th><th>ЗАВОД</th><th>РЕЦЕПТ / СОСТАВ</th>
+      <th>БАЗОВЫЕ РЕСУРСЫ</th>
+      <th class="col-num sortable" data-col="mass">МАССА</th>
+      <th class="col-num sortable" data-col="value">СТОИМОСТЬ</th>
+    </tr></thead>
+    <tbody id="body-recipes"></tbody>
+  </table>
+</div>
+
+<div class="table-wrap" id="wrap-buildings" style="display:none">
+  <table class="main" id="table-buildings">
+    <thead><tr>
+      <th>ЗДАНИЕ</th><th>ТУ</th><th>СОСТАВ (компоненты + сырьё)</th>
+      <th>ИТОГО БАЗОВЫХ РЕСУРСОВ</th>
+      <th class="col-num sortable" data-col="mass">ИТОГО МАССА</th>
+      <th class="col-num sortable" data-col="value">ИТОГО СТОИМОСТЬ</th>
+      <th>ЛИМИТ / СРОК</th>
+    </tr></thead>
+    <tbody id="body-buildings"></tbody>
+  </table>
+</div>
+
+<div class="table-wrap" id="wrap-ship" style="display:none">
+  <table class="main" id="table-ship">
+    <thead><tr>
+      <th>ЭЛЕМЕНТ КОРАБЛЯ</th><th>СОСТАВ</th>
+      <th>БАЗОВЫЕ РЕСУРСЫ</th>
+      <th class="col-num sortable" data-col="mass">МАССА</th>
+      <th class="col-num sortable" data-col="value">СТОИМОСТЬ</th>
+    </tr></thead>
+    <tbody id="body-ship"></tbody>
+  </table>
+</div>
+
+<div class="table-wrap" id="wrap-summary" style="display:none">
+  <table class="main" id="table-summary">
+    <thead><tr>
+      <th>РЕСУРС / КОМПОНЕНТ</th>
+      <th class="col-num sortable" data-col="demand">СПРОС В ЦЕПОЧКЕ (×12 колоний)</th>
+      <th class="col-num sortable" data-col="stock">ЗАПАС В СЕКТОРЕ</th>
+      <th class="col-num sortable" data-col="ratio">ЗАПАС / СПРОС</th>
+    </tr></thead>
+    <tbody id="body-summary"></tbody>
+  </table>
+</div>
+
+<div class="table-footer" id="table-footer">—</div>
+
+<div id="offline">
+  <div class="off-title">НЕТ СВЯЗИ С СЕРВЕРОМ</div>
+  <div class="off-text" id="off-text"></div>
+</div>
+
+<script>
+'use strict';
+// ══════════════════════════════════════════════════════════════════════════
+// Админ-панель «Экономика»: цены/масса базовых ресурсов (редактируемые,
+// GET/POST /api/economy) + рецепты компонентов и стоимость построек (только
+// чтение, временные данные из ТЗ_Экономика.md, пересчитываются сервером от
+// текущих цен/массы). Запас в секторе по каждому ресурсу — из /api/galaxy,
+// тем же приёмом, что раньше считала сводка в planets.html.
+// ══════════════════════════════════════════════════════════════════════════
+
+// Те же ключи/подписи, что в client/planets.html (RESOURCES) — 16 реализованных
+// ресурсов. Держится в согласии с server/economy.go (econResourceOrder).
+// Металлический водород (16-й) — газовые гиганты зон 1–4, planets.go
+// resourceDefs — теперь настоящая добыча, не заглушка.
+const RESOURCES = {
+  silicates:     'Силикаты',
+  iron:          'Железо',
+  refractory:    'Тугоплавкие',
+  lightRare:     'Лёгкие редкие',
+  platinoids:    'Платиноиды',
+  hydrogen:      'Водород',
+  helium3:       'Гелий-3',
+  inertGases:    'Инертные газы',
+  volcanicGases: 'Вулканич. газы',
+  radioactives:  'Радиоактивные',
+  waterIce:      'Водяной лёд',
+  biomass:       'Дикая биомасса',
+  phosphates:    'Фосфаты',
+  carbonates:    'Карбонаты',
+  bitumens:      'Битумы',
+  metal_hydrogen:'Металл. водород',
+};
+// Ресурс №17 (ТЗ_Ресурсы.md) — собирается у аномалий (чёрные дыры/нейтронные
+// звёзды), не у планет; добычи в planets.go пока нет (нет в RESOURCES, не
+// показан в табл. 1), но встречается как вход в рецепты (server/economy.go
+// unimplementedName) и должен быть виден в спросе (табл. 2 состав / табл. 5),
+// иначе картина востребованности была бы неполной.
+const UNIMPLEMENTED = {
+  antimatter: 'Антиматерия',
+};
+function resourceLabel(key) { return RESOURCES[key] || UNIMPLEMENTED[key] || key; }
+// Количества в рецептах обычно целые (ci(...)), но телепорт-модуль считает
+// квантовые вычислители формулой (server/economy.go buildTeleportItem) — там
+// дробь по-настоящему, округляем только для отображения.
+function fmtQty(q) { return Number.isInteger(q) ? q : q.toFixed(2); }
+
+let economy = null;   // последний снимок /api/economy
+let sectorStock = {}; // ключ ресурса → сумма по сектору (из /api/galaxy)
+let planetCount = 0;  // всего планет в секторе (для оценки сжигания водорода, см. renderSummary)
+let activeTab = 'res';
+let sort = { res: {col:'sector', dir:'desc'}, recipes: {col:null, dir:'asc'}, buildings: {col:null, dir:'asc'}, ship: {col:null, dir:'asc'}, summary: {col:'ratio', dir:'asc'} };
+
+async function loadAll() {
+  try {
+    const [galaxyRes, econRes] = await Promise.all([
+      fetch('api/galaxy', { cache:'no-store' }),
+      fetch('api/economy', { cache:'no-store' }),
+    ]);
+    if (!galaxyRes.ok) throw new Error('HTTP ' + galaxyRes.status + ' (galaxy)');
+    if (!econRes.ok) throw new Error('HTTP ' + econRes.status + ' (economy)');
+    const galaxy = await galaxyRes.json();
+    economy = await econRes.json();
+    computeSectorStock(galaxy.objects || []);
+    setSync(true);
+    document.getElementById('hdr-time').textContent = 'обновлено ' + new Date().toLocaleTimeString();
+    renderAll();
+  } catch (e) {
+    setSync(false, e.message);
+  }
+}
+
+function setSync(ok, msg) {
+  document.getElementById('hdr-dot').className = 'hdr-dot ' + (ok ? 'ok' : 'err');
+  document.getElementById('hdr-sync-label').textContent = ok ? 'LIVE' : 'ERR';
+  const off = document.getElementById('offline');
+  if (ok) {
+    off.classList.remove('show');
+  } else {
+    document.getElementById('off-text').innerHTML =
+      'Панель работает только через сервер.<br>Запустите <b>server</b> (см. server/README.md).<br><br>' + (msg || '');
+    off.classList.add('show');
+  }
+}
+
+function computeSectorStock(objects) {
+  sectorStock = {};
+  planetCount = 0;
+  Object.keys(RESOURCES).forEach(k => sectorStock[k] = 0);
+  objects.forEach(o => {
+    if (o.type !== 'star') return;
+    (o.planets || []).forEach(p => {
+      planetCount++;
+      const res = p.res || {};
+      Object.keys(RESOURCES).forEach(k => { sectorStock[k] += res[k] || 0; });
+    });
+  });
+}
+
+// ── вкладки ──────────────────────────────────────────────────────────────
+const TABS = ['res', 'recipes', 'buildings', 'ship', 'summary'];
+function setTab(tab) {
+  activeTab = tab;
+  TABS.forEach(t => {
+    document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+    document.getElementById('wrap-' + t).style.display = t === tab ? '' : 'none';
+  });
+  renderAll();
+}
+TABS.forEach(t => document.getElementById('tab-' + t).onclick = () => setTab(t));
+
+document.querySelectorAll('th.sortable').forEach(th => {
+  th.addEventListener('click', () => {
+    const scope = th.closest('table').id.replace('table-', '');
+    const col = th.dataset.col;
+    const s = sort[scope];
+    if (s.col === col) s.dir = s.dir === 'asc' ? 'desc' : 'asc';
+    else { s.col = col; s.dir = 'desc'; }
+    renderAll();
+  });
+});
+
+function renderAll() {
+  if (!economy) return;
+  if (activeTab === 'res') renderResources();
+  else if (activeTab === 'recipes') renderRecipes();
+  else if (activeTab === 'buildings') renderBuildings();
+  else if (activeTab === 'ship') renderShip();
+  else if (activeTab === 'summary') renderSummary();
+}
+
+// ── табл. 1: ресурсы ────────────────────────────────────────────────────
+function renderResources() {
+  let rows = economy.resources.slice();
+  const s = sort.res;
+  const val = (r, col) => col === 'sector' ? (sectorStock[r.key]||0) : col === 'rarity' ? r.rarity : col === 'recommended' ? r.recommendedPrice : 0;
+  if (s.col) rows.sort((a,b) => s.dir === 'asc' ? val(a,s.col)-val(b,s.col) : val(b,s.col)-val(a,s.col));
+
+  document.querySelectorAll('#table-res th.sortable').forEach(th => {
+    const active = th.dataset.col === s.col;
+    th.classList.toggle('sorted', active);
+  });
+
+  const body = document.getElementById('body-res');
+  body.innerHTML = '';
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="col-name">${RESOURCES[r.key] || r.name}</td>
+      <td class="col-num">${(sectorStock[r.key]||0).toLocaleString()}</td>
+      <td class="col-num">${r.rarity.toFixed(2)}</td>
+      <td class="col-num">${r.recommendedPrice.toLocaleString()}</td>
+      <td class="col-num"></td>
+      <td class="col-num"></td>
+    `;
+    const priceTd = tr.children[4], massTd = tr.children[5];
+    priceTd.appendChild(numInput(r.price, v => saveOverride(r.key, {price:v})));
+    if (r.price !== r.recommendedPrice) {
+      const reset = document.createElement('span');
+      reset.className = 'reset-link';
+      reset.textContent = '↺ реком.';
+      reset.title = 'Сбросить к рекомендованной цене';
+      reset.onclick = () => saveOverride(r.key, {price:r.recommendedPrice});
+      priceTd.appendChild(reset);
+    }
+    massTd.appendChild(numInput(r.mass, v => saveOverride(r.key, {mass:v})));
+    body.appendChild(tr);
+  });
+  document.getElementById('table-footer').innerHTML = `ВСЕГО РЕСУРСОВ: <b>${rows.length}</b> (antimatter — не реализована в симуляции, не показана; металлический водород — реализован, газовые гиганты зон 1–4)`;
+}
+
+function numInput(value, onCommit) {
+  const inp = document.createElement('input');
+  inp.type = 'number';
+  inp.className = 'num-input';
+  inp.value = value;
+  inp.min = 0;
+  inp.step = 'any';
+  inp.addEventListener('change', () => {
+    const v = Number(inp.value);
+    if (!Number.isFinite(v) || v < 0) { inp.value = value; return; }
+    onCommit(v);
+  });
+  return inp;
+}
+
+async function saveOverride(key, patch) {
+  try {
+    const res = await fetch('api/economy/resource', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ key, ...patch }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    economy = await res.json();
+    renderAll();
+  } catch (e) {
+    setSync(false, e.message);
+  }
+}
+
+// ── табл. 2: рецепты ────────────────────────────────────────────────────
+function renderRecipes() {
+  let rows = economy.recipes.slice();
+  const s = sort.recipes;
+  const val = (r, col) => col === 'mass' ? r.massPerUnit : col === 'value' ? r.valuePerUnit : 0;
+  if (s.col) rows.sort((a,b) => s.dir === 'asc' ? val(a,s.col)-val(b,s.col) : val(b,s.col)-val(a,s.col));
+  else rows.sort((a,b) => a.tier - b.tier || a.name.localeCompare(b.name));
+
+  document.querySelectorAll('#table-recipes th.sortable').forEach(th => th.classList.toggle('sorted', th.dataset.col === s.col));
+
+  const body = document.getElementById('body-recipes');
+  body.innerHTML = '';
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    const inputsStr = r.inputs.map(i => `${i.name}×${fmtQty(i.qty)}${i.unimplemented ? ' *' : ''}`).join(', ');
+    const baseStr = Object.entries(r.baseTotals).filter(([,v]) => v > 0.001)
+      .map(([k,v]) => `${resourceLabel(k)} ${v.toFixed(2)}`).join(', ');
+    tr.innerHTML = `
+      <td class="col-name"><span class="tier-badge tier-${r.tier}">ТУ${r.tier}</span>${r.name}<span class="unit-note">(1 шт, партия 10)</span>${r.incomplete ? '<div class="incomplete-flag">* содержит нереализованный ресурс — стоимость неполная</div>' : ''}</td>
+      <td>${r.factory}</td>
+      <td class="col-dim">${inputsStr}</td>
+      <td class="col-dim">${baseStr}</td>
+      <td class="col-num">${r.massPerUnit.toFixed(2)}</td>
+      <td class="col-num">${r.valuePerUnit.toFixed(2)}</td>
+    `;
+    body.appendChild(tr);
+  });
+
+  // ── здания, ниже компонентов — та же востребованность базовых ресурсов,
+  // но постройка (не партия из 10, а разово на 1 здание) ──────────────────
+  const divider = document.createElement('tr');
+  divider.className = 'section-row';
+  divider.innerHTML = `<td colspan="6">ЗДАНИЯ — стоимость постройки (ТЗ_Экономика.md §13/§15), для полной картины востребованности ресурсов</td>`;
+  body.appendChild(divider);
+
+  const buildings = economy.buildings.slice().sort((a,b) => a.level - b.level || a.name.localeCompare(b.name));
+  buildings.forEach(b => {
+    const tr = document.createElement('tr');
+    const inputsStr = b.inputs.map(i => `${i.name}×${fmtQty(i.qty)}${i.unimplemented ? ' *' : ''}`).join(', ');
+    const baseStr = Object.entries(b.baseTotals).filter(([,v]) => v > 0.001)
+      .map(([k,v]) => `${resourceLabel(k)} ${v.toFixed(1)}`).join(', ');
+    tr.innerHTML = `
+      <td class="col-name"><span class="tier-badge tier-${b.level}">ТУ${b.level}</span>${b.name}<span class="unit-note">(1 здание)</span>${b.incomplete ? '<div class="incomplete-flag">* неполная стоимость</div>' : ''}</td>
+      <td>—</td>
+      <td class="col-dim">${inputsStr}</td>
+      <td class="col-dim">${baseStr}</td>
+      <td class="col-num">${b.totalMass.toFixed(1)}</td>
+      <td class="col-num">${b.totalValue.toFixed(1)}</td>
+    `;
+    body.appendChild(tr);
+  });
+
+  document.getElementById('table-footer').innerHTML =
+    `КОМПОНЕНТОВ: <b>${rows.length}</b> (партия 10 шт/цикл, масса/стоимость — на 1 шт) · ЗДАНИЙ: <b>${buildings.length}</b> (на 1 здание целиком)`;
+}
+
+// ── табл. 3: здания ─────────────────────────────────────────────────────
+function renderBuildings() {
+  let rows = economy.buildings.slice();
+  const s = sort.buildings;
+  const val = (r, col) => col === 'mass' ? r.totalMass : col === 'value' ? r.totalValue : 0;
+  if (s.col) rows.sort((a,b) => s.dir === 'asc' ? val(a,s.col)-val(b,s.col) : val(b,s.col)-val(a,s.col));
+  else rows.sort((a,b) => a.level - b.level || a.name.localeCompare(b.name));
+
+  document.querySelectorAll('#table-buildings th.sortable').forEach(th => th.classList.toggle('sorted', th.dataset.col === s.col));
+
+  const body = document.getElementById('body-buildings');
+  body.innerHTML = '';
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    const inputsStr = r.inputs.map(i => `${i.name}×${fmtQty(i.qty)}${i.unimplemented ? ' *' : ''}`).join(', ');
+    const baseStr = Object.entries(r.baseTotals).filter(([,v]) => v > 0.001)
+      .map(([k,v]) => `${resourceLabel(k)} ${v.toFixed(1)}`).join(', ');
+    tr.innerHTML = `
+      <td class="col-name">${r.name}${r.incomplete ? '<div class="incomplete-flag">* неполная стоимость</div>' : ''}</td>
+      <td class="col-num">ТУ${r.level}</td>
+      <td class="col-dim">${inputsStr}</td>
+      <td class="col-dim">${baseStr}</td>
+      <td class="col-num">${r.totalMass.toFixed(1)}</td>
+      <td class="col-num">${r.totalValue.toFixed(1)}</td>
+      <td class="col-dim">${r.limitingName} · ${r.buildDays} сут</td>
+    `;
+    body.appendChild(tr);
+  });
+  document.getElementById('table-footer').innerHTML = `ВСЕГО ЗДАНИЙ: <b>${rows.length}</b> (стоимость постройки на 1 здание, без коэффициента потерь)`;
+}
+
+// ── табл. 4: корабль (ТЗ_Корабль.md — теория, перенесена сюда только ради
+// спроса на ресурсы; каркас/броня/19 модулей/8 типов оружия, без деления на
+// партии — один рецепт = один экземпляр) ─────────────────────────────────
+const SHIP_CAT_ORDER = ['frame', 'armor', 'module', 'weapon', 'station'];
+const SHIP_CAT_LABEL = {
+  frame: 'КАРКАС (ПАЛУБА)', armor: 'БРОНИРОВАНИЕ ПАЛУБЫ',
+  module: 'МОДУЛИ', weapon: 'ОРУЖИЕ (устанавливается в оружейный модуль)',
+  station: 'УНИКАЛЬНЫЕ ПОСТРОЙКИ СТАНЦИИ/ДРЕДНОУТА (10 палуб каждая, ТЗ_Корабль.md §7)',
+};
+function shipRow(it) {
+  const inputsStr = it.inputs.map(i => `${i.name}×${fmtQty(i.qty)}`).join(', ');
+  const baseStr = Object.entries(it.baseTotals).filter(([,v]) => v > 0.001)
+    .map(([k,v]) => `${resourceLabel(k)} ${v.toFixed(2)}`).join(', ');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td class="col-name">${it.name}</td>
+    <td class="col-dim">${inputsStr}</td>
+    <td class="col-dim">${baseStr}</td>
+    <td class="col-num">${it.totalMass.toFixed(2)}</td>
+    <td class="col-num">${it.totalValue.toFixed(2)}</td>
+  `;
+  return tr;
+}
+function renderShip() {
+  const items = economy.shipComponents.items || [];
+  const s = sort.ship;
+
+  document.querySelectorAll('#table-ship th.sortable').forEach(th => th.classList.toggle('sorted', th.dataset.col === s.col));
+
+  const body = document.getElementById('body-ship');
+  body.innerHTML = '';
+
+  if (s.col) {
+    const val = it => s.col === 'mass' ? it.totalMass : it.totalValue;
+    items.slice().sort((a,b) => s.dir === 'asc' ? val(a)-val(b) : val(b)-val(a))
+      .forEach(it => body.appendChild(shipRow(it)));
+  } else {
+    SHIP_CAT_ORDER.forEach(cat => {
+      const catItems = items.filter(it => it.category === cat).sort((a,b) => a.name.localeCompare(b.name));
+      if (!catItems.length) return;
+      const divider = document.createElement('tr');
+      divider.className = 'section-row';
+      divider.innerHTML = `<td colspan="5">${SHIP_CAT_LABEL[cat]}</td>`;
+      body.appendChild(divider);
+      catItems.forEach(it => body.appendChild(shipRow(it)));
+    });
+  }
+
+  document.getElementById('table-footer').innerHTML =
+    `${economy.shipComponents.note} Всего элементов: <b>${items.length}</b> (1 каркас, 1 броня, 19 модулей, 8 типов оружия, 4 уникальные постройки Станции/Дредноута) — см. ТЗ_Корабль.md.`;
+}
+
+// ── табл. 5: сводка спроса/запаса ──────────────────────────────────────
+// Минимум 12 колоний в секторе (правило пользователя) — вся сводка (табл. 5)
+// считает так, будто каждая позиция (сырьё/компонент/здание/элемент корабля)
+// нужна не в одном экземпляре, а в 12 — грубое масштабирование «спроса в
+// цепочке» на реалистичный размер империи, а не одна демонстрационная колония.
+// Запас в секторе (ЗАПАС В СЕКТОРЕ) — это факт текущей генерации, его не множим.
+const COLONY_COUNT = 12;
+
+function renderSummary() {
+  const demandOf = key => (economy.demand[key] || 0) * COLONY_COUNT;
+  const compDemandOf = key => (economy.componentDemand[key] || 0) * COLONY_COUNT;
+
+  // ── сжигание водорода: любое действие требует энергии, энергия — это
+  // сожжённый водород (правило пользователя, приблизительный расчёт —
+  // предельная точность не нужна). Считается ДО построения строк таблицы —
+  // подставляется прямо в спрос строки «Водород» ниже, а не только в
+  // отдельный блок в конце (иначе водород в основной таблице так и остаётся
+  // с ложным «спрос 0» — ничего его не потребляет как ИНГРЕДИЕНТ, только жжёт).
+  // Считается уже от ×12-спроса (demandOf/compDemandOf) — иначе сжигание жило
+  // бы по одной колонии, а всё остальное — по двенадцати:
+  //  · производство компонента — 1 водород на 10 штук (любого типа, партия);
+  //  · добыча ресурса — 1 водород на «выработку одного гекса» этого ресурса:
+  //    средняя добыча на планету (запас сектора / число планет) делённая на
+  //    среднее число гексов на планете. Число гексов планеты зависит от её
+  //    размера (radius 2/3/4 → 19/37/61, planetHexRadius в server/planets.go)
+  //    — берём простое среднее трёх размеров (39), точное распределение
+  //    планет по размеру сюда не тащим, это оценка, а не точный расчёт.
+  const AVG_HEXES_PER_PLANET = (19 + 37 + 61) / 3; // 39
+  const totalComponentDemand = Object.keys(economy.componentDemand).reduce((a,k) => a + compDemandOf(k), 0);
+  const h2ForComponents = totalComponentDemand / 10;
+  let h2ForResources = 0;
+  const h2ByResource = Object.keys(RESOURCES).map(key => {
+    const demand = demandOf(key);
+    const avgPerPlanet = planetCount > 0 ? (sectorStock[key] || 0) / planetCount : 0;
+    const perHexYield = avgPerPlanet / AVG_HEXES_PER_PLANET;
+    const h2 = perHexYield > 0 ? demand / perHexYield : 0;
+    h2ForResources += h2;
+    return { name: RESOURCES[key], h2 };
+  }).filter(r => r.h2 > 0.01).sort((a,b) => b.h2 - a.h2);
+  const h2Total = h2ForComponents + h2ForResources;
+
+  // ── население и питание, по аналогии с водородом (оценка, не точный расчёт):
+  //  · рабочие руки — 1 житель на здание, КРОМЕ Жилого модуля (ему рабочие не
+  //    нужны — единственное исключение, ТЗ_Экономика.md §12) — на все ×12
+  //    колоний сразу, тем же приёмом, что и everywhere else в этой сводке;
+  //  · экипаж — 1 житель на каждую Систему жизнеобеспечения корабля
+  //    («экипаж по умолчанию — 1 единица населения», ТЗ_Корабль.md §4.1);
+  //  · питание — 1 ед. пищи на жителя в сутки (ТЗ_Экономика.md §12.5). Реальная
+  //    механика мешает 3 типа пищи (натуральная/синтетическая/биоинженерная,
+  //    §11) — здесь для оценки берём только Биосинтетику (синтетическая,
+  //    рецепт: биомасса10+вода6+фосфаты5+карбонаты2 → 10 порций) как
+  //    представительный тип, чтобы явно связать население с фосфатами и
+  //    карбонатами — по этому и был вопрос.
+  const HOUSING_BUILDING_NAME = 'Жилой модуль';
+  const workingBuildings = economy.buildings.filter(b => b.name !== HOUSING_BUILDING_NAME).length;
+  const popBuildings = workingBuildings * COLONY_COUNT;
+  const popCrew = COLONY_COUNT; // 1 «Система жизнеобеспечения» в списке × COLONY_COUNT колоний, 1 экипаж на каждую
+  const popTotal = popBuildings + popCrew;
+  const foodNeeded = popTotal; // 1 ед. пищи / житель / сутки
+  const biosyntheticsBatches = foodNeeded / 10;
+  const foodBase = {
+    biomass: biosyntheticsBatches * 10,
+    waterIce: biosyntheticsBatches * 6,
+    phosphates: biosyntheticsBatches * 5,
+    carbonates: biosyntheticsBatches * 2,
+  };
+
+  let rows = Object.keys(RESOURCES).map(key => {
+    // Водород — единственный ресурс, где «спрос» это не ингредиент в рецепте
+    // (то и так 0), а расход на сжигание (энергия для всего пересчитанного
+    // выше) — вот он, h2Total, подставлен прямо сюда. Биомасса/вода/фосфаты/
+    // карбонаты — то же самое для питания населения (foodBase выше).
+    const demand = demandOf(key) + (key === 'hydrogen' ? h2Total : 0) + (foodBase[key] || 0);
+    const stock = sectorStock[key] || 0;
+    const ratio = demand > 0 ? stock / demand : Infinity;
+    return { key, name: RESOURCES[key], demand, stock, ratio, unimplemented: false };
+  });
+  // Антиматерия — запас всегда 0 (не добывается в симуляции, только
+  // металлический водород реализован), но спрос на неё реальный (рецепты
+  // ТУ3 с антиматерией, economy.demand с сервера уже считает его) — без этой
+  // строки «полная картина востребованности» была бы неполной именно там,
+  // где она важнее всего: показывает жёсткий блокер.
+  Object.keys(UNIMPLEMENTED).forEach(key => {
+    const demand = demandOf(key);
+    rows.push({ key, name: UNIMPLEMENTED[key], demand, stock: 0, ratio: demand > 0 ? 0 : Infinity, unimplemented: true });
+  });
+  const s = sort.summary;
+  const val = (r, col) => r[col];
+  rows.sort((a,b) => s.dir === 'asc' ? val(a,s.col)-val(b,s.col) : val(b,s.col)-val(a,s.col));
+
+  document.querySelectorAll('#table-summary th.sortable').forEach(th => th.classList.toggle('sorted', th.dataset.col === s.col));
+
+  const body = document.getElementById('body-summary');
+  body.innerHTML = '';
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    const ratioCls = !Number.isFinite(r.ratio) ? '' : r.ratio < 5 ? 'ratio-low' : r.ratio < 50 ? 'ratio-mid' : 'ratio-ok';
+    const ratioStr = !Number.isFinite(r.ratio) ? '∞' : r.ratio.toFixed(1) + '×';
+    tr.innerHTML = `
+      <td class="col-name">${r.name}${r.unimplemented ? '<span class="unit-note">(не реализован в симуляции)</span>' : ''}</td>
+      <td class="col-num">${r.demand.toFixed(2)}</td>
+      <td class="col-num">${r.stock.toLocaleString()}</td>
+      <td class="col-num ${ratioCls}">${ratioStr}</td>
+    `;
+    body.appendChild(tr);
+  });
+
+  // ── спрос НА КОМПОНЕНТЫ (не на сырьё): сколько единиц каждого из 21
+  // компонента нужно как прямой ингредиент — по всем ТУ сразу, включая то,
+  // что тянут здания (любого уровня, не только «своего» ТУ). У компонентов
+  // нет понятия «запас в секторе» (не добываются, а производятся) — колонки
+  // запас/отношение здесь не заполняются. ──────────────────────────────────
+  const divider = document.createElement('tr');
+  divider.className = 'section-row';
+  divider.innerHTML = `<td colspan="4">СПРОС НА КОМПОНЕНТЫ (×12 колоний) — по всем ТУ, компоненты + здания любого уровня + элементы корабля</td>`;
+  body.appendChild(divider);
+
+  let grandTotal = 0;
+  [1, 2, 3].forEach(tier => {
+    const tierRows = economy.recipes.filter(r => r.tier === tier).sort((a,b) => a.name.localeCompare(b.name));
+    let tierTotal = 0;
+    tierRows.forEach(r => {
+      const d = compDemandOf(r.key);
+      tierTotal += d;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="col-name"><span class="tier-badge tier-${r.tier}">ТУ${r.tier}</span>${r.name}</td>
+        <td class="col-num">${d.toFixed(1)}</td>
+        <td class="col-num">—</td>
+        <td class="col-num">—</td>
+      `;
+      body.appendChild(tr);
+    });
+    grandTotal += tierTotal;
+    const totalTr = document.createElement('tr');
+    totalTr.innerHTML = `
+      <td class="col-name"><b>ИТОГО ТУ${tier}</b></td>
+      <td class="col-num"><b>${tierTotal.toFixed(1)}</b></td>
+      <td class="col-num">—</td>
+      <td class="col-num">—</td>
+    `;
+    totalTr.style.background = 'rgba(0,229,255,0.04)';
+    body.appendChild(totalTr);
+  });
+  const grandTr = document.createElement('tr');
+  grandTr.innerHTML = `
+    <td class="col-name"><b>ИТОГО ВСЕ КОМПОНЕНТЫ (ТУ1+ТУ2+ТУ3)</b></td>
+    <td class="col-num"><b>${grandTotal.toFixed(1)}</b></td>
+    <td class="col-num">—</td>
+    <td class="col-num">—</td>
+  `;
+  grandTr.style.background = 'rgba(0,229,255,0.08)';
+  body.appendChild(grandTr);
+
+  // Детализация сжигания водорода (h2ForComponents/h2ForResources/h2ByResource/
+  // h2Total уже посчитаны в начале функции — тот же водород уже подставлен в
+  // строку «Водород» основной таблицы выше, здесь только разбивка по составу.
+  const energyDivider = document.createElement('tr');
+  energyDivider.className = 'section-row';
+  energyDivider.innerHTML = `<td colspan="4">ЭНЕРГИЯ — из чего сложился спрос водорода в строке «Водород» выше (оценка, не точный расчёт)</td>`;
+  body.appendChild(energyDivider);
+
+  h2ByResource.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="col-name">на добычу: ${r.name}</td>
+      <td class="col-num">${r.h2.toFixed(1)}</td>
+      <td class="col-num">—</td>
+      <td class="col-num">—</td>
+    `;
+    body.appendChild(tr);
+  });
+  const h2ResTr = document.createElement('tr');
+  h2ResTr.innerHTML = `
+    <td class="col-name"><b>ИТОГО на добычу ресурсов</b></td>
+    <td class="col-num"><b>${h2ForResources.toFixed(1)}</b></td>
+    <td class="col-num">—</td><td class="col-num">—</td>
+  `;
+  h2ResTr.style.background = 'rgba(0,229,255,0.04)';
+  body.appendChild(h2ResTr);
+  const h2CompTr = document.createElement('tr');
+  h2CompTr.innerHTML = `
+    <td class="col-name"><b>ИТОГО на производство компонентов</b></td>
+    <td class="col-num"><b>${h2ForComponents.toFixed(1)}</b></td>
+    <td class="col-num">—</td><td class="col-num">—</td>
+  `;
+  h2CompTr.style.background = 'rgba(0,229,255,0.04)';
+  body.appendChild(h2CompTr);
+  const h2TotalTr = document.createElement('tr');
+  const h2Stock = sectorStock.hydrogen || 0;
+  const h2Pct = h2Stock > 0 ? (h2Total / h2Stock * 100) : 0;
+  h2TotalTr.innerHTML = `
+    <td class="col-name"><b>ИТОГО ВОДОРОДА НА СЖИГАНИЕ</b></td>
+    <td class="col-num"><b>${h2Total.toFixed(1)}</b></td>
+    <td class="col-num"><b>${h2Stock.toLocaleString()}</b></td>
+    <td class="col-num ${h2Pct > 20 ? 'ratio-low' : h2Pct > 5 ? 'ratio-mid' : 'ratio-ok'}"><b>${h2Pct.toFixed(2)}%</b></td>
+  `;
+  h2TotalTr.style.background = 'rgba(0,229,255,0.08)';
+  body.appendChild(h2TotalTr);
+
+  // ── население и питание ───────────────────────────────────────────────
+  const popDivider = document.createElement('tr');
+  popDivider.className = 'section-row';
+  popDivider.innerHTML = `<td colspan="4">НАСЕЛЕНИЕ И ПИТАНИЕ — сколько жителей нужно, чтобы обслужить всё посчитанное (оценка)</td>`;
+  body.appendChild(popDivider);
+
+  const popRows = [
+    ['Рабочие на зданиях (все, кроме Жилого модуля)', popBuildings],
+    ['Экипаж (по 1 на Систему жизнеобеспечения)', popCrew],
+  ];
+  popRows.forEach(([label, val]) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="col-name">${label}</td><td class="col-num">${val.toFixed(0)}</td><td class="col-num">—</td><td class="col-num">—</td>`;
+    body.appendChild(tr);
+  });
+  const popTotalTr = document.createElement('tr');
+  popTotalTr.innerHTML = `<td class="col-name"><b>ИТОГО НАСЕЛЕНИЕ</b></td><td class="col-num"><b>${popTotal.toFixed(0)}</b></td><td class="col-num">—</td><td class="col-num">—</td>`;
+  popTotalTr.style.background = 'rgba(0,229,255,0.04)';
+  body.appendChild(popTotalTr);
+
+  const foodRows = [
+    ['Питание/сутки (1 ед. на жителя)', foodNeeded],
+    ['— из них Биосинтетика, партий по 10', biosyntheticsBatches],
+    ['— на это уйдёт Дикой биомассы', foodBase.biomass],
+    ['— на это уйдёт Водяного льда', foodBase.waterIce],
+    ['— на это уйдёт Фосфатов', foodBase.phosphates],
+    ['— на это уйдёт Карбонатов', foodBase.carbonates],
+  ];
+  foodRows.forEach(([label, val]) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="col-name">${label}</td><td class="col-num">${val.toFixed(1)}</td><td class="col-num">—</td><td class="col-num">—</td>`;
+    body.appendChild(tr);
+  });
+
+  document.getElementById('table-footer').innerHTML =
+    `Вся сводка — <b>×${COLONY_COUNT} колоний</b> (минимум по сектору, не одна демонстрационная): «СПРОС В ЦЕПОЧКЕ» — сумма расхода ресурса на 1 шт КАЖДОГО из 21 компонента + 1 КАЖДОГО из 19 зданий + 1 КАЖДОГО элемента корабля (табл. 4 — каркас, броня, 19 модулей, 8 типов оружия, ТЗ_Корабль.md), умноженная на ${COLONY_COUNT}. Запас в секторе — не множится, это факт текущей генерации. Низкое отношение запас/спрос — потенциальное узкое место экономики. Антиматерия — запас всегда 0 (не добывается), спрос на неё реален: жёсткий блокер, а не просто дефицит. Металлический водород — реализован (газовые гиганты зон 1–4), с реальным запасом наравне с остальными 15. «Спрос на компоненты» — прямое использование как ингредиента, суммарно по компонентам-потребителям, зданиям и элементам корабля, тоже ×${COLONY_COUNT}. «Энергия» — оценка сжигания водорода от уже умноженного спроса: 1 водород / 10 произведённых компонентов + 1 водород / выработку одного гекса на добычу ресурса (средняя добыча на планету ÷ ~39 гексов), последняя колонка — доля от текущего запаса водорода в секторе. «Население и питание» — 1 житель/здание (кроме Жилого модуля) + 1 экипаж/Систему жизнеобеспечения, 1 ед. пищи/житель/сутки, взята Биосинтетика как представительный тип пищи (реальный микс 3 типов, ТЗ_Экономика.md §11, здесь не моделируется) — отсюда в строках Биомассы/Воды/Фосфатов/Карбонатов выше добавлен спрос на прокорм.`;
+}
+
+// ── запуск ────────────────────────────────────────────────────────────
+document.getElementById('btn-refresh').onclick = loadAll;
+loadAll();
+</script>
+</body>
+</html>

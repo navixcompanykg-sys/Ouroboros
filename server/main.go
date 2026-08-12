@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -44,6 +45,8 @@ func main() {
 	seedFlag := flag.Int64("seed", 0, "сид генерации галактики (0 = случайный при запуске)")
 	flag.Parse()
 
+	killStaleServer(*port)
+
 	if *seedFlag != 0 {
 		seed = *seedFlag
 	} else {
@@ -59,6 +62,7 @@ func main() {
 	clk = NewClock(*speed)
 	sim = NewSim(seed)
 	forceHabitableCapitals(sim)
+	loadEconomy() // после sim — рекомендованная цена считается от реального запаса ресурсов сектора
 	ship = NewShip(findCapitalID(sim), findCapitalRadius(sim))
 	initFleets(sim)
 	stop := make(chan struct{})
@@ -77,6 +81,8 @@ func main() {
 	mux.HandleFunc("/api/ship/land", handleShipLand)
 	mux.HandleFunc("/api/ship/launch", handleShipLaunch)
 	mux.HandleFunc("/api/fleets", handleFleets)
+	mux.HandleFunc("/api/economy", handleEconomy)
+	mux.HandleFunc("/api/economy/resource", handleEconomyResource)
 	mux.Handle("/", noCache(http.FileServer(http.Dir(clientFS))))
 
 	addr := fmt.Sprintf(":%d", *port)
@@ -449,12 +455,82 @@ func handleFleets(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, fleets)
 }
 
+// GET /api/economy — снимок панели «Экономика» (client/economy.html): цены и
+// масса 15 базовых ресурсов (с оверрайдами администратора), рецепты 21
+// компонента и стоимость 19 зданий, пересчитанные от текущих цен/массы, и
+// сводный спрос по всем базовым ресурсам (economy.go).
+func handleEconomy(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, economySnapshot())
+}
+
+// POST /api/economy/resource {"key":"...", "price"?:число, "mass"?:число} —
+// правка администратора: цена и/или масса одного базового ресурса. Частичная
+// (можно прислать только price или только mass), сразу сохраняется на диск
+// (economy_data.json) и возвращает пересчитанный снимок экономики целиком —
+// табл. 2/3/5 в client/economy.html зависят от цены/массы табл. 1.
+func handleEconomyResource(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "нужен POST", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Key   string   `json:"key"`
+		Price *float64 `json:"price"`
+		Mass  *float64 `json:"mass"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Key == "" {
+		http.Error(w, `ожидается {"key":"...", "price"?:число, "mass"?:число}`, http.StatusBadRequest)
+		return
+	}
+	if err := setResourceOverride(body.Key, body.Price, body.Mass); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, economySnapshot())
+}
+
 func parseUint(s string) uint64 {
 	v, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {
 		return 0
 	}
 	return v
+}
+
+// killStaleServer — перед стартом закрывает любой процесс, уже слушающий тот
+// же порт: почти всегда это забытый процесс сервера с прошлого запуска
+// (закрыли окно терминала без Ctrl+C, потерялся фоновый `go run .`) — именно
+// такой процесс однажды продолжал отвечать на /api/*, но без свежего кода
+// (404 на только что добавленный /api/economy), и было неочевидно, что вообще
+// висит лишний процесс. Windows-специфично (netstat -ano / taskkill) — как и
+// весь остальной проект, ориентировано на win32 (см. run.bat).
+func killStaleServer(port int) {
+	out, err := exec.Command("netstat", "-ano").Output()
+	if err != nil {
+		return // netstat недоступен — не критично, просто не чистим
+	}
+	needle := fmt.Sprintf(":%d ", port)
+	killed := map[string]bool{}
+	for _, line := range strings.Split(string(out), "\n") {
+		if !strings.Contains(line, "LISTENING") || !strings.Contains(line, needle) {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		pid := fields[len(fields)-1]
+		if pid == "" || pid == strconv.Itoa(os.Getpid()) || killed[pid] {
+			continue
+		}
+		if kerr := exec.Command("taskkill", "/F", "/PID", pid).Run(); kerr == nil {
+			log.Printf("порт %d был занят процессом PID %s (прошлый запуск сервера) — закрыт", port, pid)
+			killed[pid] = true
+		}
+	}
+	if len(killed) > 0 {
+		time.Sleep(300 * time.Millisecond) // дать ОС освободить порт перед ListenAndServe
+	}
 }
 
 // lanIPs — адреса, по которым сервер виден с других устройств локальной сети.

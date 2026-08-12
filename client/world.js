@@ -98,6 +98,7 @@ const World = (() => {
     helium3:'Гелий-3', hydrogen:'Водород', volcanicGases:'Вулканич. газы',
     radioactives:'Радиоактивные', waterIce:'Водяной лёд', biomass:'Дикая биомасса',
     phosphates:'Фосфаты', carbonates:'Карбонаты', bitumens:'Битумы',
+    metal_hydrogen:'Металл. водород',
   };
 
   // ── масштабы экранов, в одних единицах ──────────────────────────────────

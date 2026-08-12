@@ -63,6 +63,7 @@
     </div>
     <div class="admin-group">
       <div class="admin-btn" id="admin-btn-planets">СПИСОК ПЛАНЕТ →</div>
+      <div class="admin-btn" id="admin-btn-economy">ЭКОНОМИКА →</div>
     </div>
   `;
   document.body.appendChild(root);
@@ -115,6 +116,7 @@
   speedBtns.forEach(btn => btn.onclick = () => setSpeed(Number(btn.dataset.speed)));
 
   root.querySelector('#admin-btn-planets').onclick = () => window.open('planets.html', '_blank');
+  root.querySelector('#admin-btn-economy').onclick = () => window.open('economy.html', '_blank');
 
   // ── состояние сектора: собственный опрос, не зависит от логики страницы ──
   const statEl = root.querySelector('#admin-stat');

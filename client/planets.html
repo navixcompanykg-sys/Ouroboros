@@ -109,6 +109,7 @@
   <div class="hdr-time" id="hdr-time">—</div>
   <div class="hdr-actions">
     <button class="btn" id="btn-refresh">↻ ОБНОВИТЬ</button>
+    <button class="btn" onclick="window.open('economy.html','_blank')">ЭКОНОМИКА</button>
     <button class="btn" onclick="window.open('galaxy.html','_blank')">КАРТА СЕКТОРА</button>
   </div>
 </header>
@@ -145,15 +146,6 @@
 <div class="tabs">
   <div class="tab-btn active" id="tab-res">РЕСУРСЫ</div>
   <div class="tab-btn" id="tab-env">СРЕДА ПЛАНЕТ</div>
-</div>
-
-<div class="res-summary" id="res-summary-wrap">
-  <table id="res-summary-table">
-    <thead>
-      <tr><th>РЕСУРС</th><th>СУММА</th><th>МИНИМУМ</th><th>МАКСИМУМ</th><th>СРЕДНЕЕ</th></tr>
-    </thead>
-    <tbody id="res-summary-body"></tbody>
-  </table>
 </div>
 
 <div class="res-summary" id="env-summary-wrap" style="display:none">
@@ -234,6 +226,7 @@ const RESOURCES = {
   phosphates:    'Фосфаты',
   carbonates:    'Карбонаты',
   bitumens:      'Битумы',
+  metal_hydrogen:'Металл. водород',
 };
 const RES_KEYS = Object.keys(RESOURCES);
 // Среда планеты — отдельная таблица (не сырьё, ТЗ_UI.md §3.6.1), плюс метеоритная
@@ -416,33 +409,8 @@ document.getElementById('life-filter').addEventListener('change', e => {
   renderAll();
 });
 
-// ── сводка по ресурсам (по отфильтрованным планетам) ──────────────────────
-function renderResourceSummary(rows) {
-  const body = document.getElementById('res-summary-body');
-  body.innerHTML = '';
-  RES_KEYS.forEach(key => {
-    const values = rows.map(r => r.res[key] || 0);
-    body.appendChild(resRow(RESOURCES[key], values));
-  });
-  const waterRow = resRow('Гидросфера (вода, 0–100)', rows.map(r => r.water || 0));
-  waterRow.classList.add('water-row');
-  body.appendChild(waterRow);
-}
-function resRow(label, values) {
-  const tr = document.createElement('tr');
-  const n = values.length;
-  const sum = values.reduce((a,b)=>a+b, 0);
-  const min = n ? Math.min(...values) : 0;
-  const max = n ? Math.max(...values) : 0;
-  const avg = n ? sum / n : 0;
-  const cells = [label, sum.toLocaleString(), min.toLocaleString(), max.toLocaleString(), avg.toFixed(0)];
-  cells.forEach(v => {
-    const td = document.createElement('td');
-    td.textContent = v;
-    tr.appendChild(td);
-  });
-  return tr;
-}
+// ── сводка по ресурсам сектора (сумма/цена/масса) переехала в economy.html
+// (табл. 1) — здесь остаётся только сама таблица планет с колонками ресурсов.
 
 // ── сводка по среде планет (температура/давление/вулканизм/радиация/
 // токсичность) — без «суммы»: складывать проценты и кельвины бессмысленно.
@@ -591,7 +559,6 @@ function setTab(tab) {
   activeTab = tab;
   document.getElementById('tab-res').classList.toggle('active', tab === 'res');
   document.getElementById('tab-env').classList.toggle('active', tab === 'env');
-  document.getElementById('res-summary-wrap').style.display = tab === 'res' ? '' : 'none';
   document.getElementById('env-summary-wrap').style.display = tab === 'env' ? '' : 'none';
   sortCol = 'starId';
   sortDir = 'asc';
@@ -604,7 +571,7 @@ document.getElementById('tab-env').onclick = () => setTab('env');
 // ── перерисовка при смене фильтра ──────────────────────────────────────
 function renderAll() {
   const rows = allRows.filter(passesFilter);
-  if (activeTab === 'env') renderEnvSummary(rows); else renderResourceSummary(rows);
+  if (activeTab === 'env') renderEnvSummary(rows);
   renderTable(rows);
 }
 
