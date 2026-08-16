@@ -215,6 +215,10 @@ func bootstrapColony(p *Planet) {
 	// (см. пункт 1). Пока есть отключённое здание — кратчайший путь до уже
 	// подключённой области, транспортный узел на каждый пустой гекс пути.
 	connectDisconnectedBuildings(p)
+
+	// 4. Население — заселяем стартовую колонию сразу по лимиту разнообразия
+	// пищи (ТЗ_Экономика.md §11.2), см. computePopulation ниже.
+	p.Population = computePopulation(p.Buildings)
 }
 
 // connectDisconnectedBuildings — пока есть здание вне connectedHexes,
@@ -300,4 +304,71 @@ func shortestHexPath(start [2]int, connected, valid map[[2]int]bool) [][2]int {
 		path[i], path[j] = path[j], path[i]
 	}
 	return path
+}
+
+// ── население: лимит по разнообразию пищи (ТЗ_Экономика.md §11.2) ──────────
+//
+// Полной посуточной симуляции населения нет (склада с запасом ресурсов не
+// существует вовсе, см. шапку файла — фаза 2), поэтому здесь не «текущий
+// счётчик», а одноразовое заселение при бутстрапе: сколько работоспособных
+// жителей помещается по факту НАЛИЧИЯ построек, способных произвести каждый
+// тип пищи — а не смоделированного запаса на складе. Стандартная колония
+// (§12) имеет все нужные для этого здания, поэтому берём максимально
+// достижимое разнообразие, а не 0 (честный «нет склада — нет пищи» сделал бы
+// заселение бессмысленным для абсолютно любой колонии).
+//
+// Три типа пищи и их рецепты (§12.5): натуральная — сама биомасса без
+// переработки; синтетическая — биосинтетика из биомассы (Химзавод);
+// биоинженерная — биосинтетика + микроэлектроника (Химзавод + Электрозавод).
+func planetFoodTypes(buildings []Building) int {
+	hasBiomass, hasChem, hasElec := false, false, false
+	for _, b := range buildings {
+		switch b.Type {
+		case BuildingHydroFarm:
+			hasBiomass = true
+		case BuildingFactoryChem:
+			hasChem = true
+		case BuildingFactoryElec:
+			hasElec = true
+		}
+	}
+	types := 0
+	if hasBiomass {
+		types++ // натуральная
+	}
+	if hasBiomass && hasChem {
+		types++ // синтетическая
+	}
+	if hasBiomass && hasChem && hasElec {
+		types++ // биоинженерная
+	}
+	return types
+}
+
+// settlementWorkerCap — ТЗ_Экономика.md §11.2: сколько из физических 10 мест
+// поселения (Жилого модуля) работоспособны, по числу доступных типов пищи.
+func settlementWorkerCap(foodTypes int) int {
+	switch foodTypes {
+	case 1:
+		return 5
+	case 2:
+		return 7
+	case 3:
+		return 9
+	default:
+		return 0
+	}
+}
+
+// computePopulation — работоспособное население колонии: число поселений
+// (Жилых модулей) × лимит по разнообразию пищи (не физическая вместимость
+// 10/поселение — та достижима только переселенцами сверх лимита, §11.2).
+func computePopulation(buildings []Building) int {
+	settlements := 0
+	for _, b := range buildings {
+		if b.Type == BuildingHousing {
+			settlements++
+		}
+	}
+	return settlements * settlementWorkerCap(planetFoodTypes(buildings))
 }

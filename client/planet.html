@@ -1006,7 +1006,11 @@ function conStats(){
   production += (counts['solar_panel'] || 0) * 5;   // §12.2
   const consumption = totalBuildings; // §12.1: 1 энергия/здание любого типа, без исключений
   return {
-    population: 0, capacity: housingCount * 10, growth: 0, // §11.2 — рост населения не симулируется (фаза 2)
+    // §11.2 — население заселяется один раз сервером при бутстрапе колонии
+    // (computePopulation, лимит по разнообразию пищи), посуточный рост/убыль
+    // ±1 не симулируется (фаза 2) — отсюда growth всегда 0, а не потому что
+    // population тоже всегда 0 (раньше было так, честно исправлено).
+    population: currentPlanet.population || 0, capacity: housingCount * 10, growth: 0,
     energyProduction: production, energyConsumption: consumption,
     freeEnergy: production - consumption, miningEnergy,
   };

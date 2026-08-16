@@ -443,6 +443,12 @@ type Planet struct {
 	// раздувает общий /api/galaxy — экспортируется как есть, omitempty
 	// оставляет неколонизированные планеты без этого поля вовсе.
 	Buildings []Building `json:"buildings,omitempty"`
+
+	// Population — работоспособное население колонии (server/buildings.go,
+	// computePopulation, ТЗ_Экономика.md §11.2 — лимит по разнообразию пищи).
+	// Выставляется один раз при bootstrapColony, посуточный рост/убыль
+	// ±1/сутки (§11.2) не симулируется — это фаза 2, см. шапку buildings.go.
+	Population int `json:"population,omitempty"`
 }
 
 // ── поверхность планеты: гекс-карта, радиус по размеру планеты, ТЗ_UI.md §5 ─
