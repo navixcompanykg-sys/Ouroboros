@@ -298,7 +298,7 @@ function computeNearby(){
     const t = PLANET_TYPES[p.type] || {name:p.type, color:'#888'};
     list.push({
       kind:'planet', index:i,
-      name: `${t.name} · орб.${p.orbit}`, dist: Math.hypot(loc.x-me.x, loc.y-me.y), color: t.color,
+      name: `${World.planetLabel(p, currentStar)} · орб.${p.orbit}`, dist: Math.hypot(loc.x-me.x, loc.y-me.y), color: t.color,
       angle: bearing(loc.x-me.x, loc.y-me.y),
     });
   });

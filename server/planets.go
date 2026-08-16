@@ -449,6 +449,11 @@ type Planet struct {
 	// Выставляется один раз при bootstrapColony, посуточный рост/убыль
 	// ±1/сутки (§11.2) не симулируется — это фаза 2, см. шапку buildings.go.
 	Population int `json:"population,omitempty"`
+
+	// Capital — столица одной из 4 стабильных фракций (server/main.go,
+	// forceHabitableCapitals). Имя планеты клиент строит по фракции звезды
+	// («Столица Технократии»), а не по типу планеты — только для этих 4.
+	Capital bool `json:"capital,omitempty"`
 }
 
 // ── поверхность планеты: гекс-карта, радиус по размеру планеты, ТЗ_UI.md §5 ─

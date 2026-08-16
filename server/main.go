@@ -63,6 +63,7 @@ func main() {
 	sim = NewSim(seed)
 	forceHabitableCapitals(sim)
 	loadEconomy() // после sim — рекомендованная цена считается от реального запаса ресурсов сектора
+	loadShipDefaults()
 	ship = NewShip(findCapitalID(sim), findCapitalRadius(sim))
 	initFleets(sim)
 	stop := make(chan struct{})
@@ -83,6 +84,7 @@ func main() {
 	mux.HandleFunc("/api/fleets", handleFleets)
 	mux.HandleFunc("/api/economy", handleEconomy)
 	mux.HandleFunc("/api/economy/resource", handleEconomyResource)
+	mux.HandleFunc("/api/ship-defaults", handleShipDefaults)
 	mux.Handle("/", noCache(http.FileServer(http.Dir(clientFS))))
 
 	addr := fmt.Sprintf(":%d", *port)
@@ -198,9 +200,10 @@ func forceHabitableCapitals(sim *Sim) {
 		// броски, и сектор перестал бы быть воспроизводимым по сиду.
 		rng := rand.New(rand.NewSource(int64(star.ID)*1000 + int64(idx)))
 		recomputeAsHabitable(rng, &star.Planets[idx], star.StarType, star.R, star.SystemRadius)
+		star.Planets[idx].Capital = true
 		bootstrapColony(&star.Planets[idx])
-		log.Printf("столица %s: планета #%d (%s) сделана обитаемой, стартовая колония — %d зданий",
-			star.Faction, idx, star.Planets[idx].Type, len(star.Planets[idx].Buildings))
+		log.Printf("столица %s: планета #%d (%s) сделана обитаемой, стартовая колония — %d зданий, население %d",
+			star.Faction, idx, star.Planets[idx].Type, len(star.Planets[idx].Buildings), star.Planets[idx].Population)
 	}
 }
 

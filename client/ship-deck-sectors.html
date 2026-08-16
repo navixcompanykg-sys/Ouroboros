@@ -17,6 +17,16 @@
   .note{font-family:var(--mono);font-size:10.5px;color:var(--text);opacity:.75;line-height:1.6;
     border:1px dashed var(--border);padding:8px 10px;margin-bottom:14px;max-width:640px;}
   .note b{color:var(--gold);font-weight:400;}
+  /* class-averages — средние показатели библиотеки по классам (замена
+     прежнего большого текста-пояснения, убран по просьбе пользователя). */
+  #class-averages{margin-bottom:16px;}
+  #class-averages-scroll{overflow-x:auto;border:1px dashed var(--border);}
+  #class-averages table{border-collapse:collapse;width:100%;}
+  #class-averages th{font-family:var(--mono);font-size:7.3px;color:var(--text);opacity:.7;
+    text-align:left;padding:4px 6px;border-bottom:1px solid var(--border);white-space:nowrap;}
+  #class-averages td{font-family:var(--mono);font-size:8.5px;color:var(--text-bright);
+    padding:4px 6px;border-bottom:1px solid var(--border);white-space:nowrap;}
+  #class-averages-note{font-family:var(--mono);font-size:8px;color:var(--text);opacity:.6;margin-top:4px;}
   #sector-legend{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;max-width:900px;}
   .legend-item{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9px;
     color:var(--text-bright);border:1px solid var(--border);background:var(--panel-bg);padding:4px 7px;}
@@ -36,7 +46,7 @@
   #export-output.show{display:block;}
 
   #ships{display:flex;flex-wrap:wrap;gap:22px;}
-  .ship-block{border:1px solid var(--border);background:var(--panel-bg);padding:10px;width:300px;}
+  .ship-block{border:1px solid var(--border);background:var(--panel-bg);padding:10px 26px;width:300px;}
   .ship-name-row{display:flex;align-items:center;gap:6px;margin-bottom:8px;}
   .ship-index{font-family:var(--mono);font-size:9px;color:var(--accent2);flex-shrink:0;}
   .ship-name{flex:1;background:rgba(0,0,0,0.4);border:1px solid var(--border);color:var(--text-bright);
@@ -59,15 +69,29 @@
   .deck-cell.citadel.built{background:rgba(255,85,68,0.35);color:var(--text-bright);font-weight:600;}
   .bow-marker{position:absolute;right:-2px;top:50%;transform:translate(100%,-50%);
     font-family:var(--mono);font-size:8px;color:var(--warn);letter-spacing:.5px;white-space:nowrap;}
+  /* sector-label — ПП/ОМ/ЗП конкретного сектора, привязана к его позиции на
+     самом круге (по указанию пользователя — было отдельным плоским списком
+     ниже схемы, неудобно). Позиция считается в JS (renderSectorLabels). */
+  .sector-label{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;
+    align-items:center;font-family:var(--mono);font-size:9px;color:var(--text-bright);
+    background:rgba(4,6,15,0.85);border:1px solid var(--border);padding:2px 4px;
+    white-space:nowrap;pointer-events:none;text-align:center;line-height:1.35;}
+  .sector-label .sl-name{color:var(--gold);}
   .block-toolbar{display:flex;gap:6px;margin-top:8px;}
   .block-btn{flex:1;text-align:center;font-family:var(--mono);font-size:8px;letter-spacing:.5px;
     padding:5px 2px;border:1px solid var(--border);color:var(--text);cursor:pointer;background:transparent;}
   .block-btn:hover{border-color:var(--accent2);color:var(--accent2);}
   .deck-count{font-family:var(--mono);font-size:8px;color:var(--text);opacity:.7;margin-top:6px;text-align:center;}
-  .sector-stats{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
-  .ss-item{flex:1;min-width:40%;font-family:var(--mono);font-size:10.5px;color:var(--text-bright);
-    border:1px solid var(--border);padding:4px 5px;text-align:center;}
-  .ss-item b{color:var(--accent2);font-weight:400;margin-right:3px;}
+  // ship-summary — сводка по кораблю в два столбца (число↔эффект), заменяет
+  // прежний плоский список ПП/ОМ/ЗП по секторам (тот переехал на круг выше).
+  .ship-summary{margin-top:6px;}
+  .ship-sum-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 6px;font-family:var(--mono);
+    font-size:8px;color:var(--text);}
+  .ship-sum-grid div{border:1px solid var(--border);padding:3px 5px;}
+  .ship-sum-grid b{color:var(--accent2);font-weight:400;}
+  .ship-sum-other{margin-top:4px;font-family:var(--mono);font-size:7.5px;color:var(--text);opacity:.85;
+    border:1px solid var(--border);padding:4px 5px;line-height:1.6;}
+  .ship-sum-other b{color:var(--text-bright);font-weight:400;}
   .configure-btn{width:100%;margin-top:6px;text-align:center;font-family:var(--mono);font-size:9px;
     letter-spacing:.5px;padding:7px 4px;border:1.2px solid var(--gold);color:var(--gold);cursor:pointer;
     background:rgba(255,207,107,0.08);}
@@ -117,27 +141,8 @@
 <body>
 
 <h1>СЕКТОРА ОБСТРЕЛА ПАЛУБ — вспомогательный файл</h1>
-<div class="note">
-  Допущения (поправьте, если не так): сетка каждого корабля — <b>5 строк × 7 столбцов</b> (35 палуб),
-  каждая палуба визуально 1×2 (высота×ширина). Нос корабля — <b>справа</b> (последний столбец).
-  Круг — полупрозрачный, снизу, декоративный фон-ориентир (6 лучей через 60°). Сама привязка «палуба →
-  сектор» — <b>не формула по углу, а ручная таблица</b> (MANUAL_SECTOR_ROWS), заданная построчно один в
-  один по присланной раскладке (0-5 — 6 секторов бортов/носа/кормы, растут <b>по часовой стрелке</b> от
-  направления на нос). <b>Отдельный, 7-й сектор (6) — центральная палуба</b> (клетка «Ц» в раскладке):
-  её поражение — уничтожение корабля; попадание по ней возможно только если с угла обстрела (данного
-  сектора) не осталось других целых палуб — выделена на схеме красным. Названия секторов — в легенде ниже.
-  Стартовые 20 карточек ниже — не предел, кнопкой «+ ДОБАВИТЬ КОРАБЛЬ» дописывайте сколько нужно
-  (библиотека кораблей для ИИ). Впишите название, кликом по клетке отметьте занятые палубы (клик снова — стереть),
-  кнопкой «Настроить модули» откройте таблицу и назначьте модуль на каждую занятую палубу — цена и масса
-  живые, из /api/economy (те же данные, что в конструкторе на планете). Крейсер/Баржа — 6 палуб (24
-  модуля), Линкор/Лайнер — 12 (36), Дредноут/Танкер — 22 (44). Центральная палуба всегда получает СОЖ +
-  Радар первыми слотами (не редактируются). Двигатель можно поставить в слот, если среди уже построенных
-  палуб левее (той же строки, ближе к корме) нет ни одной, кроме целиком заполненных двигателями —
-  непостроенные клетки в счёт не идут (если левее вообще ничего не построено, ставить можно), а вот
-  построенная-но-не-двигательная палуба блокирует опцию в списке. Под каждой схемой — сводка по секторам (ПП — суммарная прочность палуб сектора, ОМ —
-  число орудийных модулей, ЗП — число модулей защитного поля; центральная палуба в эту сводку не входит).
-  В окне настройки модулей — масса/прочность/энергетика/список компонентов/итоговая цена всей сборки.
-</div>
+
+<div id="class-averages"></div>
 
 <div id="sector-legend"></div>
 
@@ -172,6 +177,15 @@
 <script>
 'use strict';
 const ROWS = 5, COLS = 7, CELLW = 34, CELLH = 17, SHIP_COUNT = 20, SECTOR_STEP_DEG = 60;
+// Средний урон 6 «настоящих» типов оружия (ЭМИ-пушка/Луч захвата — спецэффект,
+// не считаем в «огневую мощь») — та же оценка и тот же источник
+// (archive/docs/TZFleet.md §4.1), что WEAPON_AVG_DAMAGE в client/planet.html.
+const WEAPON_AVG_DAMAGE = (80 + 180 + 150 + 220 + 200 + 400) / 6;
+// Ёмкость одного модуля «Аккумуляторы» — условная оценка (как и остальная
+// энергетика в этом файле, формулы в ТЗ нет): величина того же порядка, что
+// выработка реактора (40), чтобы батареи давали ощутимый, но не безграничный
+// резерв на бой.
+const BATTERY_CAPACITY = 60;
 const gridW = COLS * CELLW, gridH = ROWS * CELLH;
 const radius = Math.sqrt((gridW/2)**2 + (gridH/2)**2);
 const outer = Math.ceil(radius * 2);
@@ -235,6 +249,7 @@ const SHIP_MODULES = [
   { key:'ship_weapon_mount', name:'Оружейный модуль',          durability:2, powerGen:0,  powerUse:2, combatBonus:20 },
   { key:'ship_solar_sail',   name:'Солнечный парус',           durability:1, powerGen:0,  powerUse:1 },
   { key:'ship_engine',       name:'Двигатель',                 durability:2, powerGen:0,  powerUse:3, accelBonus:15 },
+  { key:'ship_engine_ion',   name:'Ионный двигатель',          durability:2, powerGen:0,  powerUse:3, accelBonus:15 },
   { key:'ship_reactor',      name:'Атомный реактор',           durability:2, powerGen:40, powerUse:2 },
   { key:'ship_gas_storage',  name:'Газохранилище',             durability:2, powerGen:0,  powerUse:1 },
   { key:'ship_battery',      name:'Аккумуляторы',              durability:1, powerGen:0,  powerUse:0 },
@@ -251,6 +266,11 @@ const SHIP_MODULES = [
   { key:'ship_cargo',        name:'Грузовой отсек',            durability:2, powerGen:0,  powerUse:0 },
 ];
 function moduleDef(key){ return SHIP_MODULES.find(m => m.key === key); }
+// Оба типа двигателя (обычный и ионный, ТЗ_Корабль.md §4.5) равноправны для
+// правила «двигатели слева» (canPlaceEngine) и подсчёта «Двигателей» в
+// сводках — деку можно заполнить любой их смесью, это по-прежнему «палуба
+// двигателей».
+function isEngineKey(key){ return key === 'ship_engine' || key === 'ship_engine_ion'; }
 // Обязательные модули центральной палубы (цитадели) — по прямому указанию
 // пользователя: СОЖ + Радар всегда стоят в первых слотах, не редактируются.
 const CITADEL_MANDATORY = ['ship_life_support', 'ship_radar'];
@@ -392,7 +412,18 @@ function buildShipBlock(index){
   bow.className = 'bow-marker';
   bow.textContent = 'НОС ▶';
 
-  gridWrap.append(circle, deckGrid, bow);
+  // Метки ПП/ОМ/ЗП по секторам — привязаны к позиции сектора на самом круге
+  // (см. renderSectorLabels), а не к плоскому списку под схемой, как раньше
+  // (правка по разметке пользователя на скриншоте).
+  const sectorLabels = [];
+  for(let s = 0; s < 6; s++){
+    const lbl = document.createElement('div');
+    lbl.className = 'sector-label';
+    lbl.dataset.sector = s;
+    sectorLabels.push(lbl);
+  }
+
+  gridWrap.append(circle, deckGrid, bow, ...sectorLabels);
 
   const toolbar = document.createElement('div');
   toolbar.className = 'block-toolbar';
@@ -430,15 +461,22 @@ function buildShipBlock(index){
   deckCount.className = 'deck-count';
   deckCount.textContent = '0 палуб(а/ы) занято из 35';
 
-  const sectorStatsEl = document.createElement('div');
-  sectorStatsEl.className = 'sector-stats';
+  // Сводка по кораблю в два столбца (число↔эффект) — заменила прежний
+  // плоский список ПП/ОМ/ЗП по секторам (тот переехал на круг выше).
+  const shipSummaryEl = document.createElement('div');
+  shipSummaryEl.className = 'ship-summary';
+  const shipSumGrid = document.createElement('div');
+  shipSumGrid.className = 'ship-sum-grid';
+  const shipSumOther = document.createElement('div');
+  shipSumOther.className = 'ship-sum-other';
+  shipSummaryEl.append(shipSumGrid, shipSumOther);
 
   const configureBtn = document.createElement('div');
   configureBtn.className = 'configure-btn';
   configureBtn.textContent = '⚙ НАСТРОИТЬ МОДУЛИ';
   configureBtn.onclick = () => openModuleModal(index);
 
-  block.append(nameRow, gridWrap, toolbar, deckCount, sectorStatsEl, configureBtn);
+  block.append(nameRow, gridWrap, toolbar, deckCount, shipSummaryEl, configureBtn);
   renderSectorStats(block, state);
   return block;
 }
@@ -462,43 +500,83 @@ document.getElementById('add-ship-btn').onclick = () => {
   saveToStorage();
 };
 
-// ── автосохранение в localStorage — без него правка файла/перезагрузка
-// страницы стирала бы всё, что уже отмечено кликами (прогресс жил только в
-// памяти вкладки). Сохраняется на каждое изменение: клик по клетке,
-// очистить/залить, выбор модуля, ввод названия. ────────────────────────────
-const STORAGE_KEY = 'uroboros_ship_deck_sectors_v1';
-function saveToStorage(){
-  const data = blocks.map((b, i) => ({
-    name: b.querySelector('.ship-name').value,
-    built: [...shipStates[i].built],
-    modules: shipStates[i].modules,
-  }));
-  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }catch(e){ /* приватный режим/переполнение — не критично */ }
-  const status = document.getElementById('storage-status');
-  if(status) status.textContent = 'Автосохранено ' + new Date().toLocaleTimeString();
+// ── сервер (/api/ship-defaults) — ЕДИНСТВЕННОЕ хранилище библиотеки, никакого
+// localStorage. Раньше данные жили в localStorage конкретного браузера и
+// отдельно, с задержкой, «подсинхронизировались» на сервер — из-за этого
+// после правок код/сервер могли разойтись с тем, что реально видел админ, и
+// пришлось бы гадать «обновилось или нет». Прямая связь: страница при
+// открытии ЧИТАЕТ состояние с сервера (не из localStorage), а каждое
+// изменение (клик по клетке, модуль, название, очистить/залить/добавить)
+// сразу ПИШЕТ туда же — сервер и есть единственная версия правды, Верфь на
+// планете видит её без какого-либо отдельного шага синхронизации.
+function buildShipDefaultsPayload(){
+  return blocks.map((b, i) => {
+    const name = b.querySelector('.ship-name').value.trim() || ('Корабль ' + (i + 1));
+    const state = shipStates[i];
+    const cls = classFor(state.built.size);
+    const keys = [...state.built].sort((a, b2) => {
+      const [ra, ca] = a.split(':').map(Number), [rb, cb] = b2.split(':').map(Number);
+      return (Number(deckSector(ra, ca)) - Number(deckSector(rb, cb))) || (ra - rb) || (ca - cb);
+    });
+    const decks = keys.map(key => {
+      const [row, col] = key.split(':').map(Number);
+      return { row, col, modules: (state.modules[key] || []).slice(0, cls.perDeck).filter(Boolean) };
+    });
+    return { name, decks };
+  }).filter(s => s.decks.length > 0);
 }
-function loadFromStorage(){
-  let raw;
-  try{ raw = localStorage.getItem(STORAGE_KEY); }catch(e){ return; }
-  if(!raw) return;
+let saveDebounce = null;
+function saveToStorage(){ // имя оставлено для совместимости всех вызовов ниже по файлу — сохраняет теперь на сервер
+  clearTimeout(saveDebounce);
+  saveDebounce = setTimeout(() => {
+    const status = document.getElementById('storage-status');
+    fetch('/api/ship-defaults', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildShipDefaultsPayload()),
+    }).then(r => {
+      if(status) status.textContent = (r.ok ? 'Сохранено на сервере ' : 'Ошибка сохранения ') + new Date().toLocaleTimeString();
+    }).catch(() => {
+      if(status) status.textContent = 'Нет связи с сервером — изменения НЕ сохранены!';
+    });
+  }, 400); // дебаунс — не слать запрос на каждый символ при вводе названия
+}
+async function loadFromStorage(){
+  const status = document.getElementById('storage-status');
   let data;
-  try{ data = JSON.parse(raw); }catch(e){ return; }
-  while(blocks.length < data.length) addShip(); // библиотека была больше стартовых 20 — дораспаковать карточки
+  try{
+    const res = await fetch('/api/ship-defaults', { cache: 'no-store' });
+    data = await res.json();
+  }catch(e){
+    if(status) status.textContent = 'Нет связи с сервером — библиотека не загрузилась';
+    return;
+  }
+  while(blocks.length < data.length) addShip(); // на сервере было больше кораблей, чем стартовых 20 — дораспаковать карточки
   data.forEach((saved, i) => {
     if(!blocks[i] || !saved) return;
     const block = blocks[i];
     const state = shipStates[i];
     block.querySelector('.ship-name').value = saved.name || '';
-    state.built = new Set(saved.built || []);
-    state.modules = saved.modules || {};
+    state.built = new Set((saved.decks || []).map(d => d.row + ':' + d.col));
+    state.modules = {};
+    (saved.decks || []).forEach(d => {
+      if(d.modules && d.modules.length) state.modules[d.row + ':' + d.col] = [...d.modules];
+    });
     block.querySelectorAll('.deck-cell').forEach(cell => redrawCell(cell, state));
     updateDeckCount(block, state);
     renderSectorStats(block, state);
   });
-  const status = document.getElementById('storage-status');
-  if(status) status.textContent = 'Восстановлено из автосохранения';
+  if(status) status.textContent = 'Загружено с сервера (' + data.length + ' корабл' + (data.length === 1 ? 'ь' : 'ей') + ')';
 }
 loadFromStorage();
+
+// Масса/цена (computeShipTotal) и энергетика зависят от /api/economy —
+// без него сводки (per-корабль и «Средние показатели по классам») сперва
+// показывают 0 по этим полям. Догружаем экономику сразу при открытии
+// страницы (не дожидаясь клика по «Настроить модули») и перерисовываем все
+// уже построенные карточки.
+ensureEconomy().then(() => {
+  blocks.forEach((b, i) => renderSectorStats(b, shipStates[i]));
+});
 
 // ── модалка «Настроить модули»: таблица занятых палуб + живая суммарная цена ──
 // state.modules[key] — МАССИВ модулей на палубе (не одно значение): число
@@ -578,11 +656,143 @@ function sectorStats(state){
   });
   return stats;
 }
-function renderSectorStats(block, state){
+// Позиции меток секторов на самом круге — по разметке пользователя на
+// скриншоте (кружки вокруг схемы). Центр сектора s (JS/экранная система
+// координат, 0°=вправо/нос, по часовой) = s × SECTOR_STEP_DEG. ПП/ОМ/ЗП —
+// столбиком (не строкой), по прямому указанию пользователя. Нос (0°) и
+// Корма (180°) стоят ровно на горизонтальной оси корабля — там же подпись
+// «НОС ▶» и средняя линия палуб, поэтому их метки дополнительно приподняты
+// над осью (не по общей радиальной формуле), чтобы четырёхстрочный блок
+// (название + 3 строки статов) с ними не пересекался.
+function renderSectorLabels(block, state){
   const stats = sectorStats(state);
-  block.querySelector('.sector-stats').innerHTML = Object.keys(stats).map(s => `
-    <div class="ss-item"><b>${s}</b> ПП${stats[s].pp} ОМ${stats[s].om} ЗП${stats[s].zp}</div>
-  `).join('');
+  const center = outer / 2;
+  const labelRadius = center + 5;
+  block.querySelectorAll('.sector-label').forEach(el => {
+    const s = Number(el.dataset.sector);
+    el.innerHTML = `<span class="sl-name">${SECTOR_NAMES[s].split(' ')[0]}</span>`
+      + `<span>ПП${stats[s].pp}</span><span>ОМ${stats[s].om}</span><span>ЗП${stats[s].zp}</span>`;
+    const rad = s * SECTOR_STEP_DEG * Math.PI / 180;
+    let x = center + labelRadius * Math.cos(rad);
+    let y = center + labelRadius * Math.sin(rad);
+    if(s === 0){ x = outer; y = center - 42; }
+    else if(s === 3){ y = center - 22; }
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+  });
+}
+
+// Сводка по кораблю в два столбца — по прямому указанию пользователя:
+// число модулей/масса, число палуб/прочность, двигатели/ускорение,
+// орудия/урон, плюс перечень прочих модулей. «Палуб» = все построенные
+// палубы (в игре нет отдельной механики брони палубы сверх этого — так что
+// это то же число, что пользователь назвал «бронированных палуб»).
+// Ускорение/урон помечены «*» — условные оценки, формулы 1:1 с planet.html
+// (accelBonus/WEAPON_AVG_DAMAGE), в ТЗ формул для них нет.
+function renderShipSummary(block, state){
+  const cls = classFor(state.built.size);
+  const totals = computeShipTotal(state);
+  let moduleCount = 0, engineCount = 0, weaponCount = 0, batteryCount = 0;
+  const otherCounts = {};
+  state.built.forEach(key => {
+    (state.modules[key] || []).slice(0, cls.perDeck).forEach(modKey => {
+      if(!modKey) return;
+      moduleCount++;
+      if(modKey === 'ship_battery') batteryCount++;
+      if(isEngineKey(modKey)){ engineCount++; return; }
+      if(modKey === 'ship_weapon_mount'){ weaponCount++; return; }
+      const def = moduleDef(modKey);
+      const name = def ? def.name : modKey;
+      otherCounts[name] = (otherCounts[name] || 0) + 1;
+    });
+  });
+  const acceleration = totals.mass > 0 ? +(engineCount * 50000 / totals.mass).toFixed(2) : 0;
+  const damage = Math.round(weaponCount * WEAPON_AVG_DAMAGE);
+  const energyReserve = batteryCount * BATTERY_CAPACITY;
+
+  const grid = block.querySelector('.ship-sum-grid');
+  grid.innerHTML = `
+    <div>Модулей: <b>${moduleCount}</b></div>
+    <div>Масса: <b>${Math.round(totals.mass)}</b></div>
+    <div>Палуб: <b>${state.built.size}</b></div>
+    <div>Прочность: <b>${totals.durability}</b></div>
+    <div>Двигателей: <b>${engineCount}</b></div>
+    <div>Ускорение*: <b>${acceleration}</b></div>
+    <div>Орудий: <b>${weaponCount}</b></div>
+    <div>Урон*: <b>${damage}</b></div>
+    <div>Выработка энергии*: <b>${totals.energyGen}</b></div>
+    <div>Потр. при ускорении*: <b>${totals.energyUseAccel}</b></div>
+    <div>Потр. в бою (щиты+оружие)*: <b>${totals.energyUseCombat}</b></div>
+    <div>Запас энергии*: <b>${energyReserve}</b></div>
+  `;
+  const otherEl = block.querySelector('.ship-sum-other');
+  const otherEntries = Object.entries(otherCounts).sort((a, b) => b[1] - a[1]);
+  otherEl.innerHTML = 'Прочее: ' + (otherEntries.length
+    ? otherEntries.map(([name, n]) => `<b>${name}</b>×${n}`).join(', ')
+    : '—');
+}
+
+// Средние показатели библиотеки по классам — по прямому указанию
+// пользователя (замена прежнего текста-пояснения над схемами). Группировка —
+// по classFor() (та же таблица бракетов, что у каждого корабля), считается
+// заново по ВСЕЙ библиотеке при каждом изменении любого корабля (дёшево,
+// кораблей в библиотеке немного). Приведённая масса/энергетика — те же
+// условные оценки, что и в остальном файле (см. .note выше и модалку модулей).
+function renderClassAverages(){
+  const el = document.getElementById('class-averages');
+  if(!el) return;
+  const groups = {};
+  shipStates.forEach(state => {
+    if(state.built.size === 0) return;
+    const cls = classFor(state.built.size);
+    const totals = computeShipTotal(state);
+    let moduleCount = 0, moduleMassSum = 0, engineCount = 0;
+    state.built.forEach(key => {
+      (state.modules[key] || []).slice(0, cls.perDeck).forEach(modKey => {
+        if(!modKey) return;
+        moduleCount++;
+        if(isEngineKey(modKey)) engineCount++;
+        const info = shipItemInfo(modKey);
+        if(info) moduleMassSum += info.totalMass;
+      });
+    });
+    const freeSlots = Math.max(0, state.built.size * cls.perDeck - moduleCount);
+    (groups[cls.label] || (groups[cls.label] = [])).push({
+      mass: totals.mass, durability: totals.durability, moduleMassSum, moduleCount,
+      freeSlots, engines: engineCount, energyGen: totals.energyGen, energyUseAccel: totals.energyUseAccel,
+    });
+  });
+  const rows = SHIP_CLASS_TABLE.map(c => c.label).filter(label => groups[label] && groups[label].length).map(label => {
+    const g = groups[label];
+    const n = g.length;
+    const avg = key => g.reduce((s, x) => s + x[key], 0) / n;
+    const avgMass = avg('mass');
+    const avgFreeSlots = avg('freeSlots');
+    const totalModuleMass = g.reduce((s, x) => s + x.moduleMassSum, 0);
+    const totalModuleCount = g.reduce((s, x) => s + x.moduleCount, 0);
+    const avgModuleMass = totalModuleCount > 0 ? totalModuleMass / totalModuleCount : 0;
+    const projectedMass = avgMass + avgFreeSlots * avgModuleMass;
+    return `<tr>
+      <td>${label}</td><td>${n}</td>
+      <td>${avgMass.toFixed(0)}</td><td>${avg('durability').toFixed(1)}</td>
+      <td>${avgModuleMass.toFixed(1)}</td><td>${avgFreeSlots.toFixed(1)}</td><td>${projectedMass.toFixed(0)}</td>
+      <td>${avg('engines').toFixed(1)}</td><td>${avg('energyGen').toFixed(0)}</td><td>${avg('energyUseAccel').toFixed(0)}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = rows ? `
+    <div id="class-averages-scroll"><table><thead><tr>
+      <th>Класс</th><th>Кораблей</th><th>Ср. масса</th><th>Ср. прочность</th>
+      <th>Ср. масса модуля</th><th>Ср. своб. слотов</th><th>Привед. масса*</th>
+      <th>Ср. двигателей</th><th>Ср. выработка*</th><th>Ср. потр. (ускор.)*</th>
+    </tr></thead><tbody>${rows}</tbody></table></div>
+    <div id="class-averages-note">* Приведённая масса — масса, если все свободные слоты занять модулями средней массы класса. Энергетика — условная оценка (см. примечание в окне «Настроить модули»).</div>
+  ` : '';
+}
+
+function renderSectorStats(block, state){
+  renderSectorLabels(block, state);
+  renderShipSummary(block, state);
+  renderClassAverages();
 }
 
 // Двигатель можно поставить в слот палубы (r,c), если СРЕДИ ПОСТРОЕННЫХ палуб
@@ -597,7 +807,7 @@ function canPlaceEngine(state, cls, r, c){
     if(!state.built.has(leftKey)) continue; // не построена — не в счёт
     const leftSlots = state.modules[leftKey] || [];
     for(let s = 0; s < cls.perDeck; s++){
-      if(leftSlots[s] !== 'ship_engine') return false;
+      if(!isEngineKey(leftSlots[s])) return false;
     }
   }
   return true;
@@ -651,7 +861,7 @@ function renderModuleModal(){
         continue;
       }
       const options = ['<option value="">— пусто —</option>'].concat(SHIP_MODULES.map(m => {
-        const locked = m.key === 'ship_engine' && !canPlaceEngine(state, cls, r, c);
+        const locked = isEngineKey(m.key) && !canPlaceEngine(state, cls, r, c);
         return `<option value="${m.key}"${m.key === current ? ' selected' : ''}${locked ? ' disabled' : ''}>`
           + `${m.name}${locked ? ' (нет двигателей слева)' : ''}</option>`;
       }));

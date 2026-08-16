@@ -494,6 +494,15 @@ var shipItemCosts = []shipItemCost{
 	{Key: "ship_engine", Name: "Двигатель", Category: shipCatModule, Inputs: []recipeInput{
 		ci("high_alloys", 6), ci("industrial_equipment", 4), ci("metal_structs", 5), ci("power_cells", 3), ci("cabling", 2),
 	}},
+	// Ионный двигатель — второй тип двигателя, альтернатива ship_engine (та же
+	// роль, ТЗ_Корабль.md §4.5), но технологичнее и дороже. Антигравитационные
+	// установки (ТУ3) — НЕ фиксированное количество, как и Квантовые
+	// вычислители у Телепорт-модуля: считается формулой ionEnginePriceMultiple
+	// (см. buildIonEngineItem), чтобы итог держался ровно ×5 от цены обычного
+	// ship_engine при любых живых ценах, а не разъезжался при правке цен ТУ3.
+	{Key: "ship_engine_ion", Name: "Ионный двигатель", Category: shipCatModule, Inputs: []recipeInput{
+		ci("high_alloys", 8), ci("industrial_equipment", 5), ci("metal_structs", 4), ci("power_cells", 4), ci("cabling", 3),
+	}},
 	{Key: "ship_reactor", Name: "Атомный реактор", Category: shipCatModule, Inputs: []recipeInput{
 		ci("nuclear_components", 5), ci("high_alloys", 4), ci("industrial_equipment", 3), ci("metal_structs", 4), ci("cabling", 3),
 	}},
@@ -789,6 +798,52 @@ func buildTeleportItem(def shipItemCost, base buildingResolved, otherModuleValue
 	}
 }
 
+// ionEnginePriceMultiple — правило пользователя буквально: «по итоговой цене
+// должен быть в 5 раз примерно дороже обычного [двигателя]». Тот же приём,
+// что teleportPriceMultiple: единственное объявленное число, меняется здесь
+// и нигде больше.
+const ionEnginePriceMultiple = 5.0
+
+// buildIonEngineItem — количество Антигравитационных установок в Ионном
+// двигателе не константа, а обратная формула (см. buildTeleportItem —
+// идентичный приём): сколько установок нужно докупить сверх остальных
+// фиксированных компонентов (base), чтобы итог сравнялся с
+// ionEnginePriceMultiple × цена ОБЫЧНОГО ship_engine (enginePrice).
+// Пересчитывается на каждый запрос — 5× держится всегда, а не только в
+// момент, когда это было проверено вручную.
+func buildIonEngineItem(def shipItemCost, base buildingResolved, enginePrice float64, cache map[string]componentResolved, demand map[string]float64) economyShipItemView {
+	au := resolveComponent("antigrav_units", cache)
+	auQty := 0.0
+	if au.ValuePerUnit > 0 {
+		auQty = (enginePrice*ionEnginePriceMultiple - base.TotalValue) / au.ValuePerUnit
+		if auQty < 0 {
+			auQty = 0
+		}
+	}
+
+	totalValue := base.TotalValue + auQty*au.ValuePerUnit
+	totalMass := base.TotalMass + auQty*au.MassPerUnit
+	baseTotals := make(map[string]float64, len(base.BaseTotals)+len(au.BaseTotals))
+	for k, v := range base.BaseTotals {
+		baseTotals[k] = v
+	}
+	for k, v := range au.BaseTotals {
+		baseTotals[k] += auQty * v
+	}
+	for k, v := range baseTotals {
+		demand[k] += v
+	}
+
+	inputs := append([]recipeInput{}, def.Inputs...)
+	inputs = append(inputs, recipeInput{Key: "antigrav_units", Qty: auQty})
+
+	return economyShipItemView{
+		Key: def.Key, Name: def.Name, Category: string(def.Category),
+		Inputs: inputViews(inputs), TotalValue: totalValue, TotalMass: totalMass,
+		BaseTotals: baseTotals, Incomplete: base.Incomplete || au.Incomplete,
+	}
+}
+
 func inputDisplayName(in recipeInput) string {
 	if in.Unimplemented {
 		if n, ok := unimplementedName[in.Key]; ok {
@@ -979,13 +1034,23 @@ func economySnapshot() economySnapshotResponse {
 	shipItems := make([]economyShipItemView, 0, len(shipItemCosts))
 	var teleportBase buildingResolved
 	var teleportDef shipItemCost
+	var ionEngineBase buildingResolved
+	var ionEngineDef shipItemCost
+	var enginePrice float64
 	otherModuleValues := make([]float64, 0, len(shipItemCosts))
 	for _, s := range shipItemCosts {
 		if s.Key == "ship_teleport" {
 			teleportBase, teleportDef = resolveShipItem(s, cache), s
 			continue // достраивается ниже формулой teleportPriceMultiple, после среднего
 		}
+		if s.Key == "ship_engine_ion" {
+			ionEngineBase, ionEngineDef = resolveShipItem(s, cache), s
+			continue // достраивается ниже формулой ionEnginePriceMultiple, после цены ship_engine
+		}
 		resolved := resolveShipItem(s, cache)
+		if s.Key == "ship_engine" {
+			enginePrice = resolved.TotalValue
+		}
 		shipItems = append(shipItems, economyShipItemView{
 			Key: s.Key, Name: s.Name, Category: string(s.Category),
 			Inputs: inputViews(s.Inputs), TotalValue: resolved.TotalValue, TotalMass: resolved.TotalMass,
@@ -999,6 +1064,7 @@ func economySnapshot() economySnapshotResponse {
 		}
 	}
 	shipItems = append(shipItems, buildTeleportItem(teleportDef, teleportBase, otherModuleValues, cache, demand))
+	shipItems = append(shipItems, buildIonEngineItem(ionEngineDef, ionEngineBase, enginePrice, cache, demand))
 
 	return economySnapshotResponse{
 		Resources: resources, Recipes: recipes, Buildings: buildings, Demand: demand,

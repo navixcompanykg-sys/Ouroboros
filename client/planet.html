@@ -728,10 +728,10 @@ function deselectHex(){
 
 // ── панель сведений: планета целиком (по умолчанию) ─────────────────────
 function renderPlanetInfo(star, planet){
-  const t = PLANET_TYPES[planet.type] || { name: planet.type };
-  document.getElementById('hdr-title').textContent = t.name.toUpperCase();
+  const label = World.planetLabel(planet, star);
+  document.getElementById('hdr-title').textContent = label.toUpperCase();
   document.getElementById('info-panel').innerHTML =
-    `<div class="info-title">${t.name}</div>` +
+    `<div class="info-title">${label}</div>` +
     `орбита ${planet.orbit} · система «${World.starLabel(star)}» · гексов: <b>${(planet.surface||[]).length}</b><br>` +
     `вода: <b>${planet.water}/100</b> · жизнь: <b>${planet.life ? 'есть' : 'нет'}</b> · температура: <b>${planet.temp}K</b> · давление: <b>${planet.pressure}</b>` +
     `<div class="info-hint">выберите гекс на карте — характеристики участка</div>`;
@@ -864,6 +864,21 @@ async function whEnsureEconomy(){
     whEconomy = await res.json();
   }catch(e){ whEconomy = {resources:[]}; }
   return whEconomy;
+}
+// Библиотека дефолтных сборок кораблей (client/ship-deck-sectors.html,
+// админ-инструмент) — Верфь подставляет их как СТАРТОВОЕ состояние класса
+// (см. shipMakeEmptyState), сопоставление по имени карточки. Игрок, явно
+// нажавший «Сохранить», получает свою версию из localStorage — эта
+// библиотека её не трогает (используется только при первом обращении к
+// классу за сессию, пока в shipState ничего нет).
+let shipDefaults = null;
+async function ensureShipDefaults(){
+  if(shipDefaults) return shipDefaults;
+  try{
+    const res = await fetch('api/ship-defaults', {cache:'no-store'});
+    shipDefaults = await res.json();
+  }catch(e){ shipDefaults = []; }
+  return shipDefaults;
 }
 function whResInfo(key){
   const found = whEconomy && whEconomy.resources.find(r => r.key === key);
@@ -1085,13 +1100,17 @@ document.getElementById('con-build-btn').onclick = () =>
 // просто память сессии: здесь явно попросили «Сохранить»/«Загрузить», в
 // памяти без персистентности эти две кнопки не имели бы смысла.
 // ══════════════════════════════════════════════════════════════════════════
+// Крейсер/Баржа, Линкор/Лайнер, Дредноут/Танкер подняты (5→6, 10→12, 21→22
+// палуб) — по прямому указанию пользователя, синхронно с SHIP_CLASS_TABLE
+// в client/ship-deck-sectors.html (та же таблица классов теперь в двух
+// местах, числа обязаны совпадать — иначе синхронизация дефолтов сломается).
 const SHIP_CLASSES = [
   { key:'corvette',    military:'Корвет',   civilian:'Шаттл',  decks:1,  perDeck:8 },
   { key:'frigate',     military:'Фрегат',   civilian:'Челнок', decks:2,  perDeck:6 },
   { key:'destroyer',   military:'Эсминец',  civilian:'Клипер', decks:4,  perDeck:4 },
-  { key:'cruiser',     military:'Крейсер',  civilian:'Баржа',  decks:5,  perDeck:4 },
-  { key:'battleship',  military:'Линкор',   civilian:'Лайнер', decks:10, perDeck:3 },
-  { key:'dreadnought', military:'Дредноут', civilian:'Танкер', decks:21, perDeck:2 },
+  { key:'cruiser',     military:'Крейсер',  civilian:'Баржа',  decks:6,  perDeck:4 },
+  { key:'battleship',  military:'Линкор',   civilian:'Лайнер', decks:12, perDeck:3 },
+  { key:'dreadnought', military:'Дредноут', civilian:'Танкер', decks:22, perDeck:2 },
   { key:'station',     military:'Станция',  civilian:'Ковчег', decks:60, perDeck:1 },
 ];
 // durability: 1=хрупкий/2=крепкий (ТЗ_Корабль.md §2/§4). adv: требует Завод
@@ -1102,6 +1121,7 @@ const SHIP_MODULES = [
   { key:'ship_weapon_mount', name:'Оружейный модуль',          durability:2, adv:true  },
   { key:'ship_solar_sail',   name:'Солнечный парус',           durability:1, adv:false },
   { key:'ship_engine',       name:'Двигатель',                 durability:2, adv:false },
+  { key:'ship_engine_ion',   name:'Ионный двигатель',          durability:2, adv:true  },
   { key:'ship_reactor',      name:'Атомный реактор',           durability:2, adv:true  },
   { key:'ship_gas_storage',  name:'Газохранилище',             durability:2, adv:false },
   { key:'ship_battery',      name:'Аккумуляторы',              durability:1, adv:false },
@@ -1124,32 +1144,34 @@ const WEAPON_AVG_DAMAGE = (80 + 180 + 150 + 220 + 200 + 400) / 6;
 // ── силуэт корабля на сетке палуб (присланный пользователем эскиз: не квадрат
 // «сторона=√палуб», а вытянутая/крестообразная форма, растущая в сложности
 // вместе с числом палуб) — по одной форме на каждое встречающееся в игре
-// число палуб (1/2/4/5/10/21), одна и та же для военного и гражданского
+// число палуб (1/2/4/6/12/22), одна и та же для военного и гражданского
 // варианта класса (в эскизе у одного числа палуб несколько разных фигур —
 // это иллюстрация стиля, не единственно верный чертёж, поэтому здесь взята
-// одна каноническая форма на каждое число палуб, а не 14 отдельных копий) ──
+// одна каноническая форма на каждое число палуб, а не 14 отдельных копий).
+// 6/12/22 (не 5/10/21) — формы досчитаны до нового числа палуб тем же стилем
+// при синхронизации с SHIP_CLASS_TABLE (см. комментарий у SHIP_CLASSES) ────
 const SHIP_DECK_SHAPES = {
   1: [[0,0]],
   2: [[0,0],[0,1]],
   // Клипер/Эсминец на уточнённом эскизе — сплошная ПРЯМАЯ линия, не квадрат
   // 2×2 (это была ошибка первого прочтения) ───────────────────────────────
   4: [[0,0],[1,0],[2,0],[3,0]],
-  // Крейсер — буква «Г»: верхний ряд из 4 клеток + 1 клетка снизу с края ──
-  5: [[0,0],[1,0],[2,0],[3,0],[0,1]],
-  // Линкор/Лайнер — симметричное сужение по краям (2-3-3-2), тот же
-  // ступенчатый характер, что на эскизе, но подогнано под decks=10 ────────
-  10: [
+  // Крейсер — буква «Г», на клетку толще прежней (5→6 палуб): верхний ряд
+  // из 4 клеток + 2 клетки снизу с края ────────────────────────────────────
+  6: [[0,0],[1,0],[2,0],[3,0],[0,1],[1,1]],
+  // Линкор/Лайнер — симметричное сужение по краям (2-4-4-2), тот же
+  // ступенчатый характер, что на эскизе, но шире прежнего (10→12 палуб) ───
+  12: [
     [1,0],[2,0],
-    [0,1],[1,1],[2,1],
-    [0,2],[1,2],[2,2],
+    [0,1],[1,1],[2,1],[3,1],
+    [0,2],[1,2],[2,2],[3,2],
     [1,3],[2,3],
   ],
-  // Дредноут/Танкер — «песочные часы»: узкий верх/низ, широкая середина в
-  // ОДНУ строку (не размытое пятно в 5 строк, как было раньше) — по
-  // устойчиво повторяющемуся на эскизе рисунку (пп. 15/17: 2-5-2, п.18: 3-6-3) ─
-  21: [
+  // Дредноут/Танкер — «песочные часы», средняя строка на клетку шире
+  // прежней (21→22 палубы: 5-11-5 → 5-12-5) ────────────────────────────────
+  22: [
     [3,0],[4,0],[5,0],[6,0],[7,0],
-    [0,1],[1,1],[2,1],[3,1],[4,1],[5,1],[6,1],[7,1],[8,1],[9,1],[10,1],
+    [0,1],[1,1],[2,1],[3,1],[4,1],[5,1],[6,1],[7,1],[8,1],[9,1],[10,1],[11,1],
     [3,2],[4,2],[5,2],[6,2],[7,2],
   ],
 };
@@ -1173,6 +1195,11 @@ function shipDeckGridPos(cls, i){
     const within = i % blockSize;
     return { col: origin.x + (within % STATION_BLOCK_W), row: origin.y + Math.floor(within / STATION_BLOCK_W) };
   }
+  // Корабль из библиотеки (ship-deck-sectors.html) — рисуем ИМЕННО его форму
+  // (реальные row/col занятых палуб на сетке 5×7 там), а не общий силуэт.
+  // SHIP_DECK_SHAPES — только запасной вариант для канонических классов без
+  // ни одной записи в библиотеке (см. shipBuildOptions).
+  if(cls.shape && cls.shape[i]) return { col: cls.shape[i].col, row: cls.shape[i].row };
   const shape = SHIP_DECK_SHAPES[cls.decks];
   if(shape && shape[i]) return { col: shape[i][0], row: shape[i][1] };
   const side = Math.max(1, Math.ceil(Math.sqrt(cls.decks))); // запасной вариант для нетабличного числа палуб
@@ -1200,15 +1227,69 @@ const SHIP_STATION_STRUCTURES = [
   { key:'ship_death_ray',        name:'Луч смерти',       durability:3, adv:true },
 ];
 
-let shipVariant = 'military'; // 'military' | 'civilian' — хранится по варианту в ключе состояния
-let shipSelectedClassIdx = 2; // Эсминец/Клипер — эталонный класс (ТЗ_Корабль.md §1)
-let shipSelectedDeck = 0;
-let shipState = {}; // "classKey:variant" → { modules: [][] }
+// Класс по числу палуб — та же таблица, что SHIP_CLASS_TABLE в
+// ship-deck-sectors.html (числа обязаны совпадать в обоих файлах), нужна
+// чтобы взять perDeck для ЛЮБОГО корабля библиотеки, а не только для 12
+// канонических классов ниже.
+const SHIP_CLASS_TABLE = [
+  { decks:1,  perDeck:8 },
+  { decks:2,  perDeck:6 },
+  { decks:4,  perDeck:4 },
+  { decks:6,  perDeck:4 },
+  { decks:12, perDeck:3 },
+  { decks:22, perDeck:2 },
+  { decks:60, perDeck:1 },
+];
+function shipClassBracket(count){
+  if(count <= 0) return SHIP_CLASS_TABLE[0];
+  return SHIP_CLASS_TABLE.find(c => c.decks >= count) || SHIP_CLASS_TABLE[SHIP_CLASS_TABLE.length - 1];
+}
 
-function shipCurrentClass(){ return SHIP_CLASSES[shipSelectedClassIdx]; }
-function shipStateKey(cls){ return cls.key + ':' + shipVariant; }
+let shipSelectedId = null; // id текущего выбранного пункта общего списка (см. shipBuildOptions)
+let shipSelectedDeck = 0;
+let shipState = {}; // id → { modules: [][] }
+let shipOptions = []; // пересчитывается в shipFillClassSelect на каждый renderShipyard
+
+// Список для выбора в Верфи — ПОЛНОСТЬЮ библиотека из ship-deck-sectors.html
+// (каждый корабль там — самостоятельный отдельный пункт, не сопоставление
+// с одним из старых 12 канонических классов), «Задача выполнена неверно»/
+// «синхронизация должна быть полной» — по прямому замечанию пользователя.
+// Станция/Ковчег (бракует в decks>=60) по-прежнему исключена — строится
+// только в открытом космосе, не на планетарной Верфи (см. SHIP_CLASSES).
+// Если библиотека вообще пуста (ничего не спроектировано в ship-deck-
+// sectors.html) — запасной вариант: старые 12 канонических классов, пустые.
+function shipBuildOptions(){
+  const lib = (shipDefaults || []).filter(s => (s.decks || []).length > 0);
+  if(lib.length === 0){
+    return SHIP_CLASSES.filter(c => c.key !== 'station').flatMap(c => [
+      { id:'class:'+c.key+':military', label:c.military, decks:c.decks, perDeck:c.perDeck, shape:null, libModules:null },
+      { id:'class:'+c.key+':civilian', label:c.civilian, decks:c.decks, perDeck:c.perDeck, shape:null, libModules:null },
+    ]);
+  }
+  return lib.map((s, i) => {
+    const decks = s.decks.length;
+    const bracket = shipClassBracket(decks);
+    if(bracket.decks >= 60) return null; // Станция — не строится на планетарной Верфи
+    return {
+      id:'lib:'+i, label:s.name, decks, perDeck:bracket.perDeck,
+      shape: s.decks.map(d => ({ row:d.row, col:d.col })),
+      libModules: s.decks.map(d => d.modules || []),
+    };
+  }).filter(Boolean);
+}
+function shipCurrentClass(){
+  return shipOptions.find(o => o.id === shipSelectedId) || shipOptions[0];
+}
+function shipStateKey(cls){ return cls.id; }
 function shipMakeEmptyState(cls){
-  return { modules: Array.from({length: cls.decks}, () => Array(cls.perDeck).fill(null)) };
+  const modules = Array.from({length: cls.decks}, () => Array(cls.perDeck).fill(null));
+  if(cls.libModules){
+    cls.libModules.forEach((deckModules, i) => {
+      if(i >= modules.length) return;
+      (deckModules || []).forEach((modKey, s) => { if(s < modules[i].length) modules[i][s] = modKey; });
+    });
+  }
+  return { modules };
 }
 function shipGetState(cls){
   const key = shipStateKey(cls);
@@ -1265,7 +1346,7 @@ function shipComputeStats(cls, state){
     durability += shipItemDurability(modKey);
     if(modKey === 'ship_cargo') cargo += 1000;               // §4.19
     if(modKey === 'ship_life_support'){ cargo += 200; lifeSupport++; } // §4.1
-    if(modKey === 'ship_engine') engines++;
+    if(modKey === 'ship_engine' || modKey === 'ship_engine_ion') engines++; // оба типа двигателя (ТЗ_Корабль.md §4.5) считаются в ускорение одинаково
     if(modKey === 'ship_weapon_mount') weapons++;
     if(modKey === 'ship_teleport') teleports++;
     if(modKey === 'ship_computer') computers++;
@@ -1294,16 +1375,15 @@ function shipDeckDurability(deck){
 // классов вовсе; сама форма палуб и логика ядра в коде остаются — пригодятся
 // для будущего экрана постройки в открытом космосе, если/когда он появится.
 function shipFillClassSelect(){
+  shipOptions = shipBuildOptions();
+  if(!shipOptions.some(o => o.id === shipSelectedId)) shipSelectedId = shipOptions[0] ? shipOptions[0].id : null;
   const sel = document.getElementById('sy-class-select');
-  sel.innerHTML = SHIP_CLASSES.filter(c => c.key !== 'station').map((c,i) => `
-    <option value="${SHIP_CLASSES.indexOf(c)}:military">${c.military} · ${c.decks} палуб(ы) × ${c.perDeck} модулей</option>
-    <option value="${SHIP_CLASSES.indexOf(c)}:civilian">${c.civilian} · ${c.decks} палуб(ы) × ${c.perDeck} модулей</option>
-  `).join('');
-  sel.value = shipSelectedClassIdx + ':' + shipVariant;
+  sel.innerHTML = shipOptions.map(o =>
+    `<option value="${o.id}">${o.label} · ${o.decks} палуб(ы) × ${o.perDeck} модулей</option>`
+  ).join('');
+  sel.value = shipSelectedId;
   sel.onchange = () => {
-    const [idx, variant] = sel.value.split(':');
-    shipSelectedClassIdx = Number(idx);
-    shipVariant = variant;
+    shipSelectedId = sel.value;
     shipSelectedDeck = 0;
     renderShipyard();
   };
@@ -1312,8 +1392,8 @@ function shipFillClassSelect(){
 async function renderShipyard(){
   document.getElementById('hdr-title').textContent = 'ВЕРФЬ';
   await whEnsureEconomy();
-  if(shipCurrentClass().key === 'station') shipSelectedClassIdx = 2; // защита: планетарная Верфь Станций не строит
-  shipFillClassSelect();
+  await ensureShipDefaults();
+  shipFillClassSelect(); // сама пересобирает shipOptions и подбирает валидный shipSelectedId — Станция уже отфильтрована
   const cls = shipCurrentClass();
   const state = shipGetState(cls);
   if(shipSelectedDeck >= cls.decks) shipSelectedDeck = 0;
@@ -1451,7 +1531,7 @@ function installModule(slotIdx, moduleKey){
 document.getElementById('sy-save-btn').onclick = () => {
   const cls = shipCurrentClass();
   localStorage.setItem('ship_config_' + shipStateKey(cls), JSON.stringify(shipGetState(cls)));
-  toast(`Конфигурация «${shipVariant === 'military' ? cls.military : cls.civilian}» сохранена`);
+  toast(`Конфигурация «${cls.label}» сохранена`);
 };
 document.getElementById('sy-load-btn').onclick = () => {
   const cls = shipCurrentClass();
@@ -1462,10 +1542,11 @@ document.getElementById('sy-load-btn').onclick = () => {
 };
 document.getElementById('sy-reset-btn').onclick = () => {
   const cls = shipCurrentClass();
-  shipState[shipStateKey(cls)] = shipMakeEmptyState(cls);
+  const hasDefault = !!cls.libModules;
+  shipState[shipStateKey(cls)] = shipMakeEmptyState(cls); // подставит сборку из библиотеки, если она есть — не «в ноль»
   shipSelectedDeck = 0;
   renderShipyard();
-  toast('Модули палуб сброшены');
+  toast(hasDefault ? 'Сброшено до сборки по умолчанию' : 'Модули палуб очищены');
 };
 document.getElementById('sy-build-btn').onclick = () => {
   const cls = shipCurrentClass();
@@ -1476,8 +1557,7 @@ document.getElementById('sy-build-btn').onclick = () => {
     toast('Нужна Верфь на планете — без неё корабли не строят');
     return;
   }
-  const label = shipVariant === 'military' ? cls.military : cls.civilian;
-  document.getElementById('ship-build-title').textContent = 'Постройка: ' + label;
+  document.getElementById('ship-build-title').textContent = 'Постройка: ' + cls.label;
   document.getElementById('ship-build-summary').textContent =
     `Масса ≈${stats.totalMass.toFixed(0)} у.м. · Стоимость ≈${stats.totalValue.toFixed(0)} кред. · ${cls.decks} палуб(ы)`;
   const rows = Object.entries(stats.baseTotals).filter(([,v]) => v > 0.01).sort((a,b) => b[1]-a[1])

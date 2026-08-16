@@ -306,6 +306,7 @@ function buildRows(objects) {
         temp: p.temp || 0, pressure: p.pressure || 0, volcanic: p.volcanic || 0,
         radiation: p.radiation || 0, toxicity: p.toxicity || 0,
         starRings: o.rings || 0, starMeteor: o.meteorActivity || 0,
+        capital: !!p.capital, population: p.population || 0, buildingsCount: (p.buildings || []).length,
       });
     });
   });
@@ -522,7 +523,10 @@ function buildRow(r) {
 
   const typeTd = document.createElement('td');
   const pt = PLANET_TYPES[r.type] || { name:r.type, color:'#888' };
-  typeTd.innerHTML = `<span class="col-type"><span class="type-dot" style="background:${pt.color}"></span>${pt.name}</span>`;
+  const capitalBadge = r.capital
+    ? ` <b style="color:var(--gold)">★ СТОЛИЦА</b> <span style="opacity:.7">(${r.population} чел., ${r.buildingsCount} зд.)</span>`
+    : '';
+  typeTd.innerHTML = `<span class="col-type"><span class="type-dot" style="background:${pt.color}"></span>${pt.name}${capitalBadge}</span>`;
   tr.appendChild(typeTd);
 
   td(tr, 'col-num', r.orbit);

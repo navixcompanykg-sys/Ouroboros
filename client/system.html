@@ -570,12 +570,11 @@ function renderInfo(){
   }
 
   const p = star.planets[selected.index];
-  const t = PLANET_TYPES[p.type] || { name:p.type };
   const f = FACTIONS[p.owner] || FACTIONS.none;
   // «Год планеты» в реальных часах/сутках — World.formatPeriod (считает по
   // канонической игровой скорости, не по текущему отладочному множителю).
   const periodTxt = World.formatPeriod(p);
-  titleEl.textContent = `${t.name} · орбита ${p.orbit}`;
+  titleEl.textContent = `${World.planetLabel(p, star)} · орбита ${p.orbit}`;
   rowsEl.innerHTML = `владелец: <b>${f.name}</b> · вода: <b>${p.water}/100</b> · жизнь: <b>${p.life?'есть':'нет'}</b><br>` +
     `температура: <b>${p.temp}K</b> · давление: <b>${p.pressure}</b> · радиация: <b>${p.radiation}</b><br>` +
     `год планеты: <b>${periodTxt}</b>`;

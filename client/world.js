@@ -23,15 +23,17 @@
 const World = (() => {
 
   // ── справочники отображения: сервер шлёт только ключи ───────────────────
+  // genitive — родительный падеж («Столица ЧЕГО» — planetLabel ниже), нужен
+  // только для отображения, сервер его не знает и никогда не присылает.
   const FACTIONS = {
-    technocracy: { name:'Технократия',        color:'#4fd1ff' },
-    tradefed:    { name:'Торговая федерация', color:'#ffd24f' },
-    monarchy:    { name:'Монархия',           color:'#c084fc' },
-    miners:      { name:'Рудокопы',           color:'#ff8c42' },
-    pirates:     { name:'Пираты',             color:'#ff4d6d' },
-    smugglers:   { name:'Контрабандисты',     color:'#9aa0a8' },
-    rebels:      { name:'Повстанцы',          color:'#4dff88' },
-    none:        { name:'Независимая',        color:'#3a4256' },
+    technocracy: { name:'Технократия',        genitive:'Технократии',        color:'#4fd1ff' },
+    tradefed:    { name:'Торговая федерация', genitive:'Торговой федерации', color:'#ffd24f' },
+    monarchy:    { name:'Монархия',           genitive:'Монархии',           color:'#c084fc' },
+    miners:      { name:'Рудокопы',           genitive:'Рудокопов',          color:'#ff8c42' },
+    pirates:     { name:'Пираты',             genitive:'Пиратов',            color:'#ff4d6d' },
+    smugglers:   { name:'Контрабандисты',     genitive:'Контрабандистов',    color:'#9aa0a8' },
+    rebels:      { name:'Повстанцы',          genitive:'Повстанцев',         color:'#4dff88' },
+    none:        { name:'Независимая',        genitive:'Независимой',        color:'#3a4256' },
   };
   // Пять эффективных типов планет (ТЗ.md §2.5), порядок — от звезды наружу.
   const PLANET_TYPES = {
@@ -309,7 +311,13 @@ const World = (() => {
     if(star.stable) return (FACTIONS[star.faction] || {}).color || '#fff';
     return STAR_COLORS[star.starType] || '#fff';
   }
-  function planetLabel(p){
+  // star — опционален (не у всех вызовов планета известна вместе со звездой),
+  // но без него столицу не подписать по фракции — тогда просто тип планеты.
+  function planetLabel(p, star){
+    if(p.capital && star){
+      const f = FACTIONS[star.faction];
+      return 'Столица ' + (f ? f.genitive : star.faction);
+    }
     return (PLANET_TYPES[p.type] || { name:p.type }).name;
   }
   function planetColor(p){
