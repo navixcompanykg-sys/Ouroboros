@@ -3,6 +3,7 @@ package main
 import (
 	"math"
 	"math/rand"
+	"sort"
 )
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -446,14 +447,72 @@ type Planet struct {
 
 	// Population — работоспособное население колонии (server/buildings.go,
 	// computePopulation, ТЗ_Экономика.md §11.2 — лимит по разнообразию пищи).
-	// Выставляется один раз при bootstrapColony, посуточный рост/убыль
-	// ±1/сутки (§11.2) не симулируется — это фаза 2, см. шапку buildings.go.
+	// Выставляется один раз при bootstrapColony (посевное значение на день 0),
+	// дальше посуточно эволюционирует формулой §11.2 в server/production.go
+	// (populationDay) — растёт/падает ±1/поселение/сутки по еде на складе.
 	Population int `json:"population,omitempty"`
 
 	// Capital — столица одной из 4 стабильных фракций (server/main.go,
 	// forceHabitableCapitals). Имя планеты клиент строит по фракции звезды
 	// («Столица Технократии»), а не по типу планеты — только для этих 4.
 	Capital bool `json:"capital,omitempty"`
+
+	// Stock — склад колонии: сырьё И готовые компоненты в одном плоском
+	// словаре (ключи те же, что resourceDefs/componentRecipes — коллизий
+	// нет). Заполняется/расходуется посуточно server/production.go
+	// (mineDay/upkeepDay/produceDay/populationDay). Пустой словарь у
+	// неколонизированных планет — omitempty не раздувает /api/galaxy.
+	Stock map[string]float64 `json:"stock,omitempty"`
+
+	// EnergyProduction/EnergyConsumption — учёт дефицита энергии (по прямому
+	// требованию пользователя). Пересчитывается заново каждые сутки
+	// (energyDay, server/production.go) по подключённым зданиям — не
+	// накопительный склад, а мгновенный отчёт за только что закончившиеся
+	// сутки (ТЗ_Экономика.md §12.1/§12.2 — производство: +10/+5/+40 от
+	// водородного генератора/солнечной панели/атомной станции). Раньше это
+	// считалось ТОЛЬКО на клиенте (conStats(), client/planet.html) как
+	// чистая витрина по всем зданиям планеты без учёта связности — теперь
+	// сервер даёт настоящее число (с учётом изоляции), клиент его отображает.
+	// Потребление — по требованию пользователя ДИФФЕРЕНЦИРОВАННОЕ, не единый
+	// «1/здание»: добыча и «прочие» здания — 1/сутки как раньше; заводы —
+	// НЕ платят эту единицу вовсе, вместо неё ActivityEnergySpent (ниже) по
+	// фактической партии; завод переработки — тоже через ActivityEnergySpent
+	// (recyclingEnergyPerBatch=5, вне зависимости от того, какой из 3
+	// рецептов переработки отработал). Дефицит = EnergyConsumption >
+	// EnergyProduction — пока сам по себе НИ НА ЧТО не влияет (не блокирует
+	// добычу/производство/содержание), это чистая метрика для игрока.
+	EnergyProduction  float64 `json:"energyProduction,omitempty"`
+	EnergyConsumption float64 `json:"energyConsumption,omitempty"`
+
+	// ActivityEnergySpent — накопитель энергии, потраченной АКТИВНОСТЬЮ
+	// (произведённые партии заводов/переработки) за текущие ещё не
+	// закрытые сутки — растёт весь день в produceHour/recycleHour, на
+	// границе суток energyDay складывает его в EnergyConsumption и обнуляет
+	// для следующих суток (тот же принцип, что Building.BatchesToday/
+	// resetDailyBatches, только на уровне планеты, не отдельного здания —
+	// сама метрика энергии агрегатная, по зданиям не разбивается).
+	ActivityEnergySpent float64 `json:"-"`
+
+	// EventLog — журнал событий по суткам (по прямому требованию
+	// пользователя — «журнал записей всех компонентов и действий на
+	// колониях... в табличном виде хранит действия производства, сносы,
+	// приход, убыль и остаток всех ресурсов за цикл»). Кольцевой буфер
+	// (maxEventLogDays, production.go) — старые записи вытесняются. НЕ едет
+	// в /api/galaxy (json:"-", опрашивается раз в секунду клиентом — лог за
+	// N суток по 20+ ключам раздул бы этот ответ) — отдаётся отдельным
+	// эндпунтом /api/planet/log (main.go), который читает новая страница
+	// client/colony-log.html.
+	EventLog []DayLogEntry `json:"-"`
+
+	// Mined/Produced/ConsumedToday, DemolishedToday — накопители за ТЕКУЩИЕ
+	// ещё не закрытые сутки (тот же принцип, что ActivityEnergySpent выше):
+	// растут в mineDay/upkeepDay/produceHour/recycleHour, на границе суток
+	// сворачиваются в новую запись EventLog и обнуляются (logDayEntry,
+	// production.go).
+	MinedToday      map[string]float64 `json:"-"`
+	ProducedToday   map[string]float64 `json:"-"`
+	ConsumedToday   map[string]float64 `json:"-"`
+	DemolishedToday []string           `json:"-"`
 }
 
 // ── поверхность планеты: гекс-карта, радиус по размеру планеты, ТЗ_UI.md §5 ─
@@ -503,6 +562,15 @@ type SurfaceHex struct {
 	Type   string `json:"type"`             // water|icecap|mountains|hills|wasteland|steppe|desert|forest|jungle
 	Crater bool   `json:"crater,omitempty"` // безатмосферные миры — кратеры на суше (нечем сгорать метеоритам)
 
+	// Fresh — пресная вода на этом гексе (по требованию пользователя: море/
+	// океан ≠ ледник/озеро, для ресурса waterIce считается только пресная).
+	// Всегда true у icecap (лёд — пресный по определению); у Type=="water" —
+	// true только если гекс НЕ граничит с другим гексом типа "water" (тогда
+	// это изолированное пресное озеро, а не море/океан); ложно у моря/океана.
+	// Также true у гексов ЛЮБОГО типа по соседству (1 кольцо) с уже пресным
+	// источником — родники/сток. Вычисляется постфактум, см. markFreshWater.
+	Fresh bool `json:"fresh,omitempty"`
+
 	// res — концентрация ресурсов ЭТОГО гекса (см. distributeHexResources).
 	// Строчная буква — НЕ экспортируется и потому НИКОГДА не попадает в
 	// JSON (ни через этот тип, ни через `Planet.Surface` в общем
@@ -538,6 +606,7 @@ type SurfaceHexDetail struct {
 	R         int            `json:"r"`
 	Type      string         `json:"type"`
 	Crater    bool           `json:"crater,omitempty"`
+	Fresh     bool           `json:"fresh,omitempty"` // пресная вода (не море/океан) — см. SurfaceHex.Fresh
 	Res       map[string]int `json:"res,omitempty"`
 	Connected bool           `json:"connected"` // подключён ли гекс к транспортной сети — см. connectedHexes, buildings.go
 }
@@ -574,6 +643,13 @@ type SurfaceHexDetail struct {
 // кратеров возможны и на безвоздушном теле (как на Меркурии/Луне), в
 // отличие от жидкой воды.
 //
+// atmoThreshold — порог давления «есть атмосфера» (усл. ед. 0–100, см.
+// envRoll). Вынесено на уровень пакета (не только внутри generateSurface) —
+// distributeHexResources ниже тоже нужен этот же порог, для гелия-3
+// (безатмосферный мир концентрирует его в реголите, атмосферный — рассеивает,
+// см. hexBioWeight-соседнюю логику helium3 в distributeHexResources).
+const atmoThreshold = 12
+
 // heatBias сдвигает пояса (пустыня/джунгли/шапка) по планете ЦЕЛИКОМ —
 // жаркий мир «выталкивает» их ближе к полюсам, холодный «затягивает» ближе
 // к экватору, а не красит гекс на месте в изоляции — иначе широтный рисунок
@@ -586,7 +662,6 @@ func generateSurface(rng *rand.Rand, pt string, water, temp, pressure, volcanic 
 	if pt == "gas" {
 		return nil
 	}
-	const atmoThreshold = 12
 	hexRadiusF := float64(hexRadius)
 	wFrac := float64(water) / 100
 	hasAtmo := pressure >= atmoThreshold
@@ -641,8 +716,19 @@ func generateSurface(rng *rand.Rand, pt string, water, temp, pressure, volcanic 
 				typ = "water"
 
 			case rng.Float64() < 0.06+tectonic*0.6:
-				typ = "mountains"
-				crater = !hasAtmo && rng.Float64() < 0.5
+				// Ледник на вершине — не только полярный (icecapThreshold
+				// выше ловит именно широтные шапки): гора где угодно на
+				// планете может нести снег/лёд, если планете вообще есть
+				// чем снежить (тот же гейт wFrac>0.08, что у полярной
+				// шапки). Шанс ниже в жарких широтах (heat), но не ноль —
+				// ледники на экваториальных вершинах реальны.
+				if wFrac > 0.08 && rng.Float64() < 0.25*(1-heat*0.5) {
+					typ = "icecap"
+					crater = !hasAtmo && rng.Float64() < 0.4
+				} else {
+					typ = "mountains"
+					crater = !hasAtmo && rng.Float64() < 0.5
+				}
 
 			case rng.Float64() < 0.09+tectonic*0.12:
 				typ = "hills"
@@ -690,7 +776,58 @@ func generateSurface(rng *rand.Rand, pt string, water, temp, pressure, volcanic 
 			hexes = append(hexes, SurfaceHex{Q: q, R: r, Type: typ, Crater: crater})
 		}
 	}
+	markFreshWater(hexes)
 	return hexes
+}
+
+// markFreshWater — солёность/пресность воды определяется СВЯЗНОСТЬЮ, поэтому
+// отдельным проходом ПОСЛЕ основного цикла выше (там ещё не известны типы
+// соседей — гексы генерируются по одному). Правило по требованию
+// пользователя: ледяная шапка — всегда пресная (лёд пресный по определению);
+// гекс типа "water" с хотя бы одним соседним гексом ТОЖЕ типа "water" — море
+// или океан, солёная вода, НЕ пресная; гекс типа "water" без соседей-воды —
+// изолированное пресное озеро. Дальше — второй проход: гекс ЛЮБОГО типа по
+// соседству (1 кольцо, hexNeighbors — buildings.go) с уже пресным источником
+// (шапкой или озером) тоже помечается пресным — родники/сток рядом с
+// источником. Используется в hexBioWeight ниже: waterIce как ресурс
+// считается только с пресных гексов, солёная вода в него не попадает.
+func markFreshWater(hexes []SurfaceHex) {
+	byCoord := make(map[[2]int]int, len(hexes))
+	for i, h := range hexes {
+		byCoord[[2]int{h.Q, h.R}] = i
+	}
+	for i := range hexes {
+		switch hexes[i].Type {
+		case "icecap":
+			hexes[i].Fresh = true
+		case "water":
+			isOcean := false
+			for _, n := range hexNeighbors(hexes[i].Q, hexes[i].R) {
+				if j, ok := byCoord[n]; ok && hexes[j].Type == "water" {
+					isOcean = true
+					break
+				}
+			}
+			hexes[i].Fresh = !isOcean
+		}
+	}
+	spread := make([]bool, len(hexes))
+	for i := range hexes {
+		if hexes[i].Fresh {
+			continue
+		}
+		for _, n := range hexNeighbors(hexes[i].Q, hexes[i].R) {
+			if j, ok := byCoord[n]; ok && hexes[j].Fresh {
+				spread[i] = true
+				break
+			}
+		}
+	}
+	for i, f := range spread {
+		if f {
+			hexes[i].Fresh = true
+		}
+	}
 }
 
 // ── распределение ресурсов планеты по гексам ────────────────────────────────
@@ -718,62 +855,169 @@ func generateSurface(rng *rand.Rand, pt string, water, temp, pressure, volcanic 
 //     продолжение bioSurfFactor из архива (§43 OUROBOROS_design.md,
 //     archive/docs), адаптированное на 8 (теперь 9) типов поверхности этой
 //     версии вместо старых 7 категорий v1.
-func distributeHexResources(rng *rand.Rand, hexes []SurfaceHex, res map[string]int) {
+func distributeHexResources(rng *rand.Rand, hexes []SurfaceHex, res map[string]int, pressure int, pt string) {
 	if len(hexes) == 0 {
 		return
 	}
+	hasAtmo := pressure >= atmoThreshold
 	for _, rd := range resourceDefs {
 		total := res[rd.Key]
 		if total <= 0 {
 			continue
 		}
 		switch {
-		case rd.Key == "waterIce" || rd.Cat == catBio:
-			distributeBiomeCorrelated(hexes, rd.Key, total)
+		case rd.Key == "waterIce" || rd.Key == "silicates" || rd.Key == "iron" || rd.Cat == catBio:
+			// Силикаты/железо — по требованию пользователя переведены с фона+
+			// месторождений (default ниже) на честную привязку к биому:
+			// горы/холмы — заметно больше (типичная горная/рудная порода),
+			// моря/океаны — заметно меньше (толща воды накрывает коренную
+			// породу), см. hexBioWeight. Раньше эта доля запаса была
+			// размазана РОВНО по всем гексам без учёта рельефа вообще —
+			// только меньшая часть (месторождения) хоть как-то тяготела к
+			// горам. distributeBiomeCorrelated теперь ещё и добавляет
+			// небольшой шум по гексу (по требованию пользователя) — тип
+			// гекса задаёт базовый уровень, а не единственное на весь тип
+			// число.
+			distributeBiomeCorrelated(rng, hexes, rd.Key, total)
+		case rd.Key == "helium3" && hasAtmo:
+			// Земля: гелий-3 рассеян до микроскопических концентраций,
+			// месторождений не образует (по требованию пользователя, прямая
+			// аналогия с земным гелием-3) — та же модель, что остальной
+			// catGas ниже (0.45 фон / 3 месторождения, без тяготения к горам).
+			distributeUniformDeposits(rng, hexes, rd.Key, total, 0.45, 3, false)
+		case rd.Key == "helium3": // безатмосферный мир (!hasAtmo)
+			// Луна: заметно копится в локальных зонах реголита (зависит от
+			// состава грунта) — по требованию пользователя. Малый фон (8%)
+			// + всего 2 богатых месторождения забирают почти весь запас,
+			// тяготение к горам — та же логика, что у металлов/
+			// радиоактивных, только жёстче (концентрация выше, месторождений
+			// меньше). Газовые гиганты сюда не попадают вовсе — у них нет
+			// гекс-карты (generateSurface возвращает nil для pt=="gas"), их
+			// гелий-3 — один общий на планету параметр, рассеян по смыслу
+			// самого источника (атмосфера), без гекс-распределения.
+			distributeUniformDeposits(rng, hexes, rd.Key, total, 0.08, 2, true)
+		case rd.Key == "refractory" && pt == "core":
+			// Голое ядро — исключение по требованию пользователя: тугоплавкие
+			// металлы (вольфрам/рений и т.п.) в реальности ядерные/мантийные
+			// элементы. На обнажённом ядре порода однородна по всей открытой
+			// поверхности, поверхностных жил не образует — те возникают от
+			// гидротермальных/вулканических процессов КОРЫ, которой у голого
+			// ядра просто нет (см. комментарий у case pt=="core" в
+			// generateSurface). Равномерно, без месторождений (numDeposits=0).
+			distributeUniformDeposits(rng, hexes, rd.Key, total, 1.0, 0, true)
+		case rd.Key == "refractory":
+			// Обычная планета — по требованию пользователя сильно
+			// сконцентрированы (было «сильно рассыпаны» на общем catMetals
+			// 0.20/4 ниже): 3-5 богатых месторождений держат почти весь
+			// запас, совсем маленький фон.
+			distributeUniformDeposits(rng, hexes, rd.Key, total, 0.05, 4, true)
+		case rd.Key == "platinoids":
+			// По требованию пользователя — очень высокая концентрация в
+			// паре месторождений (2): платиноиды в реальности САМАЯ
+			// концентрированная руда из существующих (горстка месторождений
+			// на всю планету обеспечивает почти всю добычу), а Rarity здесь
+			// и так самая низкая из catMetals (0.03 — втрое реже
+			// тугоплавких). Фон почти нулевой (2%).
+			distributeUniformDeposits(rng, hexes, rd.Key, total, 0.02, 2, true)
 		case rd.Cat == catMetals:
 			distributeUniformDeposits(rng, hexes, rd.Key, total, 0.20, 4, true)
 		case rd.Cat == catNuclear:
 			distributeUniformDeposits(rng, hexes, rd.Key, total, 0.15, 3, true)
+		case rd.Key == "volcanicGases":
+			// По требованию пользователя — сильный перекос к горной
+			// местности (вулканическая активность и горообразование —
+			// одна и та же тектоника, `tectonic` в generateSurface); раньше
+			// делили общий catFuel с водородом БЕЗ тяготения к горам вообще
+			// (preferMountain=false) — честная привязка к биому вместо
+			// фона+месторождений, см. hexBioWeight.
+			distributeBiomeCorrelated(rng, hexes, rd.Key, total)
 		case rd.Cat == catFuel:
 			distributeUniformDeposits(rng, hexes, rd.Key, total, 0.65, 2, false)
 		case rd.Cat == catGas:
 			distributeUniformDeposits(rng, hexes, rd.Key, total, 0.45, 3, false)
-		default: // catBase не-водяное (силикаты, железо) — крустальный материал,
-			// заметно чаще в горах/холмах, но не так экстремально, как руды
+		default: // catBase не-водяное/не-силикаты/не-железо — из этой
+			// категории сейчас больше ничего нет, но оставлено на случай
+			// нового ресурса без явного правила выше
 			distributeUniformDeposits(rng, hexes, rd.Key, total, 0.55, 3, true)
 		}
 	}
+}
+
+// largestRemainderAllocate — метод наибольшего остатка (Hare-Niemeyer), по
+// требованию пользователя: делит total ЦЕЛИКОМ, без потерь на округлении,
+// между получателями пропорционально weights[i]. Раньше каждый получатель
+// округлялся НЕЗАВИСИМО (math.Round для каждого гекса/месторождения по
+// отдельности) — при низком общем запасе, размазанном по многим гексам,
+// бо́льшая часть долей оказывалась меньше 0.5 и КАЖДАЯ независимо округлялась
+// вниз до нуля, из-за чего терялось до 15–20% общего запаса у дефицитных
+// ресурсов (обнаружено диагностическим тестом на реальных планетах). Метод
+// наибольшего остатка: сперва floor(доля) всем, затем «сдача» (total минус
+// сумма floor) раздаётся по одной единице получателям с наибольшей дробной
+// частью — сумма результата ТОЧНО равна total (при total ≥ 0 и хотя бы
+// одном положительном весе), а не «около».
+func largestRemainderAllocate(total int, weights []float64) []int {
+	n := len(weights)
+	result := make([]int, n)
+	if total <= 0 || n == 0 {
+		return result
+	}
+	sum := 0.0
+	for _, w := range weights {
+		sum += w
+	}
+	if sum <= 0 {
+		return result
+	}
+	type frac struct {
+		idx  int
+		frac float64
+	}
+	fracs := make([]frac, n)
+	assigned := 0
+	for i, w := range weights {
+		share := float64(total) * w / sum
+		floor := math.Floor(share)
+		result[i] = int(floor)
+		fracs[i] = frac{i, share - floor}
+		assigned += int(floor)
+	}
+	remainder := total - assigned
+	sort.Slice(fracs, func(i, j int) bool { return fracs[i].frac > fracs[j].frac })
+	for i := 0; i < remainder && i < n; i++ {
+		result[fracs[i].idx]++
+	}
+	return result
 }
 
 // distributeUniformDeposits — фон (uniformFrac × total, по всем гексам с
 // шумом) + numDeposits месторождений (остаток, неравномерно между собой).
 // preferMountain — месторождения втрое чаще ложатся на горы/холмы, если они
 // есть на планете, но не эксклюзивно (иначе безгористая планета не могла бы
-// иметь ни одного месторождения металлов вовсе).
+// иметь ни одного месторождения металлов вовсе). Обе доли (фон/месторождения)
+// раздаются через largestRemainderAllocate — сумма по гексам точно сходится
+// с total (см. её комментарий).
 func distributeUniformDeposits(rng *rand.Rand, hexes []SurfaceHex, key string, total int, uniformFrac float64, numDeposits int, preferMountain bool) {
 	n := len(hexes)
-	uniformPool := float64(total) * uniformFrac
-	depositPool := float64(total) - uniformPool
+	uniformPool := int(math.Round(float64(total) * uniformFrac))
+	depositPool := total - uniformPool
 
 	shares := make([]float64, n)
-	sum := 0.0
 	for i := range shares {
 		shares[i] = 0.65 + rng.Float64()*0.7 // 0.65..1.35 — фон не идеально ровный
-		sum += shares[i]
 	}
+	amounts := largestRemainderAllocate(uniformPool, shares)
 	for i := range hexes {
-		hexes[i].addRes(key, int(math.Round(uniformPool*shares[i]/sum)))
+		hexes[i].addRes(key, amounts[i])
 	}
 
 	if numDeposits <= 0 || depositPool <= 0 {
 		return
 	}
 	weights := make([]float64, numDeposits)
-	wsum := 0.0
 	for i := range weights {
 		weights[i] = -math.Log(rng.Float64() + 1e-9) // экспоненциальный шум — месторождения не поровну
-		wsum += weights[i]
 	}
+	depositAmounts := largestRemainderAllocate(depositPool, weights)
 	used := make(map[int]bool, numDeposits)
 	for i := 0; i < numDeposits; i++ {
 		idx := pickWeightedHex(rng, hexes, preferMountain, used)
@@ -781,7 +1025,7 @@ func distributeUniformDeposits(rng *rand.Rand, hexes []SurfaceHex, key string, t
 			break
 		}
 		used[idx] = true
-		hexes[idx].addRes(key, int(math.Round(depositPool*weights[i]/wsum)))
+		hexes[idx].addRes(key, depositAmounts[i])
 	}
 }
 
@@ -822,20 +1066,26 @@ func pickWeightedHex(rng *rand.Rand, hexes []SurfaceHex, preferMountain bool, us
 // distributeBiomeCorrelated — весь запас размазан пропорционально «весу»
 // биома гекса (hexBioWeight), а не случайно: физически осмысленнее, чем
 // равномерный фон + месторождения — вода лежит там, где гекс типа «вода»,
-// а не где повезло броску.
-func distributeBiomeCorrelated(hexes []SurfaceHex, key string, total int) {
+// а не где повезло броску. Небольшой шум (±15%, по требованию пользователя
+// — «небольшой разброс», но «учесть типы гексов») ПОВЕРХ веса биома, не
+// вместо него: тип гекса всё ещё задаёт базовый уровень (гора весомо богаче
+// воды в среднем), шум только не даёт двум гексам ОДНОГО типа быть
+// абсолютно одинаковыми (было так — hexBioWeight детерминирован, разброса
+// внутри типа не было вовсе). Нулевой вес (например, солёное море для
+// waterIce) шум не трогает — 0×шум всё ещё 0.
+func distributeBiomeCorrelated(rng *rand.Rand, hexes []SurfaceHex, key string, total int) {
 	n := len(hexes)
 	weights := make([]float64, n)
-	sum := 0.0
 	for i, h := range hexes {
-		weights[i] = hexBioWeight(key, h.Type)
-		sum += weights[i]
+		noise := 0.85 + rng.Float64()*0.3 // 0.85..1.15
+		weights[i] = hexBioWeight(key, h) * noise
 	}
-	if sum <= 0 {
-		return
-	}
+	// largestRemainderAllocate (см. её комментарий) — сумма по гексам точно
+	// сходится с total, независимое округление каждого гекса (было раньше)
+	// теряло заметную долю запаса у ресурсов с низким total.
+	amounts := largestRemainderAllocate(total, weights)
 	for i := range hexes {
-		hexes[i].addRes(key, int(math.Round(float64(total)*weights[i]/sum)))
+		hexes[i].addRes(key, amounts[i])
 	}
 }
 
@@ -845,19 +1095,68 @@ func distributeBiomeCorrelated(hexes []SurfaceHex, key string, total int) {
 // sea×1.8+plains×0.4», «carbonates: sea+plains+tundra», «bitumens:
 // plains+sea×0.5+mountains×0.3» — перенесено на 9 типов этой версии вместо
 // исходных 7 (моря→вода, тундра/равнины→степь/пустошь).
-func hexBioWeight(key, hexType string) float64 {
+func hexBioWeight(key string, h SurfaceHex) float64 {
 	switch key {
 	case "waterIce":
-		switch hexType {
-		case "icecap":
+		// Пресная вода — ресурс, солёная (море/океан) в него не считается
+		// (H.Fresh, markFreshWater выше — правило по требованию пользователя).
+		switch {
+		case h.Type == "icecap":
 			return 3.0
-		case "water":
-			return 1.0
+		case h.Type == "water" && h.Fresh:
+			return 1.0 // изолированное пресное озеро
+		case h.Type == "water":
+			return 0 // море/океан — солёная вода, не waterIce
+		case h.Fresh:
+			return 0.3 // рядом с ледником/озером — родники, небольшой сток
 		default:
-			return 0.05 // тонкий след вечной мерзлоты даже вдали от полюсов
+			return 0.05 // тонкий след вечной мерзлоты даже вдали от полюсов/ледников
+		}
+	case "silicates":
+		// По требованию пользователя: горы/холмы — заметно богаче (кварц/
+		// полевой шпат типичны для горной породы), моря/океаны — заметно
+		// беднее (коренная порода накрыта толщей воды). Ледяная шапка тоже
+		// слегка беднее той же логикой (порода подо льдом), пресное озеро —
+		// как обычная вода (небольшая площадь, роли не играет).
+		switch h.Type {
+		case "mountains":
+			return 2.5
+		case "hills":
+			return 1.6
+		case "water":
+			return 0.3
+		case "icecap":
+			return 0.5
+		default:
+			return 1.0
+		}
+	case "iron":
+		// По требованию пользователя — тяготеет к горам (рудные жилы в
+		// твёрдой породе), мягче силикатов (не трогаем воду/лёд отдельно —
+		// не просили, оставлено на общем уровне).
+		switch h.Type {
+		case "mountains":
+			return 2.0
+		case "hills":
+			return 1.3
+		default:
+			return 1.0
+		}
+	case "volcanicGases":
+		// По требованию пользователя — сильный перекос к горам (та же
+		// тектоника, что и горообразование, см. `tectonic` в
+		// generateSurface): холмы тоже вулканически активны, но заметно
+		// слабее гор, везде остальном — тонкий фон.
+		switch h.Type {
+		case "mountains":
+			return 4.0
+		case "hills":
+			return 1.5
+		default:
+			return 0.2
 		}
 	case "biomass":
-		switch hexType {
+		switch h.Type {
 		case "jungle":
 			return 2.5
 		case "forest":
@@ -870,7 +1169,7 @@ func hexBioWeight(key, hexType string) float64 {
 			return 0.05
 		}
 	case "phosphates":
-		switch hexType {
+		switch h.Type {
 		case "water":
 			return 1.8
 		case "jungle":
@@ -881,7 +1180,7 @@ func hexBioWeight(key, hexType string) float64 {
 			return 0.1
 		}
 	case "carbonates":
-		switch hexType {
+		switch h.Type {
 		case "water":
 			return 1.5
 		case "steppe":
@@ -892,7 +1191,7 @@ func hexBioWeight(key, hexType string) float64 {
 			return 0.3
 		}
 	case "bitumens":
-		switch hexType {
+		switch h.Type {
 		case "wasteland":
 			return 1.2
 		case "water":
@@ -1239,7 +1538,7 @@ func makePlanet(rng *rand.Rand, starType string, starR, orbit, sysR float64, idx
 	applyHexSizeMult(res, hexRadius)
 
 	surface := generateSurface(rng, pt, water, temp, pressure, volcanic, alive, hexRadius)
-	distributeHexResources(rng, surface, res)
+	distributeHexResources(rng, surface, res, pressure, pt)
 
 	return Planet{
 		Index:       idx,
@@ -1317,7 +1616,7 @@ func recomputeAsHabitable(rng *rand.Rand, p *Planet, starType string, starR, sys
 	applyHexSizeMult(p.Res, hexRadius)
 
 	p.Surface = generateSurface(rng, p.Type, p.Water, p.Temperature, p.Pressure, p.Volcanic, true, hexRadius)
-	distributeHexResources(rng, p.Surface, p.Res)
+	distributeHexResources(rng, p.Surface, p.Res, p.Pressure, p.Type)
 }
 
 // ── условия среды: температура, давление атмосферы, вулканическая

@@ -92,6 +92,8 @@ const World = (() => {
     science_center:  'Научный центр',
     crypto_farm:     'Криптоферма',
     transport_node:  'Транспортный узел',
+    nuclear_plant:   'Атомная станция',
+    recycler:        'Завод переработки',
   };
   // Ресурсы: ключ с сервера → имя. Шкала 0–10 000 у.е. (ТЗ.md §2.5).
   const RESOURCES = {
@@ -300,6 +302,50 @@ const World = (() => {
     return Math.round(h*60) + ' мин';
   }
 
+  // Масса/гравитация — по требованию пользователя (короткая справка о
+  // планете), в ТЗ формулы для них нет. Оценка САМОСТОЯТЕЛЬНАЯ: планета —
+  // однородный шар, Масса ∝ Плотность×Диаметр³, Гравитация у поверхности
+  // ∝ Плотность×Диаметр (Масса/Радиус²), плотность — по типу планеты
+  // (реальная астрономия: газовые гиганты рыхлые, ядра/лава — плотные
+  // металл/порода, лёд — лёгкий). Нормировано на среднюю каменистую планету
+  // (diameter 0.715, плотность-множитель 1.0) = 1.0 — читается как «×Земли».
+  const PLANET_DENSITY = { core: 1.3, lava: 1.1, rocky: 1.0, ice: 0.4, gas: 0.25 };
+  const MASS_BASELINE_D = 0.715; // середина диапазона rocky (planetDiameter, server/planets.go)
+  function planetMass(p){
+    if(!p) return 0;
+    const density = PLANET_DENSITY[p.type] ?? 1.0;
+    return density * Math.pow((p.d || 0) / MASS_BASELINE_D, 3);
+  }
+  function planetGravity(p){
+    if(!p) return 0;
+    const density = PLANET_DENSITY[p.type] ?? 1.0;
+    return density * (p.d || 0) / MASS_BASELINE_D;
+  }
+
+  // planetInfoGrid — короткая справка о планете (по требованию пользователя:
+  // «должна содержать размер/давление/гравитацию/массу/период/удалённость/
+  // население/фракцию/жизнь/радиацию и токсичность, в две колонки»). ОДНА
+  // реализация на оба экрана (system.html — при наведении на планету,
+  // planet.html — при посадке), а не дублируется в каждом — иначе разъедутся,
+  // как и остальные производные величины в этом модуле (formatPeriod и т.д.).
+  // Возвращает HTML 10 строк — вызывающая сторона оборачивает в контейнер со
+  // своей сеткой (.info-grid, 2 колонки).
+  function planetInfoGrid(p, star){
+    const f = FACTIONS[p.owner] || FACTIONS.none;
+    return [
+      `размер: <b>${(p.d || 0).toFixed(2)}</b>`,
+      `давление атм.: <b>${p.pressure}</b>`,
+      `гравитация: <b>×${planetGravity(p).toFixed(2)}</b>`,
+      `масса: <b>×${planetMass(p).toFixed(2)} M⊕</b>`,
+      `период обращения: <b>${formatPeriod(p)}</b>`,
+      `удалённость: <b>${p.orbit} кл</b>`,
+      `население: <b>${p.population || 0}</b>`,
+      `фракция: <b>${f.name}</b>`,
+      `жизнь: <b>${p.life ? 'есть' : 'нет'}</b>`,
+      `радиация/токс.: <b>${p.radiation} / ${p.toxicity}</b>`,
+    ].map(row => `<div>${row}</div>`).join('');
+  }
+
   // ── названия ────────────────────────────────────────────────────────────
   function starLabel(star){
     if(!star) return '—';
@@ -372,7 +418,7 @@ const World = (() => {
     state, subscribe, refresh, start,
     gameMonths, clock,
     planetPos, shipPos, shipSectorPos,
-    orbitalPeriodHours, formatPeriod,
+    orbitalPeriodHours, formatPeriod, planetMass, planetGravity, planetInfoGrid,
     starLabel, starColor, planetLabel, planetColor,
     navigate, land, launch, planetSurfaceDetail,
   };

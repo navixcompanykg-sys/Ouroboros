@@ -69,12 +69,14 @@ func main() {
 	stop := make(chan struct{})
 	go clk.Run(stop)
 	go driveSim(stop)
+	go driveProduction(stop) // ежедневный цикл колонии: добыча/содержание/производство/население (production.go)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/time", handleTime)
 	mux.HandleFunc("/api/speed", handleSpeed)
 	mux.HandleFunc("/api/galaxy", handleGalaxy)
 	mux.HandleFunc("/api/planet/surface", handlePlanetSurface)
+	mux.HandleFunc("/api/planet/log", handlePlanetLog)
 	mux.HandleFunc("/api/stats", handleStats)
 	mux.HandleFunc("/api/events", handleEvents)
 	mux.HandleFunc("/api/ship", handleShip)
@@ -288,7 +290,7 @@ func handlePlanetSurface(w http.ResponseWriter, r *http.Request) {
 	hexes := make([]SurfaceHexDetail, len(p.Surface))
 	for i, h := range p.Surface {
 		hexes[i] = SurfaceHexDetail{
-			Q: h.Q, R: h.R, Type: h.Type, Crater: h.Crater, Res: h.res,
+			Q: h.Q, R: h.R, Type: h.Type, Crater: h.Crater, Fresh: h.Fresh, Res: h.res,
 			Connected: connected[[2]int{h.Q, h.R}],
 		}
 	}
@@ -296,6 +298,26 @@ func handlePlanetSurface(w http.ResponseWriter, r *http.Request) {
 		Surface   []SurfaceHexDetail `json:"surface"`
 		Buildings []Building         `json:"buildings"`
 	}{Surface: hexes, Buildings: p.Buildings})
+}
+
+// GET /api/planet/log?starId=N&planetIndex=N — журнал событий колонии по
+// суткам (Planet.EventLog, production.go logDayEntry) — по требованию
+// пользователя: «журнал записей всех компонентов и действий на колониях...
+// в табличном виде». Читает новая страница client/colony-log.html. Не
+// участвует в /api/galaxy намеренно (см. Planet.EventLog, planets.go) —
+// отдельный запрос, не раз в секунду со всеми остальными данными.
+func handlePlanetLog(w http.ResponseWriter, r *http.Request) {
+	starID := int(parseUint(r.URL.Query().Get("starId")))
+	planetIndex := int(parseUint(r.URL.Query().Get("planetIndex")))
+	star, found := sim.Object(starID)
+	if !found || star.Type != "star" || planetIndex < 0 || planetIndex >= len(star.Planets) {
+		http.Error(w, "планета не найдена", http.StatusNotFound)
+		return
+	}
+	p := star.Planets[planetIndex]
+	writeJSON(w, struct {
+		Log []DayLogEntry `json:"log"`
+	}{Log: p.EventLog})
 }
 
 // GET /api/stats — сводка по сектору для диагностики и тестов. Читает её и

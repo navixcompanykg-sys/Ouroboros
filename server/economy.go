@@ -249,13 +249,15 @@ func setResourceOverride(key string, price, mass *float64) error {
 // ── рецепты компонентов (ТЗ_Экономика.md §8.2/9.2/10.3, ВРЕМЕННО как есть) ──
 
 type recipeInput struct {
-	Key           string  // ключ ресурса ИЛИ ключ другого компонента
+	Key           string // ключ ресурса ИЛИ ключ другого компонента
 	IsResource    bool
 	Unimplemented bool    // metal_hydrogen/antimatter — нет в симуляции
 	Qty           float64 // на цикл = партия 10 шт готового компонента
 }
 
-func ri(key string, qty float64) recipeInput { return recipeInput{Key: key, IsResource: true, Qty: qty} }
+func ri(key string, qty float64) recipeInput {
+	return recipeInput{Key: key, IsResource: true, Qty: qty}
+}
 func ci(key string, qty float64) recipeInput { return recipeInput{Key: key, Qty: qty} }
 func ui(key string, qty float64) recipeInput {
 	return recipeInput{Key: key, IsResource: true, Unimplemented: true, Qty: qty}
@@ -291,7 +293,16 @@ var componentRecipes = []componentRecipe{
 	{Key: "solar_panels", Name: "Высокоэффективные солнечные панели", Factory: "Электроинженерный завод", Tier: 1, Inputs: []recipeInput{
 		ri("lightRare", 8), ri("silicates", 7), ri("platinoids", 2),
 	}},
-	{Key: "sci_equipment", Name: "Научное оборудование", Factory: "Электроинженерный завод", Tier: 1, Inputs: []recipeInput{
+	// Завод — Лаборатория передовых систем, не Электроинженерный, как в
+	// ТЗ_Экономика.md §8.2 — перенесено по прямому указанию пользователя:
+	// у Лаборатории по ТЗ §6.3 вообще нет ни одного рецепта ТУ1 («строится
+	// сразу под ТУ2»), из-за чего она почти всегда простаивала — все её
+	// ТУ2/ТУ3-рецепты делят платиноиды/радиоактивные с Электрозаводом, и
+	// Роботы (ТУ3) висят на полимерах Химзавода. Научное оборудование даёт
+	// Лаборатории гарантированную работу (не зависит от чужих заводов) и
+	// разгружает Электрозавод — то же дефицитное сырьё (редкие/радиоакт./
+	// инертные газы) больше не делится на 4 рецепта, только на 3.
+	{Key: "sci_equipment", Name: "Научное оборудование", Factory: "Лаборатория передовых систем", Tier: 1, Inputs: []recipeInput{
 		ri("lightRare", 9), ri("inertGases", 6), ri("radioactives", 2),
 	}},
 
@@ -329,7 +340,13 @@ var componentRecipes = []componentRecipe{
 	}},
 
 	// ── ТУ3 (III цикл), §10.3 ──────────────────────────────────────────────
-	{Key: "robots", Name: "Роботы", Factory: "Лаборатория передовых систем", Tier: 3, Inputs: []recipeInput{
+	// Завод — Электроинженерный, не Лаборатория передовых систем, как в
+	// ТЗ_Экономика.md §10.3 — перенесено по прямому указанию пользователя
+	// (та же правка, что у Научного оборудования выше, в обратную сторону):
+	// разгружает Лабораторию, у которой теперь и так есть гарантированная
+	// работа (Научное оборудование), и логично садится рядом с Электроникой
+	// — тем же заводом, что производит 6 из 10 требуемых Электроники на цикл.
+	{Key: "robots", Name: "Роботы", Factory: "Электроинженерный завод", Tier: 3, Inputs: []recipeInput{
 		ci("industrial_equipment", 10), ci("electronics", 6), ci("polymers", 5),
 	}},
 	{Key: "nanocomposites", Name: "Наноструктурные композиты", Factory: "Металлургический завод", Tier: 3, Inputs: []recipeInput{
@@ -358,9 +375,74 @@ func recipeByKey(key string) (componentRecipe, bool) {
 	return componentRecipe{}, false
 }
 
+// ── переработка излишков (НОВОЕ, вне ТЗ_Экономика.md — по прямому требованию
+// пользователя): вместо СЫРЬЁ→КОМПОНЕНТ (componentRecipes выше) — СЫРЬЁ→ДРУГОЕ
+// СЫРЬЁ, специально чтобы девать избыток (Силикаты/Карбонаты — на реальных
+// колониях этой сессии скапливаются тысячами) в дефицит (Битумы — хронически
+// пуст, душит Полимеры, см. CLAUDE.md/production.go). Тот же struct
+// componentRecipe переиспользован как есть (Key/Inputs работают идентично —
+// Stock не различает сырьё и компоненты) — Factory = "Завод переработки"
+// (buildingCostByType[BuildingRecycler] ниже), Tier здесь — СВОЯ нумерация
+// приоритета переработки (дешёвая/дорогая), НЕ уровень ТУ componentRecipes,
+// хотя пользователь и назвал её теми же словами «ТУ1/ТУ2/ТУ3». Обработка —
+// production.go recycleHour, отдельно от produceHour/pickRecipeToProduce
+// (иной темп — раз в 2 часа, а не в 1, и фиксированный приоритет 1→2→3, а не
+// «минимум по разнообразию» обычного производства — рецепт 1 почти всегда
+// по карману, поэтому 2/3 включаются, только когда у рецепта 1 кончилось
+// сырьё). Все количества согласованы с пользователем построчно.
+var recyclingRecipes = []componentRecipe{
+	// Рецепт 1 — дешёвый, основной: закрывает дефицит Битумов повседневным
+	// излишком. Пропорция НЕ равная (20/20/20, как было в первом черновике) —
+	// по требованию пользователя приближена к реальной химии: Битумы —
+	// тяжёлые углеводороды, почти целиком углерод (Карбонаты — буквальный
+	// источник углерода) с добавкой уже готовых C-H связей (Дикая биомасса —
+	// органика); Силикаты (SiO2) к самим углеводородам не имеют отношения —
+	// оставлены в мизерном количестве как «катализатор/подложка» (силикагель
+	// реально используют носителем катализатора в синтезе Фишера-Тропша, той
+	// же природы процесс). Пропорция 5:25:125 — геометрическая прогрессия
+	// ×5, продиктована пользователем построчно. Энергия (5/партия, все 3
+	// рецепта одинаково) — НЕ recipeInput (склад её не хранит), считается
+	// отдельно в recycleHour.
+	{Key: "bitumens", Name: "Переработка: Битумы", Factory: "Завод переработки", Tier: 1, Inputs: []recipeInput{
+		ri("silicates", 5), ri("carbonates", 25), ri("biomass", 125),
+	}},
+	// Рецепт 2 — низкорентабельный: 1000 силикатов + 50 химреагентов (ровно
+	// 10:5 к выходу, по требованию пользователя) почти ни во что не
+	// превращаются (5 шт. вместо обычной партии в 10) — по требованию
+	// пользователя должен быть ХУЖЕ гипотетического импорта извне, чтобы не
+	// стать основной стратегией.
+	{Key: "lightRare", Name: "Переработка: Лёгкие редкие металлы", Factory: "Завод переработки", Tier: 2, Inputs: []recipeInput{
+		ri("silicates", 1000), ci("chem_reagents", 50),
+	}},
+	// Рецепт 3 — ещё дороже (2000 силикатов, по требованию пользователя, было
+	// 1500), ещё скромнее выход: самый ценный металл в игре (platinoids —
+	// самая низкая Rarity среди catMetals, planets.go).
+	{Key: "platinoids", Name: "Переработка: Платиноиды", Factory: "Завод переработки", Tier: 3, Inputs: []recipeInput{
+		ri("silicates", 2000), ri("carbonates", 500), ci("chem_reagents", 100),
+	}},
+}
+
+// recyclingBatchOutput — сколько единиц даёт одна партия переработки; ниже
+// обычных 10 у ТУ2/ТУ3 намеренно («по немножку», решение пользователя) —
+// весь смысл рецепта в том, что 1000+ сырья превращаются в жалкую горстку.
+func recyclingBatchOutput(tier int) float64 {
+	switch tier {
+	case 1:
+		return 10
+	case 2:
+		return 5
+	default:
+		return 2
+	}
+}
+
 // ── стоимость построек (ТЗ_Экономика.md §13/§15, ВРЕМЕННО как есть) ────────
-// Ровно 19 записей — все BuildingType из buildings.go, 1:1. «Атомная станция»
-// и «Луч смерти» из §13 сюда не входят: этих BuildingType в коде нет.
+// Ровно 21 запись — все BuildingType из buildings.go, 1:1 (включая
+// «Атомную станцию» и «Завод переработки» — раньше не входили, у них не
+// было BuildingType, теперь есть, см. buildings.go/production.go). «Луч
+// смерти» сюда не входит — это
+// уникальная постройка Станции-корабля (ТЗ_Корабль.md §7), не здание
+// колонии, у него нет BuildingType.
 
 type buildingCostDef struct {
 	BType        BuildingType
@@ -432,7 +514,26 @@ var buildingCosts = []buildingCostDef{
 	{BType: BuildingTransportNode, Name: "Транспортный узел", Level: 1, BuildDays: 1, LimitingName: "Электроника", Inputs: []recipeInput{
 		ci("metal_structs", 100), ri("silicates", 80), ci("polymers", 30), ci("electronics", 20),
 	}},
+	{BType: BuildingNuclearPlant, Name: "Атомная станция", Level: 3, BuildDays: 3.5, LimitingName: "Ядерные компоненты", Inputs: []recipeInput{
+		ci("nanocomposites", 10), ci("nuclear_components", 14), ci("high_alloys", 10), ci("microelectronics", 4), ci("power_cells", 10),
+	}},
+	// Завод переработки — стоимость постройки САМОСТОЯТЕЛЬНО придумана (вне
+	// ТЗ_Экономика.md, здание новое), по образцу других ТУ2-заводов ниже.
+	{BType: BuildingRecycler, Name: "Завод переработки", Level: 2, BuildDays: 2, LimitingName: "Микроэлектроника", Inputs: []recipeInput{
+		ci("industrial_equipment", 20), ci("metal_structs", 60), ci("high_alloys", 5), ci("cabling", 10), ci("microelectronics", 4),
+	}},
 }
+
+// buildingCostByType — тот же список buildingCosts, только по ключу
+// BuildingType, для быстрого поиска. Нужен refundBuilding (production.go —
+// демонтаж здания при нехватке содержания возвращает 60% этого рецепта).
+var buildingCostByType = func() map[BuildingType]buildingCostDef {
+	m := make(map[BuildingType]buildingCostDef, len(buildingCosts))
+	for _, b := range buildingCosts {
+		m[b.BType] = b
+	}
+	return m
+}()
 
 // ── корабль: каркас, броня, модули, оружие (ТЗ_Корабль.md — ТЕОРИЯ, в игровую
 // механику постройки/боя не заведена; перенесено в экономику по прямой просьбе
@@ -674,6 +775,20 @@ func resolveComponent(key string, cache map[string]componentResolved) componentR
 	}
 	cache[key] = res
 	return res
+}
+
+// priceOf — цена ЛЮБОГО ключа склада (сырьё ИЛИ компонент, Stock их не
+// различает) — по требованию пользователя очередь производства теперь
+// сортируется «что как можно выше по цене» по НАСТОЯЩЕЙ рассчитанной цене
+// (этот резолвер), а не по номеру ТУ рецепта, как раньше (production.go,
+// buildQueueForRecipes). cache — тот же кеш, что resolveComponent, чтобы
+// повторные вызовы в пределах одного пересчёта очереди не разворачивали
+// вложенные компоненты заново.
+func priceOf(key string, cache map[string]componentResolved) float64 {
+	if _, ok := recipeByKey(key); ok {
+		return resolveComponent(key, cache).ValuePerUnit
+	}
+	return resourcePrice(key)
 }
 
 type buildingResolved struct {
@@ -920,9 +1035,9 @@ type economyShipItemView struct {
 }
 
 type economyShipView struct {
-	Status string                 `json:"status"`
-	Note   string                 `json:"note"`
-	Items  []economyShipItemView  `json:"items"`
+	Status string                `json:"status"`
+	Note   string                `json:"note"`
+	Items  []economyShipItemView `json:"items"`
 }
 
 type economySnapshotResponse struct {

@@ -42,10 +42,7 @@
      подменяются в одном и том же месте, см. #warehouse-view ниже. */
   .action-btn.active-section{background:rgba(0,229,255,0.16);border-color:var(--accent2);color:var(--accent2);}
   #row-top{border-bottom:1px solid var(--border);background:var(--panel-bg);}
-  /* Боковые отступы шире обычных — освобождают место под круглые кнопки
-     «Ремонт»/«Взлёт» (46px + отступ от края), которые лежат абсолютным слоем
-     поверх этого ряда: без запаса они перекрывали крайние кнопки раздела. */
-  #row-bottom{border-top:1px solid var(--border);background:var(--panel-bg);padding-left:62px;padding-right:62px;}
+  #row-bottom{border-top:1px solid var(--border);background:var(--panel-bg);}
 
   /* ── панель сведений над картой: планета целиком ИЛИ выбранный гекс ──── */
   #info-panel{flex-shrink:0;font-family:var(--mono);font-size:6.5px;color:var(--text);
@@ -54,12 +51,20 @@
   #info-panel .info-title{font-family:var(--sans);font-weight:600;font-size:10px;color:var(--text-bright);
     letter-spacing:.5px;margin-bottom:1px;}
   #info-panel .info-hint{color:var(--text);opacity:.55;font-size:6px;margin-top:2px;}
+  /* .info-grid — короткая справка о планете при посадке (по требованию
+     пользователя: «то же самое должно быть видно», что и в system.html) —
+     World.planetInfoGrid (world.js), общая реализация на оба экрана. */
+  #info-panel .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px 10px;
+    font-size:9px;line-height:1.7;text-align:left;margin-top:3px;}
   #res-list{display:flex;flex-wrap:wrap;justify-content:center;gap:3px 7px;margin-top:2px;}
   .res-chip{white-space:nowrap;}
   .res-chip b{color:var(--gold);}
 
   /* ── карта поверхности ──────────────────────────────────────────────── */
-  #map-outer{flex:1;display:flex;flex-direction:column;overflow:hidden;padding:6px;min-height:0;}
+  /* position:relative — «якорь» для .corner-btn (Ремонт/Взлёт): по требованию
+     пользователя они стоят в углах ИМЕННО этой области (где карта планеты),
+     НАД нижним рядом кнопок разделов, а не в углах всего экрана. */
+  #map-outer{flex:1;display:flex;flex-direction:column;overflow:hidden;padding:6px;min-height:0;position:relative;}
 
   /* ── склад (СКЛАД, archive/docs/TZWarehouse.md — тот же уровень готовности:
      UI полностью рабочий, бэкенда/накопленного запаса на сервере нет, фаза 2).
@@ -238,7 +243,10 @@
   .hb-row .hb-name{color:var(--text-bright);}
   .hb-row .hb-prod{color:var(--gold);}
 
-  /* ── угловые круглые кнопки (взлёт / ремонт) ───────────────────────── */
+  /* ── угловые круглые кнопки (взлёт / ремонт) ─────────────────────────
+     По требованию пользователя — в углах ОБЛАСТИ КАРТЫ (#map-outer, теперь
+     position:relative и их родитель в разметке), НАД нижним рядом кнопок
+     разделов, а не в углах всего экрана (там они перекрывали бы row-bottom). */
   .corner-btn{position:absolute;bottom:10px;width:46px;height:46px;border-radius:50%;
     background:var(--panel-bg);border:1.5px solid var(--accent);backdrop-filter:blur(6px);
     display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:25;
@@ -284,6 +292,8 @@
     <div id="map-wrap">
       <svg id="hexmap" viewBox="-120 -100 240 200" preserveAspectRatio="xMidYMid meet"></svg>
     </div>
+    <div id="btn-repair" class="corner-btn">РЕМОНТ</div>
+    <div id="btn-launch" class="corner-btn">ВЗЛЁТ</div>
   </div>
 
   <div id="warehouse-view">
@@ -369,9 +379,6 @@
     <div class="action-btn" data-label="ДИПЛОМАТИЯ">ДИПЛОМА-<br>ТИЯ</div>
   </div>
 
-  <div id="btn-repair" class="corner-btn">РЕМОНТ</div>
-  <div id="btn-launch" class="corner-btn">ВЗЛЁТ</div>
-
   <div id="toast"></div>
 
   <div id="offline">
@@ -450,7 +457,7 @@ function hexSideSlots(cx, cy){
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// ИКОНКИ ЗДАНИЙ — простые векторные силуэты, по одной на тип (19 штук,
+// ИКОНКИ ЗДАНИЙ — простые векторные силуэты, по одной на тип (21 штука,
 // BUILDING_TYPES в world.js), чтобы на карте сразу было видно, что где
 // стоит, а не только по цвету занятого слота. Координаты каждой иконки —
 // в единичном круге (-1..1), рисуются внутри <g transform="translate(..)
@@ -551,6 +558,20 @@ const BUILDING_ICON_DEFS = {
   crypto_farm: [
     {tag:'polygon', attrs:{points:'0,-0.95 0.85,0 0,0.95 -0.85,0', fill:'none', stroke:'var(--bg)', 'stroke-width':0.16}},
     {tag:'line', attrs:{x1:0, y1:-0.5, x2:0, y2:0.5, stroke:'var(--bg)', 'stroke-width':0.14}},
+  ],
+  // Атомная станция — трилистник радиации
+  nuclear_plant: [
+    {tag:'circle', attrs:{cx:0, cy:0, r:0.16, fill:'var(--bg)'}},
+    {tag:'path', attrs:{d:'M -0.08 -0.14 A 0.5 0.5 0 0 1 0.5 -0.5 L 0.28 -0.1 A 0.22 0.22 0 0 0 0.08 -0.08 Z', fill:'var(--bg)'}},
+    {tag:'path', attrs:{d:'M -0.08 -0.14 A 0.5 0.5 0 0 0 -0.42 0.42 L -0.14 0.28 A 0.22 0.22 0 0 1 -0.08 0.08 Z', fill:'var(--bg)'}},
+    {tag:'path', attrs:{d:'M 0.16 0 A 0.5 0.5 0 0 1 -0.08 0.48 L 0 0.2 A 0.22 0.22 0 0 0 0.16 0.08 Z', fill:'var(--bg)'}},
+  ],
+  // Завод переработки — стрелки по кругу (рециркуляция)
+  recycler: [
+    {tag:'path', attrs:{d:'M -0.7 -0.1 A 0.72 0.72 0 0 1 0.55 -0.55', fill:'none', stroke:'var(--bg)', 'stroke-width':0.16}},
+    {tag:'polygon', attrs:{points:'0.55,-0.85 0.85,-0.4 0.35,-0.35', fill:'var(--bg)'}},
+    {tag:'path', attrs:{d:'M 0.7 0.1 A 0.72 0.72 0 0 1 -0.55 0.55', fill:'none', stroke:'var(--bg)', 'stroke-width':0.16}},
+    {tag:'polygon', attrs:{points:'-0.55,0.85 -0.85,0.4 -0.35,0.35', fill:'var(--bg)'}},
   ],
   // Транспортный узел — хаб с расходящимися лучами (гекс уже обведён пунктиром отдельно)
   transport_node: [
@@ -732,21 +753,24 @@ function renderPlanetInfo(star, planet){
   document.getElementById('hdr-title').textContent = label.toUpperCase();
   document.getElementById('info-panel').innerHTML =
     `<div class="info-title">${label}</div>` +
-    `орбита ${planet.orbit} · система «${World.starLabel(star)}» · гексов: <b>${(planet.surface||[]).length}</b><br>` +
-    `вода: <b>${planet.water}/100</b> · жизнь: <b>${planet.life ? 'есть' : 'нет'}</b> · температура: <b>${planet.temp}K</b> · давление: <b>${planet.pressure}</b>` +
+    `система «${World.starLabel(star)}» · гексов: <b>${(planet.surface||[]).length}</b>` +
+    `<div class="info-grid">${World.planetInfoGrid(planet, star)}</div>` +
     `<div class="info-hint">выберите гекс на карте — характеристики участка</div>`;
 }
 
 // ── панель сведений: выбранный гекс (тип, ресурсы, население, строения) ──
-// Население всегда 0 — колонизации/роста населения в игре ещё нет (фаза 2,
-// ТЗ_Экономика.md §11); строений и связность — уже настоящие данные.
+// Население колонии теперь настоящее (currentPlanet.population,
+// server/production.go), но НЕ разбито по гексам (единое число на всю
+// колонию, ТЗ_Экономика.md §11.2 не моделирует расселение по конкретным
+// гексам) — показывается как «население колонии», не «население гекса»,
+// чтобы не намекать на несуществующую детализацию.
 function renderHexInfo(hex){
   const t = SURFACE_TYPES[hex.type] || { name: hex.type };
   const buildingsHere = (currentPlanet.buildings || []).filter(b => b.q === hex.q && b.r === hex.r);
   document.getElementById('hdr-title').textContent = `ГЕКС ${hex.q},${hex.r}`;
   document.getElementById('info-panel').innerHTML =
     `<div class="info-title">${t.name}${hex.crater ? ' · в кратерах' : ''}</div>` +
-    `население: <b>0</b> · строений: <b>${buildingsHere.length}/7</b>` +
+    `население колонии: <b>${currentPlanet.population || 0}</b> · строений: <b>${buildingsHere.length}/7</b>` +
     `<div id="res-list">загрузка ресурсов…</div>`;
 
   World.planetSurfaceDetail(currentStar.id, currentPlanet.i).then(detail => {
@@ -832,12 +856,17 @@ function toast(msg){
 // прячущий меню» — раздел подменяет только #map-outer, кнопки разделов
 // (#row-top/#row-bottom) остаются на месте и кликабельны, как и было.
 //
-// Настоящего накопленного запаса на сервере нет и не может быть: посуточной
-// добычи/производства в игре ещё нет вообще (фаза 1, buildings.go) — Planet.Res
-// это концентрация МЕСТОРОЖДЕНИЯ, а не то, что «лежит на складе». Склад
-// поэтому честно пуст (qty:0 у всех), а минимальный запас/цена продажи —
-// редактируемые заготовки на будущее, локальное состояние на сессию (сброс
-// при перезагрузке — как и в архиве, там тоже никуда не сохранялось).
+// Количество (КОЛ-ВО) теперь настоящее — server/production.go (фаза 2)
+// посуточно добывает сырьё на Planet.Stock, списывает содержание зданий,
+// производит компоненты и растит/убывает население; Stock приходит с сервером
+// в том же объекте, что и остальное состояние планеты (currentPlanet.stock,
+// обновляется каждый опрос /api/galaxy, отдельный запрос не нужен). Таблица
+// показывает объединение 16 сырьевых ключей (RESOURCES) И всех произведённых
+// компонентов, которые реально появились на складе (имена — из /api/economy
+// recipes). «Мин. запас»/«цена продажи» — по-прежнему редактируемые заготовки
+// на будущее, локальное состояние на сессию (сброс при перезагрузке, торговли
+// ещё нет) — качественно то же самое избежание архивного «оверлея на весь
+// экран», просто qty больше не всегда 0.
 // Цена/масса по умолчанию — из живого /api/economy (тот же справочник, что
 // использует админ-панель «Экономика»), не отдельная копия таблицы.
 // ══════════════════════════════════════════════════════════════════════════
@@ -850,12 +879,15 @@ let whState = {};      // "starId:planetIndex" → { [resKey]: {qty, reserve, pr
 function whPlanetKey(){ return currentStar.id + ':' + currentPlanet.i; }
 function whGetState(){
   const key = whPlanetKey();
-  if(!whState[key]){
-    const resources = {};
-    Object.keys(RESOURCES).forEach(k => { resources[k] = {qty:0, reserve:0, price:null}; });
-    whState[key] = { resources };
-  }
+  if(!whState[key]) whState[key] = { resources: {} };
   return whState[key];
+}
+// whRowState — «мин. запас»/«цена продажи» на сессию (реальных qty тут больше
+// нет — то приходит с сервера, currentPlanet.stock) для ЛЮБОГО ключа склада,
+// сырья или компонента, лениво создавая запись при первом обращении.
+function whRowState(st, key){
+  if(!st.resources[key]) st.resources[key] = { reserve: 0, price: null };
+  return st.resources[key];
 }
 async function whEnsureEconomy(){
   if(whEconomy) return whEconomy;
@@ -880,9 +912,27 @@ async function ensureShipDefaults(){
   }catch(e){ shipDefaults = []; }
   return shipDefaults;
 }
+// whResInfo — цена/масса за единицу склада. Сырьё — из whEconomy.resources
+// (16 ключей, редактируемая цена админом). Компоненты (ТУ1-3) в этом списке
+// НЕТ — их цена/масса живёт в whEconomy.recipes (valuePerUnit/massPerUnit,
+// резолвер /api/economy считает от текущих цен сырья), раньше не
+// проверялось вовсе — молча падало на заглушку {mass:1, price:0} для любого
+// компонента, то же самое, что уже чинили для имени (whItemName ниже).
 function whResInfo(key){
   const found = whEconomy && whEconomy.resources.find(r => r.key === key);
-  return { mass: found ? found.mass : 1, price: found ? found.price : 0 };
+  if(found) return { mass: found.mass, price: found.price };
+  const rec = whEconomy && whEconomy.recipes && whEconomy.recipes.find(r => r.key === key);
+  if(rec) return { mass: rec.massPerUnit, price: rec.valuePerUnit, incomplete: rec.incomplete };
+  return { mass: 1, price: 0 };
+}
+// whItemName — подпись строки склада: сырьё — из RESOURCES (world.js), а для
+// произведённых компонентов (их в RESOURCES нет — тот список только 16
+// сырьевых ключей) — имя из живого /api/economy (recipes), ключ как запасной
+// вариант, если экономика ещё не подгрузилась.
+function whItemName(key){
+  if(RESOURCES[key]) return RESOURCES[key];
+  const rec = whEconomy && whEconomy.recipes && whEconomy.recipes.find(r => r.key === key);
+  return rec ? rec.name : key;
 }
 
 const SECTION_LABELS = { warehouse: 'СКЛАД', construction: 'СТРОИТЕЛЬСТВО', shipyard: 'КОСМОДРОМ' };
@@ -914,7 +964,15 @@ async function renderWarehouse(){
   document.getElementById('hdr-title').textContent = 'СКЛАД';
   await whEnsureEconomy();
   const st = whGetState();
-  const used = Object.entries(st.resources).reduce((sum,[k,r]) => sum + r.qty * whResInfo(k).mass, 0);
+  const stock = currentPlanet.stock || {};
+  // Строки — все 16 сырьевых ключей (даже с qty 0, чтобы видеть полный
+  // список), плюс любые произведённые компоненты, которые реально появились
+  // на складе (server/production.go, produceDay) — их заранее не перечислить,
+  // список зависит от того, что колония успела построить и запустить.
+  const keys = Object.keys(RESOURCES).concat(
+    Object.keys(stock).filter(k => !RESOURCES[k]).sort()
+  );
+  const used = keys.reduce((sum, k) => sum + (stock[k] || 0) * whResInfo(k).mass, 0);
   document.getElementById('wh-cap-fill').style.width = Math.min(100, used/WH_CAPACITY*100).toFixed(1) + '%';
   document.getElementById('wh-cap-label').textContent = `${used.toFixed(0)} / ${WH_CAPACITY} у.м.`;
 
@@ -927,19 +985,20 @@ async function renderWarehouse(){
     body.innerHTML = '<div class="wh-stub">⇄ ПЕРЕГРУЗКА (склад ↔ флот)<br>заглушка, ещё не реализовано<br>флотов на орбите: 0</div>';
     return;
   }
-  const rows = Object.keys(RESOURCES).map(key => {
-    const r = st.resources[key];
+  const rows = keys.map(key => {
+    const r = whRowState(st, key);
     const info = whResInfo(key);
     const price = r.price === null ? info.price : r.price;
+    const qty = stock[key] || 0;
     return `<tr>
-      <td>${RESOURCES[key]}</td>
-      <td>${r.qty}</td>
+      <td>${whItemName(key)}</td>
+      <td>${qty.toFixed(qty < 100 ? 1 : 0)}</td>
       <td><input class="wh-input" type="number" min="0" step="1" value="${r.reserve}" data-wh-field="reserve" data-wh-key="${key}"></td>
       <td><input class="wh-input" type="number" min="0" step="1" value="${price}" data-wh-field="price" data-wh-key="${key}"></td>
     </tr>`;
   }).join('');
   body.innerHTML =
-    '<div id="wh-note">Склад пуст — посуточная добыча пока не поставляется на него автоматически (это фаза 2, см. CLAUDE.md). Здесь уже видно, что и почём будет храниться и продаваться, когда она появится.</div>' +
+    '<div id="wh-note">Количество — настоящий склад колонии (добыча/производство/содержание — сервер, посуточно). «Мин. запас» и «цена продажи» — пока заготовки на сессию, торговли ещё нет.</div>' +
     '<table class="wh-table"><thead><tr><th>РЕСУРС</th><th>КОЛ-ВО</th><th>МИН. ЗАПАС</th><th>ЦЕНА ₮/ЕД.</th></tr></thead>' +
     '<tbody>' + rows + '</tbody></table>';
   body.querySelectorAll('input[data-wh-field]').forEach(inp => {
@@ -947,8 +1006,9 @@ async function renderWarehouse(){
       const key = inp.dataset.whKey, field = inp.dataset.whField;
       const v = Number(inp.value);
       const fallback = field === 'price' ? whResInfo(key).price : 0;
-      if(!Number.isFinite(v) || v < 0){ inp.value = st.resources[key][field] ?? fallback; return; }
-      st.resources[key][field] = v;
+      const row = whRowState(st, key);
+      if(!Number.isFinite(v) || v < 0){ inp.value = row[field] ?? fallback; return; }
+      row[field] = v;
     };
   });
 }
@@ -969,19 +1029,23 @@ document.querySelectorAll('.wh-tab').forEach(tab => {
 // компонентами и описанием → «Построить»/«Закрыть», не архивная постоянная
 // боковая панель — на телефонном экране список+модалка естественнее).
 //
-// Статистика (население/энергия) — не с сервера (посуточной симуляции нет
-// вовсе, buildings.go «фаза 1»), а честно посчитана из уже РЕАЛЬНО стоящих
-// на планете зданий (currentPlanet.buildings) по формулам ТЗ_Экономика.md:
-//  · §11.2 — 10 мест на посёлок (Жилой модуль), население всегда 0 (роста
-//    ещё нет, тот же принцип, что «население: 0» в renderHexInfo);
+// Статистика энергии — теперь настоящая, с сервера (currentPlanet.
+// energyProduction/energyConsumption, server/production.go energyDay,
+// учитывает связность/демонтаж, пересчитывается посуточно) — раньше это был
+// чисто клиентский подсчёт по всем buildings планеты без разбора, сервер
+// энергию вообще не считал. Клиентская формула (§12.1/§12.2) осталась только
+// запасным вариантом на случай отсутствия поля в ответе (см. conStats):
 //  · §12.1 — 1 энергия потребления на здание ЛЮБОГО типа, без исключений;
-//  · §12.2 — Водородный генератор +10 энергии, Солнечная панель +5;
-//  · «энергия на добычу» — потребление 4 добывающих типов отдельной строкой.
+//  · §12.2 — Водородный генератор +10, Солнечная панель +5, Атомная станция +40;
+//  · «энергия на добычу» — потребление 4 добывающих типов отдельной строкой (по-прежнему клиентский подсчёт, сервер такой отдельной цифры не хранит).
+// НАСЕЛЕНИЕ и ПРИРОСТ/СУТКИ — теперь настоящие: currentPlanet.population
+// приходит с сервера (server/production.go, populationDay, посуточный рост/
+// убыль ±1/поселение по еде, ТЗ_Экономика.md §11.2), прирост — клиентский
+// прогноз направления на завтра по той же формуле (conStats выше).
 // Стоимость постройки — из живого /api/economy (economy.buildings, тот же
-// резолвер, что и в админ-панели «Экономика»), «сколько на складе» — whState
-// (тот же склад, реализованный только что) — компонентов там никогда нет
-// (склад хранит только 16 сырьевых ключей, компонентов не производят), это
-// честно показывается как 0/N, не как отдельная ложь.
+// резолвер, что и в админ-панели «Экономика»), «сколько на складе» —
+// currentPlanet.stock (настоящий склад колонии, см. блок СКЛАД выше) —
+// компонентов там теперь тоже может не быть 0, если завод их уже произвёл.
 // ══════════════════════════════════════════════════════════════════════════
 const BUILDING_MINING_TYPES = ['mine', 'atmo_collector', 'bio_extractor', 'hydro_farm'];
 const BUILDING_DESC = {
@@ -1004,6 +1068,8 @@ const BUILDING_DESC = {
   science_center: 'Исследования, чертежи.',
   crypto_farm: 'Майнинг токенов на избыточной энергии.',
   transport_node: 'Продлевает транспортную сеть колонии на соседний гекс — сам ничего не добывает и не производит.',
+  nuclear_plant: 'Вырабатывает 40 энергии/сутки — основной источник энергии колонии.',
+  recycler: 'Перерабатывает излишки сырья в дефицитные и редкие ресурсы — дорого по энергии, партия раз в 2 часа.',
 };
 
 function conCountByType(){
@@ -1011,21 +1077,56 @@ function conCountByType(){
   (currentPlanet.buildings || []).forEach(b => { counts[b.type] = (counts[b.type] || 0) + 1; });
   return counts;
 }
+// settlementWorkerCap/planetFoodTypes — те же формулы (ТЗ_Экономика.md §11.2),
+// что server/buildings.go, портированы на клиент только для ПРОГНОЗА
+// «прирост/сутки» на завтра (население и содержимое склада уже настоящие —
+// сервер, server/production.go, populationDay); сама цифра населения не
+// пересчитывается тут, только отображается предсказанное направление.
+function settlementWorkerCap(foodTypes){
+  return foodTypes === 1 ? 5 : foodTypes === 2 ? 7 : foodTypes === 3 ? 9 : 0;
+}
+function planetFoodTypesClient(counts){
+  const hasBiomass = !!counts['hydro_farm'], hasChem = !!counts['factory_chem'], hasElec = !!counts['factory_elec'];
+  let types = 0;
+  if(hasBiomass) types++;
+  if(hasBiomass && hasChem) types++;
+  if(hasBiomass && hasChem && hasElec) types++;
+  return types;
+}
 function conStats(){
   const counts = conCountByType();
   const housingCount = counts['housing'] || 0;
   const totalBuildings = (currentPlanet.buildings || []).length;
-  let miningEnergy = 0, production = 0;
+  let miningEnergy = 0;
   BUILDING_MINING_TYPES.forEach(t => { miningEnergy += counts[t] || 0; }); // §12.1: 1 энергия/здание
-  production += (counts['h2_generator'] || 0) * 10; // §12.2
-  production += (counts['solar_panel'] || 0) * 5;   // §12.2
-  const consumption = totalBuildings; // §12.1: 1 энергия/здание любого типа, без исключений
+  // energyProduction/energyConsumption — теперь настоящие (server/production.go,
+  // energyDay), учитывают связность и демонтаж; клиентский расчёт по всем
+  // buildings без разбора — только запасной вариант, если сервер почему-то
+  // ещё не прислал поле (например старый снимок до этой правки).
+  const production = currentPlanet.energyProduction != null
+    ? currentPlanet.energyProduction
+    : (counts['h2_generator'] || 0) * 10 + (counts['solar_panel'] || 0) * 5; // §12.2
+  const consumption = currentPlanet.energyConsumption != null
+    ? currentPlanet.energyConsumption
+    : totalBuildings; // §12.1: 1 энергия/здание любого типа, без исключений
+
+  // Прогноз ±1/поселение/сутки — та же логика, что populationDay на сервере
+  // (server/production.go): голод (еды меньше населения) → убыль; ниже
+  // лимита по еде и еды хватит на прирост → рост; выше лимита → убыль до
+  // выравнивания; иначе стабильно.
+  const population = currentPlanet.population || 0;
+  const stock = currentPlanet.stock || {};
+  const food = (stock.biomass || 0) + (stock.biosynthetics || 0) + (stock.bioengineered || 0);
+  const foodCap = housingCount * settlementWorkerCap(planetFoodTypesClient(counts));
+  let growth = 0;
+  if(housingCount > 0){
+    if(food < population) growth = -housingCount;
+    else if(population < foodCap && food >= population + housingCount) growth = housingCount;
+    else if(population > foodCap) growth = -housingCount;
+  }
+
   return {
-    // §11.2 — население заселяется один раз сервером при бутстрапе колонии
-    // (computePopulation, лимит по разнообразию пищи), посуточный рост/убыль
-    // ±1 не симулируется (фаза 2) — отсюда growth всегда 0, а не потому что
-    // population тоже всегда 0 (раньше было так, честно исправлено).
-    population: currentPlanet.population || 0, capacity: housingCount * 10, growth: 0,
+    population, capacity: housingCount * 10, growth,
     energyProduction: production, energyConsumption: consumption,
     freeEnergy: production - consumption, miningEnergy,
   };
@@ -1057,15 +1158,15 @@ async function renderConstruction(){
 
 function openConstructionModal(type){
   const info = whEconomy && whEconomy.buildings ? whEconomy.buildings.find(b => b.type === type) : null;
-  const st = whGetState();
+  const stock = currentPlanet.stock || {};
   document.getElementById('con-modal-title').textContent = BUILDING_TYPES[type] || type;
   document.getElementById('con-modal-level').textContent = info
     ? `ТУ${info.level} · постройка ≈${info.buildDays} сут` : 'нет данных о стоимости';
   const inputs = info ? info.inputs : [];
   document.getElementById('con-modal-costs').innerHTML = inputs.length
     ? inputs.map(inp => {
-        const have = (st.resources[inp.key] && st.resources[inp.key].qty) || 0; // компонентов на складе не бывает — 0 честно
-        return `<div class="con-cost-row${have < inp.qty ? ' lack' : ''}"><span>${inp.name}</span><span>${have} / ${inp.qty}</span></div>`;
+        const have = stock[inp.key] || 0; // настоящий склад, server/production.go
+        return `<div class="con-cost-row${have < inp.qty ? ' lack' : ''}"><span>${inp.name}</span><span>${have.toFixed(have < 100 ? 1 : 0)} / ${inp.qty}</span></div>`;
       }).join('')
     : '<div class="con-cost-row">нет данных</div>';
   document.getElementById('con-modal-desc').textContent = BUILDING_DESC[type] || '';

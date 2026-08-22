@@ -47,7 +47,10 @@
   // секунды (у самой медленной, зона 12, — почти 37 минут). На ×10000 та же
   // клеть — ~2.2 сек у зоны 1 (отчётливо видно), ~26 сек у зоны 12 (медленно,
   // но заметно за время наблюдения) — не баг, просто ×120 было мало.
-  const MULTIPLIERS = [2, 5, 10, 60, 120, 10000];
+  // ×12000 добавлена по прямой просьбе пользователя — ещё немного быстрее,
+  // чем ×10000, для перемотки на много игровых суток за разумное реальное
+  // время (production.go — суточный/почасовой цикл колонии).
+  const MULTIPLIERS = [2, 5, 10, 60, 120, 10000, 12000];
   const SPEEDS = [
     { speed:0,        label:'пауза' },
     { speed:REALTIME, label:'× 1 — игровая (реальное время)', game:true },
@@ -71,6 +74,7 @@
       <div class="admin-btn" id="admin-btn-planets">СПИСОК ПЛАНЕТ →</div>
       <div class="admin-btn" id="admin-btn-economy">ЭКОНОМИКА →</div>
       <div class="admin-btn" id="admin-btn-ship-sectors">СЕКТОРА ОБСТРЕЛА →</div>
+      <div class="admin-btn" id="admin-btn-colony-log">ЖУРНАЛ КОЛОНИИ →</div>
     </div>
   `;
   document.body.appendChild(root);
@@ -125,6 +129,7 @@
   root.querySelector('#admin-btn-planets').onclick = () => window.open('planets.html', '_blank');
   root.querySelector('#admin-btn-economy').onclick = () => window.open('economy.html', '_blank');
   root.querySelector('#admin-btn-ship-sectors').onclick = () => window.open('ship-deck-sectors.html', '_blank');
+  root.querySelector('#admin-btn-colony-log').onclick = () => window.open('colony-log.html', '_blank');
 
   // ── состояние сектора: собственный опрос, не зависит от логики страницы ──
   const statEl = root.querySelector('#admin-stat');

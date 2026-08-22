@@ -18,24 +18,26 @@ type BuildingType string
 
 const (
 	BuildingMine          BuildingType = "mine"           // горнодобывающая шахта
-	BuildingAtmoCollector BuildingType = "atmo_collector"  // атмосферный собиратель
-	BuildingBioExtractor  BuildingType = "bio_extractor"   // биоэкстрактор
-	BuildingHydroFarm     BuildingType = "hydro_farm"      // гидроминеральная ферма
-	BuildingFactoryMetal  BuildingType = "factory_metal"   // металлургический завод
-	BuildingFactoryChem   BuildingType = "factory_chem"    // химический завод
-	BuildingFactoryElec   BuildingType = "factory_elec"    // электроинженерный завод
-	BuildingLab           BuildingType = "lab"             // лаборатория передовых систем
-	BuildingHousing       BuildingType = "housing"         // жилой модуль
-	BuildingH2Generator   BuildingType = "h2_generator"    // водородный генератор
-	BuildingSolarPanel    BuildingType = "solar_panel"     // солнечная панель
-	BuildingBattery       BuildingType = "battery"         // планетарная батарея
-	BuildingFort          BuildingType = "fort"            // форт-казарма
-	BuildingShipyard      BuildingType = "shipyard"        // верфь
-	BuildingAdvComponents BuildingType = "adv_components"  // завод улучшенных компонентов
-	BuildingRadio         BuildingType = "radio"           // радиостанция
-	BuildingScienceCenter BuildingType = "science_center"  // научный центр
-	BuildingCryptoFarm    BuildingType = "crypto_farm"     // криптоферма
-	BuildingTransportNode BuildingType = "transport_node"  // транспортный узел (новое)
+	BuildingAtmoCollector BuildingType = "atmo_collector" // атмосферный собиратель
+	BuildingBioExtractor  BuildingType = "bio_extractor"  // биоэкстрактор
+	BuildingHydroFarm     BuildingType = "hydro_farm"     // гидроминеральная ферма
+	BuildingFactoryMetal  BuildingType = "factory_metal"  // металлургический завод
+	BuildingFactoryChem   BuildingType = "factory_chem"   // химический завод
+	BuildingFactoryElec   BuildingType = "factory_elec"   // электроинженерный завод
+	BuildingLab           BuildingType = "lab"            // лаборатория передовых систем
+	BuildingHousing       BuildingType = "housing"        // жилой модуль
+	BuildingH2Generator   BuildingType = "h2_generator"   // водородный генератор
+	BuildingSolarPanel    BuildingType = "solar_panel"    // солнечная панель
+	BuildingBattery       BuildingType = "battery"        // планетарная батарея
+	BuildingFort          BuildingType = "fort"           // форт-казарма
+	BuildingShipyard      BuildingType = "shipyard"       // верфь
+	BuildingAdvComponents BuildingType = "adv_components" // завод улучшенных компонентов
+	BuildingRadio         BuildingType = "radio"          // радиостанция
+	BuildingScienceCenter BuildingType = "science_center" // научный центр
+	BuildingCryptoFarm    BuildingType = "crypto_farm"    // криптоферма
+	BuildingTransportNode BuildingType = "transport_node" // транспортный узел (новое)
+	BuildingNuclearPlant  BuildingType = "nuclear_plant"  // атомная станция (ТЗ_Экономика.md §12.2/§13/§14.2 — раньше без BuildingType, только теория)
+	BuildingRecycler      BuildingType = "recycler"       // завод переработки (новое — по требованию пользователя, вне ТЗ_Экономика.md)
 )
 
 // Building — одно здание на гексе. 7 точек застройки на гекс (client/planet.html)
@@ -45,6 +47,33 @@ type Building struct {
 	Type BuildingType `json:"type"`
 	Q    int          `json:"q"`
 	R    int          `json:"r"`
+
+	// Queue — очередь производства завода (задел на будущее — по прямому
+	// указанию пользователя: только структура данных, server/production.go
+	// её пока НЕ читает, produceHour выбирает рецепт сама, «сбалансированным
+	// набором»). Ключи — componentRecipe.Key (economy.go), в порядке
+	// приоритета. Имеет смысл только для BuildingType из factoryBuildingName
+	// (production.go), для остальных зданий всегда пусто.
+	Queue []string `json:"queue,omitempty"`
+
+	// BatchesToday — сколько партий уже произвёл этот завод за текущие
+	// игровые сутки (потолок maxProductionBatchesPerDay=12, production.go),
+	// сбрасывается в 0 на границе суток (resetDailyBatches). Имеет смысл
+	// только для заводов — у остальных зданий всегда 0.
+	BatchesToday int `json:"batchesToday,omitempty"`
+
+	// MissedUpkeepDays — подряд идущих суток, когда на складе не хватило
+	// хотя бы одной из 3 статей расхода на содержание (upkeepDay,
+	// production.go). Сбрасывается в 0 при первой же успешной оплате.
+	// По достижении demolitionGraceDays здание демонтируется (по требованию
+	// пользователя — «если зданию не хватает компонентов на содержание, оно
+	// демонтируется»). Грейс-период — САМОСТОЯТЕЛЬНОЕ решение, не из явного
+	// запроса: без него стартовая колония была бы демонтирована целиком в
+	// первые же сутки — химзавод/склад ещё пусты (Металлоконструкции/
+	// Химреагенты/Полимеры — сами продукты заводов, а не сырьё, их взять
+	// неоткуда раньше первого часа производства), см. комментарий у
+	// demolitionGraceDays.
+	MissedUpkeepDays int `json:"missedUpkeepDays,omitempty"`
 }
 
 const hexSlotsCap = 7 // ТЗ_UI.md §5: 7 точек застройки на гекс
@@ -123,17 +152,29 @@ var starterMineGroups = []mineGroup{
 
 // starterInfra — инфраструктура «стандартной колонии» (ТЗ_Экономика.md §12),
 // не зависит от богатства гекса — расставляется от домашнего гекса наружу.
+// Число заводов — НЕ «по одному каждого типа», как в §12 — пересмотрено
+// пользователем под потолок производства maxProductionBatchesPerDay=12
+// (production.go) и расчёт Расчёт_производственных_мощностей.md (сколько
+// заводов нужно, чтобы переработать в ТУ1-компоненты всё, что добывают 40
+// шахт ниже): 5 Металлургических + 5 Химических (округлено вверх от
+// расчётных 4 — то же число, что у Металлургического, для красоты) + 1
+// Электроинженерный (расчётной нагрузки хватает на 1) + 1 Лаборатория
+// передовых систем (у неё нет ни одного рецепта ТУ1 — ТЗ_Экономика.md §6.3
+// прямым текстом: «завод строится сразу под ТУ2» — не выводится из добычи
+// 40 шахт, добавлена как безусловный минимум, иначе Высококачественные
+// сплавы/Ядерные компоненты/весь ТУ3 недоступны в принципе).
 var starterInfra = []struct {
 	building BuildingType
 	count    int
 }{
-	{BuildingFactoryMetal, 1},
-	{BuildingFactoryChem, 1},
+	{BuildingFactoryMetal, 5},
+	{BuildingFactoryChem, 5},
 	{BuildingFactoryElec, 1},
 	{BuildingLab, 1},
 	{BuildingHousing, 10},
 	{BuildingH2Generator, 8},
 	{BuildingSolarPanel, 1},
+	{BuildingNuclearPlant, 1}, // по требованию пользователя: 1 атомная станция на колонию — +40 энергии/сутки (учёт дефицита энергии, production.go energyDay), сверх «стандартной колонии» ТЗ_Экономика.md §12 (там 0 штук)
 	{BuildingBattery, 5},
 	{BuildingFort, 1},
 	{BuildingShipyard, 1},
@@ -141,10 +182,12 @@ var starterInfra = []struct {
 	{BuildingRadio, 1},
 	{BuildingScienceCenter, 1},
 	{BuildingCryptoFarm, 10},
+	{BuildingRecycler, 1}, // по требованию пользователя: завод переработки излишков (production.go recycleHour) — 1 на колонию, тот же принцип добавления, что у атомной станции выше
 }
 
-// bootstrapColony — размещает «стандартную колонию» (83 здания: 40 шахт +
-// 43 инфраструктуры, ТЗ_Экономика.md §12) на уже сгенерированной планете.
+// bootstrapColony — размещает «стандартную колонию» (85 зданий: 40 шахт +
+// 45 инфраструктуры, ТЗ_Экономика.md §12 + 1 атомная станция и 1 завод
+// переработки сверх эталона) на уже сгенерированной планете.
 // Детерминировано по данным планеты (Surface/Res) — своего RNG не требует,
 // порядок обхода везде фиксирован (сортировка/расстояние от домашнего гекса).
 func bootstrapColony(p *Planet) {
@@ -216,7 +259,22 @@ func bootstrapColony(p *Planet) {
 	// подключённой области, транспортный узел на каждый пустой гекс пути.
 	connectDisconnectedBuildings(p)
 
-	// 4. Население — заселяем стартовую колонию сразу по лимиту разнообразия
+	// 4. Стартовый запас компонентов — по требованию пользователя: без этого
+	// склад в день 0 пуст по всем 21 компонентам сразу (сами компоненты —
+	// продукт заводов, не сырьё, взять их взять неоткуда раньше первого часа
+	// производства), из-за чего первая же проверка содержания (upkeepDay,
+	// production.go — Химреагенты/Полимеры/Металлоконструкции нужны
+	// почти всем зданиям) massово проваливается ещё до того, как заводы
+	// успели произвести хоть партию. По 10 каждого — то же число, что
+	// componentStockFloor (минимум, к которому и так стремится производство).
+	if p.Stock == nil {
+		p.Stock = make(map[string]float64)
+	}
+	for _, r := range componentRecipes {
+		p.Stock[r.Key] = 10
+	}
+
+	// 5. Население — заселяем стартовую колонию сразу по лимиту разнообразия
 	// пищи (ТЗ_Экономика.md §11.2), см. computePopulation ниже.
 	p.Population = computePopulation(p.Buildings)
 }

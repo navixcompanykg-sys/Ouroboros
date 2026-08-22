@@ -35,11 +35,17 @@
   #info-title{font-family:var(--sans);font-weight:600;font-size:10px;color:var(--text-bright);margin-bottom:2px;}
   #info-rows{font-family:var(--mono);font-size:6.5px;color:var(--text);line-height:1.6;}
   #info-rows b{color:var(--accent2);font-weight:400;}
+  /* .info-grid — короткая справка о планете (по требованию пользователя:
+     «в две колонки, шрифт крупнее, не видно даже на компе» — заметно
+     крупнее прежних 6.5px). World.planetInfoGrid (world.js) отдаёт строки,
+     эта сетка — только раскладка в 2 колонки. */
+  #info-rows.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;font-size:10px;line-height:1.75;}
   #info-actions{display:flex;gap:6px;margin-top:4px;}
   .info-btn{font-family:var(--mono);font-size:8px;letter-spacing:1px;padding:4px 10px;cursor:pointer;
     border:1.2px solid var(--accent2);color:var(--accent2);background:rgba(0,229,255,0.06);}
   .info-btn:active{background:rgba(0,229,255,0.16);}
   .info-btn.land{border-color:var(--ok);color:var(--ok);background:rgba(68,204,136,0.08);}
+  .info-btn.scan{border-color:var(--gold);color:var(--gold);background:rgba(255,207,107,0.08);}
 
   #map-outer{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px;min-height:0;}
   #map-wrap{position:relative;width:100%;aspect-ratio:1/1;max-height:100%;}
@@ -76,6 +82,33 @@
   #offline.show{display:flex;}
   #offline .off-title{font-family:var(--mono);font-size:11px;letter-spacing:1px;color:#ff8060;}
   #offline .off-text{font-family:var(--mono);font-size:8px;color:var(--text);line-height:1.8;}
+
+  /* ── СКАНИРОВАНИЕ ПЛАНЕТЫ — полная справка (по образцу archive/server/
+     galaxy.html showPlanetResPanel): атмосфера/жизнь/поверхность + все 16
+     видов ресурсов по категориям. Кнопка рядом с «ПОСАДКА» (renderInfo),
+     работает дистанционно — корабль необязательно должен быть в системе. */
+  #scan-modal{position:absolute;inset:0;background:rgba(4,6,15,0.97);z-index:70;
+    display:none;flex-direction:column;}
+  #scan-modal.show{display:flex;}
+  #scan-head{flex-shrink:0;display:flex;align-items:center;justify-content:space-between;
+    padding:8px 12px;border-bottom:1px solid var(--border);background:var(--panel-bg);}
+  #scan-title{font-family:var(--mono);font-size:9px;letter-spacing:1.5px;color:var(--accent2);}
+  #scan-close{font-family:var(--mono);font-size:8px;letter-spacing:1px;color:var(--text);cursor:pointer;
+    border:1px solid var(--border);padding:4px 10px;}
+  #scan-close:active{border-color:var(--accent2);color:var(--accent2);}
+  #scan-body{flex:1;overflow-y:auto;padding:10px 12px 20px;}
+  .scan-section{margin-bottom:14px;}
+  .scan-section-title{font-family:var(--mono);font-size:7.5px;letter-spacing:2px;color:var(--accent);
+    opacity:.8;margin-bottom:5px;}
+  .scan-kv{font-family:var(--mono);font-size:8px;color:var(--text);line-height:1.9;}
+  .scan-kv b{color:var(--text-bright);font-weight:400;}
+  .scan-res-row{display:flex;align-items:center;gap:6px;margin-bottom:3px;}
+  .scan-res-name{flex:0 0 108px;font-family:var(--mono);font-size:7.5px;color:var(--text);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .scan-res-bar-track{flex:1;height:6px;background:rgba(255,255,255,0.05);position:relative;}
+  .scan-res-bar-fill{height:100%;background:var(--accent2);}
+  .scan-res-val{flex:0 0 42px;text-align:right;font-family:var(--mono);font-size:7.5px;color:var(--text-bright);}
+  .scan-empty{font-family:var(--mono);font-size:7.5px;color:var(--text);opacity:.5;}
 </style>
 </head>
 <body>
@@ -115,6 +148,14 @@
     <div class="off-text" id="off-text"></div>
   </div>
 
+  <div id="scan-modal">
+    <div id="scan-head">
+      <div id="scan-title">СКАНИРОВАНИЕ ПЛАНЕТЫ</div>
+      <div id="scan-close">← НАЗАД</div>
+    </div>
+    <div id="scan-body"></div>
+  </div>
+
 </div>
 
 <script src="world.js"></script>
@@ -134,7 +175,7 @@
 
 // Справочники, часы, положения тел и действия корабля — из общего модуля
 // world.js: реальность одна на все экраны, дублировать её нельзя.
-const { FACTIONS, PLANET_TYPES, SCALE } = World;
+const { FACTIONS, PLANET_TYPES, SCALE, RESOURCES } = World;
 
 const svg = document.getElementById('map');
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -558,26 +599,31 @@ function renderInfo(){
 
   if(!selected || !star){
     titleEl.textContent = 'Выберите объект на карте';
+    rowsEl.className = '';
     rowsEl.textContent = '';
     return;
   }
 
   if(selected.kind === 'star'){
     titleEl.textContent = World.starLabel(star);
+    rowsEl.className = '';
     rowsEl.innerHTML = `масса: <b>${(star.mass||0).toFixed(2)} M☉</b> · радиус системы: <b>${(star.sysR||0).toFixed(0)} кл</b> · планет: <b>${(star.planets||[]).length}</b><br>` +
       `метеориты: <b>${star.meteorActivity||0}</b>/100 · кольца: <b>${star.rings||0}</b>`;
     return;
   }
 
   const p = star.planets[selected.index];
-  const f = FACTIONS[p.owner] || FACTIONS.none;
-  // «Год планеты» в реальных часах/сутках — World.formatPeriod (считает по
-  // канонической игровой скорости, не по текущему отладочному множителю).
-  const periodTxt = World.formatPeriod(p);
+  // Короткая справка — по требованию пользователя, 2 колонки, крупный шрифт
+  // (World.planetInfoGrid, world.js — одна реализация на system.html и
+  // planet.html, не дублируется).
   titleEl.textContent = `${World.planetLabel(p, star)} · орбита ${p.orbit}`;
-  rowsEl.innerHTML = `владелец: <b>${f.name}</b> · вода: <b>${p.water}/100</b> · жизнь: <b>${p.life?'есть':'нет'}</b><br>` +
-    `температура: <b>${p.temp}K</b> · давление: <b>${p.pressure}</b> · радиация: <b>${p.radiation}</b><br>` +
-    `год планеты: <b>${periodTxt}</b>`;
+  rowsEl.className = 'info-grid';
+  rowsEl.innerHTML = World.planetInfoGrid(p, star);
+
+  // Сканирование — дистанционное, не требует присутствия корабля в системе
+  // (по требованию пользователя: «получает полные данные о планете»,
+  // альтернатива посадке, а не её следствие).
+  actionsEl.appendChild(makeBtn('СКАНИРОВАНИЕ', 'scan', () => openScan(p)));
 
   const isHere = shipView && shipView.systemStarId === star.id && shipView.atPlanetIndex === selected.index && !shipView.transit;
   if(isHere && !shipView.landed){
@@ -587,6 +633,99 @@ function renderInfo(){
     actionsEl.appendChild(makeBtn('ЛЕТЕТЬ', '', () => navigate('planet', selected.index)));
   }
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// СКАНИРОВАНИЕ — полная справка по планете во всплывающем окне (по
+// требованию пользователя, восстанавливает archive/server/galaxy.html
+// showPlanetResPanel в v2): атмосфера/жизнь/поверхность + все 16 видов
+// ресурсов по категориям. Источник данных — p.res (Planet.Res, planets.go)
+// и p.surface (SurfaceHex[]) — оба уже приходят в /api/galaxy, никакого
+// нового запроса не нужно (в отличие от per-гексового planetSurfaceDetail,
+// который planet.html дёргает по клику на конкретный гекс).
+// ══════════════════════════════════════════════════════════════════════════
+
+// RES_CATEGORIES — зеркало server/planets.go resourceDefs (Cat-поле):
+// разбивка на группы для показа справки, та же, что в archive (BASE/METALS/
+// FUEL/GAS/NUCLEAR + биогенные), только имена ключей — из v2.
+const RES_CATEGORIES = [
+  { title: 'БАЗОВЫЕ', keys: ['silicates', 'iron', 'waterIce'] },
+  { title: 'МЕТАЛЛЫ', keys: ['refractory', 'lightRare', 'platinoids'] },
+  { title: 'ГАЗЫ', keys: ['inertGases', 'helium3'] },
+  { title: 'ТОПЛИВО', keys: ['hydrogen', 'volcanicGases'] },
+  { title: 'РАДИОАКТИВНЫЕ', keys: ['radioactives', 'metal_hydrogen'] },
+  { title: 'БИОГЕННЫЕ', keys: ['biomass', 'phosphates', 'carbonates', 'bitumens'] },
+];
+const RES_MAX = 10000; // шкала концентрации, resourceDefs (planets.go)
+
+const SURFACE_TYPE_NAMES = {
+  water: 'вода', icecap: 'ледники', mountains: 'горы', hills: 'холмы',
+  wasteland: 'пустошь', steppe: 'степь', desert: 'пустыня', forest: 'лес', jungle: 'джунгли',
+};
+
+function resBar(key, val){
+  const pct = Math.min(100, Math.round(val / RES_MAX * 100));
+  const name = (RESOURCES && RESOURCES[key]) || key;
+  return `<div class="scan-res-row">
+    <div class="scan-res-name">${name}</div>
+    <div class="scan-res-bar-track"><div class="scan-res-bar-fill" style="width:${pct}%"></div></div>
+    <div class="scan-res-val">${val}</div>
+  </div>`;
+}
+
+function openScan(p){
+  const f = FACTIONS[p.owner] || FACTIONS.none;
+  const res = p.res || {};
+
+  let surfaceHtml = '';
+  if(p.surface && p.surface.length){
+    const counts = {};
+    p.surface.forEach(h => { counts[h.type] = (counts[h.type] || 0) + 1; });
+    const parts = Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([t, n]) => `${SURFACE_TYPE_NAMES[t] || t}: <b>${n}</b>`);
+    surfaceHtml = `<div class="scan-section">
+      <div class="scan-section-title">ПОВЕРХНОСТЬ (${p.surface.length} гексов)</div>
+      <div class="scan-kv">${parts.join(' · ')}</div>
+    </div>`;
+  } else {
+    surfaceHtml = `<div class="scan-section">
+      <div class="scan-section-title">ПОВЕРХНОСТЬ</div>
+      <div class="scan-empty">твёрдой поверхности нет (газовый гигант)</div>
+    </div>`;
+  }
+
+  const resHtml = RES_CATEGORIES.map(cat => {
+    const rows = cat.keys.filter(k => (res[k] || 0) > 0).map(k => resBar(k, res[k]));
+    if(rows.length === 0) return '';
+    return `<div class="scan-section">
+      <div class="scan-section-title">${cat.title}</div>
+      ${rows.join('')}
+    </div>`;
+  }).join('') || '<div class="scan-empty">ресурсов не обнаружено</div>';
+
+  document.getElementById('scan-title').textContent = `СКАНИРОВАНИЕ · ${World.planetLabel(p, star)}`;
+  document.getElementById('scan-body').innerHTML = `
+    <div class="scan-section">
+      <div class="scan-section-title">ОБЩИЕ ДАННЫЕ</div>
+      <div class="scan-kv">
+        тип: <b>${(PLANET_TYPES[p.type] || {}).name || p.type}</b> · владелец: <b>${f.name}</b> · орбита: <b>${p.orbit}</b><br>
+        гидросфера: <b>${p.water}/100</b> · жизнь: <b>${p.life ? 'есть' : 'нет'}</b><br>
+        температура: <b>${p.temp}K</b> · давление: <b>${p.pressure}</b> · радиация: <b>${p.radiation}</b><br>
+        вулканизм: <b>${p.volcanic}</b> · токсичность: <b>${p.toxicity}</b>
+      </div>
+    </div>
+    ${surfaceHtml}
+    <div class="scan-section">
+      <div class="scan-section-title">РЕСУРСЫ (концентрация, у.е. 0–${RES_MAX})</div>
+    </div>
+    ${resHtml}
+  `;
+  document.getElementById('scan-modal').classList.add('show');
+}
+function closeScan(){
+  document.getElementById('scan-modal').classList.remove('show');
+}
+document.getElementById('scan-close').onclick = closeScan;
 function makeBtn(label, cls, onClick){
   const b = document.createElement('div');
   b.className = 'info-btn' + (cls ? ' '+cls : '');
