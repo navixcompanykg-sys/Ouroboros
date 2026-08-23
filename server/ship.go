@@ -1902,6 +1902,68 @@ func turnSecFor(fromDeg, toDeg, accelUE, totalSec float64) float64 {
 	return sec
 }
 
+// rebaseTransit — пере-целивание УЖЕ летящего корабля под НОВЫЙ коэффициент
+// ускорения времени (эта правка, прямая жалоба пользователя: «на больших
+// ускорениях планета улетает от корабля... их глобальное время не
+// синхронно, курс не корректируется по мере движения планет по орбитам»).
+//
+// Корень бага: упреждение цели в Navigate (см. комментарий там, «планета не
+// ждёт») считает, СКОЛЬКО игровых месяцев пройдёт за время полёта, через
+// `flightSec*snap.Speed` — снимок ТЕКУЩЕЙ скорости часов НА МОМЕНТ прокладки
+// курса. Если админ меняет скорость (`SetSpeed`, main.go) уже В ПОЛЁТЕ, это
+// упреждение не пересчитывается — Transit продолжает целиться в точку,
+// предсказанную по СТАРОЙ скорости, а реальные месяцы (Clock.months) с этого
+// момента идут по НОВОЙ — планета/звезда к прилёту оказывается не там.
+//
+// Честный фикс — не «доверить» старому прицелу, а честно переприцелиться:
+// сворачиваем Transit в РЕАЛЬНУЮ текущую точку (тот же collapseTransit, что
+// и у смены цели в полёте) и прокладываем курс ЗАНОВО на ТУ ЖЕ цель — тем же
+// путём (Navigate), что и обычная перепрокладка, так что вся уже
+// проверенная логика (упреждение, HasPendingInterstellarOrigin, курс/
+// разворот) отрабатывает без дублирования. ЕДИНСТВЕННАЯ поправка —
+// пере-целивание админом НЕ должно стоить игроку топлива (это не решение
+// игрока, это сервер ЧЕСТНО поправляет уже оплаченный курс под новую
+// скорость) — поэтому запас топлива/батареи/цикла до и после Navigate
+// принудительно возвращается как было.
+func (sh *Ship) rebaseTransit(sim *Sim, now time.Time) {
+	sh.mu.Lock()
+	t := sh.Transit
+	if t == nil {
+		sh.mu.Unlock()
+		return
+	}
+	kind := t.TargetKind
+	planetIdx := t.TargetPlanetIndex
+	starID := sh.SystemStarID
+	if t.Mode == "interstellar" {
+		starID = t.ToStarID
+	}
+	fuelHydrogen, fuelHelium3 := sh.FuelHydrogen, sh.FuelHelium3
+	battery, cycleAccum := sh.BatteryCharge, sh.FuelCycleAccumSec
+	sh.mu.Unlock()
+
+	if err := sh.Navigate(sim, now, kind, starID, planetIdx); err != nil {
+		return // не смогли перецелиться (например, цель пропала) — оставляем как было, не роняем полёт
+	}
+
+	sh.mu.Lock()
+	sh.FuelHydrogen, sh.FuelHelium3 = fuelHydrogen, fuelHelium3
+	sh.BatteryCharge, sh.FuelCycleAccumSec = battery, cycleAccum
+	sh.mu.Unlock()
+}
+
+// rebaseAllActiveTransits — пере-целивает ВСЕ летящие корабли всех флотов
+// разом (вызывается из handleSpeed, main.go, сразу после смены скорости
+// часов) — см. rebaseTransit выше.
+func rebaseAllActiveTransits(sim *Sim, now time.Time) {
+	for _, f := range fleets {
+		if f.Ship == nil {
+			continue
+		}
+		f.Ship.rebaseTransit(sim, now)
+	}
+}
+
 // TravelEstimate — предпросчёт полёта ДО нажатия «лететь» (ТЗ_UI.md §2, прямой
 // запрос пользователя: время и расход топлива видны заранее). Seconds — полное
 // время (разгон + крейсерский участок); FuelUnits считает только фазу разгона

@@ -753,3 +753,68 @@ func TestCurvedTurnPosition(t *testing.T) {
 		}
 	})
 }
+
+// TestRebaseTransitOnSpeedChange — прямая жалоба пользователя: «на больших
+// ускорениях планета улетает от корабля... их глобальное время не
+// синхронно, курс не корректируется по мере движения планет по орбитам».
+// Корень: упреждение цели в Navigate считает предсказанную точку прилёта по
+// СНИМКУ скорости часов на момент прокладки курса (snap.Speed) — если
+// скорость меняется УЖЕ в полёте, цель не пересчитывается сама. Проверяем,
+// что rebaseTransit (вызывается из handleSpeed при каждой смене скорости)
+// действительно перецеливает курс под новую скорость — и делает это
+// БЕСПЛАТНО (без повторного списания топлива, это не решение игрока, а
+// честная поправка уже оплаченного курса).
+func TestRebaseTransitOnSpeedChange(t *testing.T) {
+	clk = NewClock(gameSpeedRealtime)
+	sim = NewSim(11)
+	forceHabitableCapitals(sim)
+	loadEconomy()
+	loadShipDefaults()
+	initFleets(sim)
+
+	sh := activeShip()
+	if sh == nil {
+		t.Fatal("флоту не назначен корабль")
+	}
+	refuel(sh)
+	star, ok := sim.Object(sh.SystemStarID)
+	if !ok {
+		t.Fatal("нет звезды")
+	}
+	idx, _ := farthestPlanet(sh, star)
+	if idx < 0 {
+		t.Fatal("нет планет в системе")
+	}
+
+	if err := sh.Navigate(sim, time.Now(), "planet", sh.SystemStarID, idx); err != nil {
+		t.Fatalf("курс не проложен: %v", err)
+	}
+	sh.mu.Lock()
+	if sh.Transit == nil {
+		sh.mu.Unlock()
+		t.Fatal("Transit не создан")
+	}
+	origToX, origToY := sh.Transit.ToX, sh.Transit.ToY
+	fuelBefore, batteryBefore := sh.FuelHydrogen, sh.BatteryCharge
+	sh.mu.Unlock()
+
+	// Резко меняем скорость часов ПОСЛЕ прокладки курса (тот же порядок, что
+	// в handleSpeed: сначала clk.SetSpeed, потом rebase) — именно этот сдвиг
+	// и делает старое упреждение неверным.
+	clk.SetSpeed(clk.Snapshot().Speed * 500)
+	sh.rebaseTransit(sim, time.Now())
+
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	if sh.Transit == nil {
+		t.Fatal("rebaseTransit уронил Transit вместо перецеливания")
+	}
+	newToX, newToY := sh.Transit.ToX, sh.Transit.ToY
+	if math.Hypot(newToX-origToX, newToY-origToY) < 1e-6 {
+		t.Errorf("цель не изменилась после смены скорости (%.4f,%.4f) — упреждение не пересчиталось", origToX, origToY)
+	}
+	if sh.FuelHydrogen != fuelBefore || sh.BatteryCharge != batteryBefore {
+		t.Errorf("пере-целивание админом не должно стоить топлива: было %.4f/%.4f, стало %.4f/%.4f",
+			fuelBefore, batteryBefore, sh.FuelHydrogen, sh.BatteryCharge)
+	}
+}

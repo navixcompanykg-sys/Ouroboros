@@ -910,6 +910,12 @@ function computeTrajectoryPoints(viewCells){
 //    в системе координат КАМЕРЫ: каждый кадр её поворачивают на приращение
 //    курса (поэтому разворот виден по вееру пыли даже на месте) и сдвигают
 //    «на корму». На скорости частицы вытягиваются в короткие штрихи.
+//    ⚠ Показывается ТОЛЬКО в межзвёздном перелёте (Transit.mode==='inter
+//    stellar', эта правка) — прямая жалоба пользователя: «движение частиц
+//    на фоне планет выглядит не естественно» — у планеты/в ручном полёте
+//    внутри системы скорость корабля к «ощущению пролетающей пыли» не имеет
+//    отношения (там нет открытого межзвёздного пространства, через которое
+//    частицы бы летели), даже если сама скорость высокая (см. draw()).
 const STARFIELD = {
   // ── пыль
   DUST_KNEE: 50,             // у.е. — уже на этой скорости пыль заметно идёт
@@ -1010,15 +1016,25 @@ const STARFIELD = {
       if(!resize()){ requestAnimationFrame(draw); return; }
     }
 
+    // Пыль — ТОЛЬКО в межзвёздном перелёте (эта правка, прямая жалоба
+    // пользователя: «движение частиц на фоне планет выглядит не
+    // естественно, оставим только в межзвёздном перелёте, когда корабль
+    // покинул сектор, а в новый ещё не прилетел»). Внутри системы (у
+    // планеты, в ручном полёте) скорость может быть какой угодно высокой, но
+    // пыль там больше не показываем вовсе — только межзвёздный Transit.
+    const inInterstellar = !!(shipView && shipView.transit && shipView.transit.mode === 'interstellar');
     const maxSpeed = (shipView && shipView.maxSpeed) || 300000;
-    // Скорость — из общего модуля (World.shipSpeed): она живая и в ручном
-    // полёте, и в перелёте автопилота. Множитель ускорения времени учтён:
-    // на пресетах админ-панели мир проносится мимо во столько же раз быстрее.
-    const speed = (shipView ? World.shipSpeed() : 0) * World.timeFactor();
-    const knee = STARFIELD.DUST_KNEE;
-    let dustFrac = Math.log(1 + speed/knee) / Math.log(1 + maxSpeed/knee);
-    if(!(dustFrac > 0)) dustFrac = 0;
-    if(dustFrac > STARFIELD.DUST_MAX_FRAC) dustFrac = STARFIELD.DUST_MAX_FRAC;
+    let dustFrac = 0;
+    if(inInterstellar){
+      // Скорость — из общего модуля (World.shipSpeed): живая и в ручном
+      // полёте, и в перелёте автопилота. Множитель ускорения времени учтён:
+      // на пресетах админ-панели мир проносится мимо во столько же раз быстрее.
+      const speed = World.shipSpeed() * World.timeFactor();
+      const knee = STARFIELD.DUST_KNEE;
+      dustFrac = Math.log(1 + speed/knee) / Math.log(1 + maxSpeed/knee);
+      if(!(dustFrac > 0)) dustFrac = 0;
+      if(dustFrac > STARFIELD.DUST_MAX_FRAC) dustFrac = STARFIELD.DUST_MAX_FRAC;
+    }
 
     // Поворот: фон неподвижен в мире, значит при смене курса он
     // поворачивается вокруг корабля. Звёздам поворот отдаётся полным углом

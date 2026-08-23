@@ -368,6 +368,10 @@ func handleSpeed(w http.ResponseWriter, r *http.Request) {
 	}
 	sim.Advance(clk.Snapshot().Months) // доводим состав по старой скорости, потом меняем
 	s := clk.SetSpeed(*body.Speed)
+	// Пере-целивание летящих кораблей под новую скорость (server/ship.go
+	// rebaseTransit) — иначе упреждение цели (планета/звезда к прилёту)
+	// остаётся посчитанным по старой скорости, и корабль прилетает не туда.
+	rebaseAllActiveTransits(sim, time.Now())
 	_, seq := sim.Snapshot()
 	// formatSpeed, а не %.4f: игровая (реальная) скорость — это ~3.8e-7 мес/сек,
 	// в логе она печаталась как «0.0000 мес/сек» и была неотличима от паузы.
