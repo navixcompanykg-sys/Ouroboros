@@ -785,12 +785,12 @@ function renderStableList(){
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Флоты игрока — реальные данные с сервера (server/fleets.go), не заглушка:
-// один флот на каждый из 4 стабильных миров (столица + 3 вассала). Летает и
-// рисуется на всех экранах только ТЕКУЩИЙ флот (Current==true) — это тот же
-// `ship`, что и everywhere в проекте; остальные три стоят на орбите родного
-// мира и отдают только имя/класс/позицию — их незачем разыгрывать целым
-// миром, раз они никуда не двигаются (см. комментарий в fleets.go).
+// Флоты игрока — реальные данные с сервера (server/fleets.go): один флот на
+// каждый из 4 стабильных миров (столица + 3 вассала), и с этой правки у
+// КАЖДОГО свой настоящий *Ship (позиция/курс/HP палуб/топливо) — раньше летал
+// только один общий «текущий», остальные были декоративными карточками.
+// Current==true — какой из них сейчас управляется игроком (переключение —
+// клик по строке списка или кнопка ЛЕТЕТЬ, activateFleet ниже, world.js).
 // ══════════════════════════════════════════════════════════════════════════
 let fleetIndex = 0; // какой флот сейчас ПОКАЗАН в списке/нижней панели, не обязательно текущий
 function fleetStatusText(f){
@@ -815,7 +815,16 @@ function renderFleetLists(){
     const row = document.createElement('div');
     row.className = 'sl-row' + (i===fleetIndex ? ' active' : '');
     row.textContent = f.name + (f.current ? ' ★' : '');
-    row.onclick = ()=>{ fleetIndex=i; renderFleetLists(); };
+    // Клик реально переключает управление на этот флот (не только просмотр в
+    // списке) — по прямому требованию пользователя «реализуем возможность
+    // реального переключения»: раньше это было чисто локальным fleetIndex.
+    row.onclick = async ()=>{
+      fleetIndex = i;
+      renderFleetLists();
+      if(f.current) return;
+      try{ await World.activateFleet(f.id); toast(`Активен: ${f.name}`); renderFleetLists(); }
+      catch(e){ toast('Не удалось переключиться: ' + e.message); }
+    };
     rows.appendChild(row);
   });
   updateFleetStatus();
@@ -837,16 +846,20 @@ document.getElementById('bb-next').onclick = ()=>{
 };
 // Настоящая навигация (ship.go): целью может быть только звезда (§2.7.1
 // ТЗ.md — «конкретный объект, звезда или планета», планету у чужой звезды
-// сначала выбираем прилетев к ней — см. system.html). Летать может только
-// ТЕКУЩИЙ флот — у остальных пока нет собственной симуляции полёта.
+// сначала выбираем прилетев к ней — см. system.html). У всех 4 флотов теперь
+// своя настоящая симуляция (fleets.go) — если летим не текущим, сначала
+// реально переключаемся на него (та же логика, что клик по строке списка),
+// а не отказываем, как раньше.
 document.getElementById('bb-fly').onclick = async ()=>{
   const fleets = World.state.fleets;
   const viewed = fleets && fleets[fleetIndex];
-  if(viewed && !viewed.current){ toast(`«${viewed.name}» пока не управляется игроком — доступен только текущий флот`); return; }
   if(!selectedObject){ toast('Сначала выберите объект на карте'); return; }
   if(selectedObject.type !== 'star'){ toast('Целью полёта может быть только звезда или планета — не туманность/астероид/ЧД'); return; }
-  const name = selectedObject.stable ? FACTIONS[selectedObject.faction].name : `${STAR_NAMES[selectedObject.starType]} #${selectedObject.id}`;
   try{
+    if(viewed && !viewed.current) await World.activateFleet(viewed.id);
+    // Выбор звезды здесь — выбор СИСТЕМЫ, а не самого светила: маршрут
+    // заканчивается на границе системы (server/ship.go systemEdgeRadius),
+    // планету игрок выбирает уже оттуда, вторым шагом (ТЗ.md §2.7.6).
     await World.navigate('star', selectedObject.id);
     // Полёт наблюдают с HUD корабля (ТЗ_UI.md §2), не с карты сектора —
     // курс проложен, сразу туда.
@@ -897,9 +910,12 @@ function shipSectorPos(){
   if(!ship) return null;
   const tr = ship.transit;
   if(tr && tr.mode === 'interstellar'){
-    const departed = new Date(tr.departedAt).getTime();
-    const arrive = new Date(tr.arriveAt).getTime();
-    const frac = arrive>departed ? Math.min(1, Math.max(0, (Date.now()-departed)/(arrive-departed))) : 1;
+    // Доля пройденного пути — по кинематическому профилю перелёта
+    // (World.transitState, зеркало server/ship.go flightProfile), а НЕ линейно
+    // по времени: корабль разгоняется и тормозит, и на карте сектора это
+    // должно выглядеть так же, как на HUD, иначе метка «вы здесь» едет мимо
+    // собственной позиции корабля.
+    const frac = World.transitState(tr).frac;
     return { r: tr.fromR + (tr.toR-tr.fromR)*frac, x: tr.fromArc + (tr.toArc-tr.fromArc)*frac };
   }
   const starObj = objects.get(ship.systemStarId);
@@ -911,13 +927,24 @@ function shipSectorPos(){
 // единицах viewBox, поэтому при приближении раздувался бы сам собой — держим
 // его постоянным в пикселях.
 const SHIP_MARKER_PX = 4; // радиус значка на экране, px
+// Перекрестие через всю карту (по прямому требованию пользователя — «чтоб
+// легко было найти на какой звезде сейчас корабль»: сама точка теряется на
+// зуме всего сектора, а две линии через весь видимый viewBox видны всегда,
+// в какую бы область карты ни глядел игрок). Растягивается на ТЕКУЩИЙ
+// viewBox (vb) — не на весь сектор целиком, а на то, что сейчас в кадре,
+// поэтому пересчитывается каждый кадр вместе с положением корабля.
+let shipCrossH = null, shipCrossV = null;
 function renderShipMarker(){
   const pos = shipSectorPos();
   if(!pos) return;
   const p = toXY(pos.r, pos.x);
   if(!shipMarkerNode){
+    shipCrossH = el('line', {stroke:'#00e5ff', 'stroke-opacity':0.35, 'stroke-dasharray':'2 2'});
+    shipCrossV = el('line', {stroke:'#00e5ff', 'stroke-opacity':0.35, 'stroke-dasharray':'2 2'});
+    svg.appendChild(shipCrossH);
+    svg.appendChild(shipCrossV);
     shipMarkerNode = el('circle', {fill:'#00e5ff', stroke:'#fff'});
-    svg.appendChild(shipMarkerNode); // поверх всех объектов и кольца ассамбли
+    svg.appendChild(shipMarkerNode); // поверх всех объектов, кольца ассамбли и перекрестия
   }
   const w = svg.getBoundingClientRect().width;
   const r = w ? SHIP_MARKER_PX * vb.w / w : 2;
@@ -925,6 +952,12 @@ function renderShipMarker(){
   shipMarkerNode.setAttribute('stroke-width', r * 0.2);
   shipMarkerNode.setAttribute('cx', p.x);
   shipMarkerNode.setAttribute('cy', p.y);
+  shipCrossH.setAttribute('x1', vb.x); shipCrossH.setAttribute('x2', vb.x + vb.w);
+  shipCrossH.setAttribute('y1', p.y);  shipCrossH.setAttribute('y2', p.y);
+  shipCrossH.setAttribute('stroke-width', r * 0.15);
+  shipCrossV.setAttribute('y1', vb.y); shipCrossV.setAttribute('y2', vb.y + vb.h);
+  shipCrossV.setAttribute('x1', p.x);  shipCrossV.setAttribute('x2', p.x);
+  shipCrossV.setAttribute('stroke-width', r * 0.15);
 }
 World.start();
 

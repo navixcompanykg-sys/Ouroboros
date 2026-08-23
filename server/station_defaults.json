@@ -1,0 +1,1286 @@
+[
+  {
+    "name": "Аванпост Шахтёров",
+    "decks": [
+      {
+        "row": 3,
+        "col": 4,
+        "modules": [
+          "ship_life_support"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 5,
+        "modules": [
+          "ship_life_support"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 6,
+        "modules": [
+          "ship_radar"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 7,
+        "modules": [
+          "ship_radar"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 8,
+        "modules": [
+          "ship_dock"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 0,
+        "modules": [
+          "ship_dock"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 1,
+        "modules": [
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 2,
+        "modules": [
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 3,
+        "modules": [
+          "ship_solar_panel"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 4,
+        "modules": [
+          "ship_solar_panel"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 5,
+        "modules": [
+          "ship_solar_panel"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 6,
+        "modules": [
+          "ship_cargo"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 7,
+        "modules": [
+          "ship_cargo"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 8,
+        "modules": [
+          "ship_cargo"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 9,
+        "modules": [
+          "ship_repair"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 10,
+        "modules": [
+          "ship_repair"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 11,
+        "modules": [
+          "ship_repair"
+        ]
+      },
+      {
+        "row": 0,
+        "col": 4,
+        "modules": [
+          "ship_miner"
+        ]
+      },
+      {
+        "row": 0,
+        "col": 5,
+        "modules": [
+          "ship_miner"
+        ]
+      },
+      {
+        "row": 0,
+        "col": 6,
+        "modules": [
+          "ship_miner"
+        ]
+      },
+      {
+        "row": 0,
+        "col": 7,
+        "modules": [
+          "ship_miner"
+        ]
+      },
+      {
+        "row": 0,
+        "col": 8,
+        "modules": [
+          "ship_miner"
+        ]
+      },
+      {
+        "row": 1,
+        "col": 4,
+        "modules": [
+          "ship_miner"
+        ]
+      },
+      {
+        "row": 1,
+        "col": 5,
+        "modules": [
+          "ship_miner"
+        ]
+      },
+      {
+        "row": 1,
+        "col": 6,
+        "modules": [
+          "ship_miner"
+        ]
+      },
+      {
+        "row": 1,
+        "col": 7,
+        "modules": [
+          "ship_cargo"
+        ]
+      },
+      {
+        "row": 1,
+        "col": 8,
+        "modules": [
+          "ship_cargo"
+        ]
+      },
+      {
+        "row": 2,
+        "col": 4,
+        "modules": [
+          "ship_cargo"
+        ]
+      },
+      {
+        "row": 2,
+        "col": 5,
+        "modules": [
+          "ship_cargo"
+        ]
+      },
+      {
+        "row": 2,
+        "col": 6,
+        "modules": [
+          "ship_repair"
+        ]
+      },
+      {
+        "row": 2,
+        "col": 7,
+        "modules": [
+          "ship_repair"
+        ]
+      },
+      {
+        "row": 2,
+        "col": 8,
+        "modules": [
+          "ship_repair"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Верфь Орбитальная",
+    "decks": [
+      {
+        "row": 3,
+        "col": 4,
+        "modules": [
+          "ship_life_support"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 5,
+        "modules": [
+          "ship_life_support"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 6,
+        "modules": [
+          "ship_radar"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 7,
+        "modules": [
+          "ship_radar"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 8,
+        "modules": [
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 0,
+        "modules": [
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 1,
+        "modules": [
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 2,
+        "modules": [
+          "ship_solar_panel"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 3,
+        "modules": [
+          "ship_solar_panel"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 4,
+        "modules": [
+          "ship_solar_panel"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 5,
+        "modules": [
+          "ship_computer"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 6,
+        "modules": [
+          "ship_computer"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 7,
+        "modules": [
+          "ship_cargo"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 8,
+        "modules": [
+          "ship_cargo"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 9,
+        "modules": [
+          "ship_cargo"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 10,
+        "modules": [
+          "ship_battery"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 11,
+        "modules": [
+          "ship_battery"
+        ]
+      },
+      {
+        "row": 0,
+        "col": 4,
+        "modules": [
+          "ship_dock"
+        ]
+      },
+      {
+        "row": 0,
+        "col": 5,
+        "modules": [
+          "ship_dock"
+        ]
+      },
+      {
+        "row": 0,
+        "col": 6,
+        "modules": [
+          "ship_dock"
+        ]
+      },
+      {
+        "row": 0,
+        "col": 7,
+        "modules": [
+          "ship_dock"
+        ]
+      },
+      {
+        "row": 0,
+        "col": 8,
+        "modules": [
+          "ship_dock"
+        ]
+      },
+      {
+        "row": 1,
+        "col": 4,
+        "modules": [
+          "ship_dock"
+        ]
+      },
+      {
+        "row": 1,
+        "col": 5,
+        "modules": [
+          "ship_dock"
+        ]
+      },
+      {
+        "row": 1,
+        "col": 6,
+        "modules": [
+          "ship_dock"
+        ]
+      },
+      {
+        "row": 1,
+        "col": 7,
+        "modules": [
+          "ship_hangar"
+        ]
+      },
+      {
+        "row": 1,
+        "col": 8,
+        "modules": [
+          "ship_hangar"
+        ]
+      },
+      {
+        "row": 2,
+        "col": 4,
+        "modules": [
+          "ship_hangar"
+        ]
+      },
+      {
+        "row": 2,
+        "col": 5,
+        "modules": [
+          "ship_hangar"
+        ]
+      },
+      {
+        "row": 2,
+        "col": 6,
+        "modules": [
+          "ship_repair"
+        ]
+      },
+      {
+        "row": 2,
+        "col": 7,
+        "modules": [
+          "ship_repair"
+        ]
+      },
+      {
+        "row": 2,
+        "col": 8,
+        "modules": [
+          "ship_repair"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Ускоритель Флота",
+    "decks": [
+      {
+        "row": 3,
+        "col": 4,
+        "modules": [
+          "ship_life_support"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 5,
+        "modules": [
+          "ship_life_support"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 6,
+        "modules": [
+          "ship_radar"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 7,
+        "modules": [
+          "ship_radar"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 8,
+        "modules": [
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 0,
+        "modules": [
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 1,
+        "modules": [
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 2,
+        "modules": [
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 3,
+        "modules": [
+          "ship_dock"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 4,
+        "modules": [
+          "ship_dock"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 5,
+        "modules": [
+          "ship_dock"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 6,
+        "modules": [
+          "ship_dock"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 7,
+        "modules": [
+          "ship_shield"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 8,
+        "modules": [
+          "ship_shield"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 9,
+        "modules": [
+          "ship_weapon_mount"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 10,
+        "modules": [
+          "ship_weapon_mount"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 11,
+        "modules": [
+          "ship_weapon_mount"
+        ]
+      },
+      {
+        "row": 0,
+        "col": 4,
+        "modules": []
+      },
+      {
+        "row": 0,
+        "col": 5,
+        "modules": []
+      },
+      {
+        "row": 0,
+        "col": 6,
+        "modules": []
+      },
+      {
+        "row": 0,
+        "col": 7,
+        "modules": []
+      },
+      {
+        "row": 0,
+        "col": 8,
+        "modules": []
+      },
+      {
+        "row": 1,
+        "col": 4,
+        "modules": []
+      },
+      {
+        "row": 1,
+        "col": 5,
+        "modules": []
+      },
+      {
+        "row": 1,
+        "col": 6,
+        "modules": []
+      },
+      {
+        "row": 1,
+        "col": 7,
+        "modules": []
+      },
+      {
+        "row": 1,
+        "col": 8,
+        "modules": []
+      },
+      {
+        "row": 2,
+        "col": 4,
+        "modules": []
+      },
+      {
+        "row": 2,
+        "col": 5,
+        "modules": []
+      },
+      {
+        "row": 2,
+        "col": 6,
+        "modules": []
+      },
+      {
+        "row": 2,
+        "col": 7,
+        "modules": []
+      },
+      {
+        "row": 2,
+        "col": 8,
+        "modules": []
+      }
+    ]
+  },
+  {
+    "name": "Портальный Узел",
+    "decks": [
+      {
+        "row": 3,
+        "col": 4,
+        "modules": [
+          "ship_life_support"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 5,
+        "modules": [
+          "ship_life_support"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 6,
+        "modules": [
+          "ship_radar"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 7,
+        "modules": [
+          "ship_radar"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 8,
+        "modules": [
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 0,
+        "modules": [
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 1,
+        "modules": [
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 2,
+        "modules": [
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 3,
+        "modules": [
+          "ship_dock"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 4,
+        "modules": [
+          "ship_dock"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 5,
+        "modules": [
+          "ship_dock"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 6,
+        "modules": [
+          "ship_dock"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 7,
+        "modules": [
+          "ship_computer"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 8,
+        "modules": [
+          "ship_computer"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 9,
+        "modules": [
+          "ship_shield"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 10,
+        "modules": [
+          "ship_shield"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 11,
+        "modules": [
+          "ship_shield"
+        ]
+      },
+      {
+        "row": 0,
+        "col": 4,
+        "modules": []
+      },
+      {
+        "row": 0,
+        "col": 5,
+        "modules": []
+      },
+      {
+        "row": 0,
+        "col": 6,
+        "modules": []
+      },
+      {
+        "row": 0,
+        "col": 7,
+        "modules": []
+      },
+      {
+        "row": 0,
+        "col": 8,
+        "modules": []
+      },
+      {
+        "row": 1,
+        "col": 4,
+        "modules": []
+      },
+      {
+        "row": 1,
+        "col": 5,
+        "modules": []
+      },
+      {
+        "row": 1,
+        "col": 6,
+        "modules": []
+      },
+      {
+        "row": 1,
+        "col": 7,
+        "modules": []
+      },
+      {
+        "row": 1,
+        "col": 8,
+        "modules": []
+      },
+      {
+        "row": 2,
+        "col": 4,
+        "modules": []
+      },
+      {
+        "row": 2,
+        "col": 5,
+        "modules": []
+      },
+      {
+        "row": 2,
+        "col": 6,
+        "modules": []
+      },
+      {
+        "row": 2,
+        "col": 7,
+        "modules": []
+      },
+      {
+        "row": 2,
+        "col": 8,
+        "modules": []
+      }
+    ]
+  },
+  {
+    "name": "Крепость Рубежная",
+    "decks": [
+      {
+        "row": 3,
+        "col": 4,
+        "modules": [
+          "ship_life_support"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 5,
+        "modules": [
+          "ship_life_support"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 6,
+        "modules": [
+          "ship_radar"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 7,
+        "modules": [
+          "ship_radar"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 8,
+        "modules": [
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 0,
+        "modules": [
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 1,
+        "modules": [
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 2,
+        "modules": [
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 3,
+        "modules": [
+          "ship_shield"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 4,
+        "modules": [
+          "ship_shield"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 5,
+        "modules": [
+          "ship_shield"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 6,
+        "modules": [
+          "ship_shield"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 7,
+        "modules": [
+          "ship_weapon_mount"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 8,
+        "modules": [
+          "ship_weapon_mount"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 9,
+        "modules": [
+          "ship_weapon_mount"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 10,
+        "modules": [
+          "ship_weapon_mount"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 11,
+        "modules": [
+          "ship_weapon_mount"
+        ]
+      },
+      {
+        "row": 0,
+        "col": 4,
+        "modules": []
+      },
+      {
+        "row": 0,
+        "col": 5,
+        "modules": []
+      },
+      {
+        "row": 0,
+        "col": 6,
+        "modules": []
+      },
+      {
+        "row": 0,
+        "col": 7,
+        "modules": []
+      },
+      {
+        "row": 0,
+        "col": 8,
+        "modules": []
+      },
+      {
+        "row": 1,
+        "col": 4,
+        "modules": []
+      },
+      {
+        "row": 1,
+        "col": 5,
+        "modules": []
+      },
+      {
+        "row": 1,
+        "col": 6,
+        "modules": []
+      },
+      {
+        "row": 1,
+        "col": 7,
+        "modules": []
+      },
+      {
+        "row": 1,
+        "col": 8,
+        "modules": []
+      },
+      {
+        "row": 2,
+        "col": 4,
+        "modules": []
+      },
+      {
+        "row": 2,
+        "col": 5,
+        "modules": []
+      },
+      {
+        "row": 2,
+        "col": 6,
+        "modules": []
+      },
+      {
+        "row": 2,
+        "col": 7,
+        "modules": []
+      },
+      {
+        "row": 2,
+        "col": 8,
+        "modules": []
+      }
+    ]
+  },
+  {
+    "name": "Научная Станция",
+    "decks": [
+      {
+        "row": 3,
+        "col": 4,
+        "modules": [
+          "ship_life_support"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 5,
+        "modules": [
+          "ship_life_support"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 6,
+        "modules": [
+          "ship_life_support"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 7,
+        "modules": [
+          "ship_radar"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 8,
+        "modules": [
+          "ship_radar"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 0,
+        "modules": [
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 1,
+        "modules": [
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 2,
+        "modules": [
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 3,
+        "modules": [
+          "ship_solar_panel"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 4,
+        "modules": [
+          "ship_solar_panel"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 5,
+        "modules": [
+          "ship_solar_panel"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 6,
+        "modules": [
+          "ship_battery"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 7,
+        "modules": [
+          "ship_battery"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 8,
+        "modules": [
+          "ship_cargo"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 9,
+        "modules": [
+          "ship_cargo"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 10,
+        "modules": [
+          "ship_cargo"
+        ]
+      },
+      {
+        "row": 5,
+        "col": 11,
+        "modules": [
+          "ship_cargo"
+        ]
+      },
+      {
+        "row": 0,
+        "col": 4,
+        "modules": [
+          "ship_computer"
+        ]
+      },
+      {
+        "row": 0,
+        "col": 5,
+        "modules": [
+          "ship_computer"
+        ]
+      },
+      {
+        "row": 0,
+        "col": 6,
+        "modules": [
+          "ship_computer"
+        ]
+      },
+      {
+        "row": 0,
+        "col": 7,
+        "modules": [
+          "ship_computer"
+        ]
+      },
+      {
+        "row": 0,
+        "col": 8,
+        "modules": [
+          "ship_computer"
+        ]
+      },
+      {
+        "row": 1,
+        "col": 4,
+        "modules": [
+          "ship_computer"
+        ]
+      },
+      {
+        "row": 1,
+        "col": 5,
+        "modules": [
+          "ship_radar"
+        ]
+      },
+      {
+        "row": 1,
+        "col": 6,
+        "modules": [
+          "ship_radar"
+        ]
+      },
+      {
+        "row": 1,
+        "col": 7,
+        "modules": [
+          "ship_radar"
+        ]
+      },
+      {
+        "row": 1,
+        "col": 8,
+        "modules": [
+          "ship_ecm"
+        ]
+      },
+      {
+        "row": 2,
+        "col": 4,
+        "modules": [
+          "ship_ecm"
+        ]
+      },
+      {
+        "row": 2,
+        "col": 5,
+        "modules": [
+          "ship_ecm"
+        ]
+      },
+      {
+        "row": 2,
+        "col": 6,
+        "modules": [
+          "ship_repair"
+        ]
+      },
+      {
+        "row": 2,
+        "col": 7,
+        "modules": [
+          "ship_repair"
+        ]
+      },
+      {
+        "row": 2,
+        "col": 8,
+        "modules": [
+          "ship_repair"
+        ]
+      }
+    ]
+  }
+]

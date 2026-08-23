@@ -25,28 +25,45 @@
     border-radius:34px;border:2px solid #14161e;
     box-shadow:0 0 0 1px rgba(255,255,255,0.03), 0 20px 60px rgba(0,0,0,0.7);}
 
-  /* ── космос: вращается относительно курса, а не корабль ── */
-  #space{position:absolute;inset:-40%;transition:transform .25s ease-out;}
-  #space canvas{width:100%;height:100%;display:block;}
+  /* ── космос: вращается по курсу корабля (см. applySpaceRotation) — мир
+     переносится/крутится, корабль всегда «смотрит» вверх экрана ────────── */
+  /* Звёздный фон — отдельный слой во весь экран, НЕ внутри #space: он
+     отрисовывает поворот и параллакс сам (см. drawStarfield), а не наследует
+     CSS-поворот пространства — иначе фон вращался бы как жёсткая картинка
+     вместе с миром и не мог бы давать разную скорость слоям по глубине. */
+  #starfield{position:absolute;inset:0;width:100%;height:100%;display:block;}
+  /* #space — квадрат, ЦЕНТРИРОВАННЫЙ НА КОРАБЛЕ (низ экрана, ТЗ_UI.md §2.1.2),
+     а не на середине экрана: поворот обзора по курсу происходит вокруг самого
+     корабля, и слой мира считает координаты объектов от него же. Сторона
+     квадрата (320% ширины экрана) взята с запасом: половина стороны должна
+     перекрывать расстояние от корабля до самого дальнего угла экрана, иначе
+     при развороте у краёв кадра появлялась бы пустота. */
+  #space{position:absolute;left:50%;top:68%;width:320%;aspect-ratio:1;
+    transform:translate(-50%,-50%);}
   /* Слой реального мира в масштабе 1:1 поверх звёздного фона */
   #world-layer{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;}
   .w-planet{stroke:rgba(255,255,255,0.35);stroke-width:0.004;}
   .w-star{stroke-width:0.004;}
   .w-label{font-family:var(--mono);fill:var(--text-bright);opacity:.75;}
+  /* Пунктир направления движения (ТЗ.md §2.7.4/§«пунктирный луч»): все размеры
+     в КЛЕТЯХ, потому что viewBox слоя мира тоже в клетях — 1 клеть = ширина
+     экрана, поэтому 0.0035 клети ≈ 1.3 px на телефоне. Три вида: course —
+     предсказание ручного манёвра, route — маршрут автопилота до цели,
+     aim — просто направление носа, когда корабль стоит. */
+  .w-trajectory{stroke:rgba(204,228,255,0.45);stroke-width:0.0035;stroke-dasharray:0.012 0.01;fill:none;}
+  .w-trajectory-route{stroke:rgba(0,229,255,0.5);stroke-dasharray:0.03 0.02;}
+  .w-trajectory-aim{stroke:rgba(204,228,255,0.22);}
+  .w-route-mark{fill:none;stroke:rgba(0,229,255,0.6);stroke-width:0.004;}
 
-  /* ── корабль-заглушка: смещён от центра к нижней трети экрана,
-     ориентация всегда «вперёд/вверх экрана» — не вращается ────────── */
+  /* ── скелет корабля: сетка палуб (те же 5×7, что в конструкторе
+     ship-deck-sectors.html) вместо прежней условной стрелки — «нос» (большие
+     col) всегда вверх экрана, корма (col 0) внизу, борта — по ширине.
+     На скелет со временем «наденется» скин (см. комментарий у renderSkeleton) ── */
   #ship-wrap{position:absolute;left:50%;top:68%;transform:translate(-50%,-50%);
     pointer-events:none;z-index:5;}
-  #ship-svg{width:56px;height:56px;overflow:visible;filter:drop-shadow(0 0 6px rgba(0,229,255,0.55));transition:filter .3s;}
-  #ship-wrap.boost #ship-svg{filter:drop-shadow(0 0 14px rgba(255,150,60,0.85));}
-  .sail{opacity:0;transition:opacity .4s;}
-  #ship-wrap.sails .sail{opacity:0.85;}
-  .flame{opacity:0;transform-origin:50% 0%;transition:opacity .2s;}
-  #ship-wrap.boost .flame{opacity:1;animation:flick .12s infinite alternate;}
-  #ship-wrap.brake .brake-glow{opacity:1;}
-  .brake-glow{opacity:0;transition:opacity .2s;}
-  @keyframes flick{to{transform:scaleY(1.25);}}
+  #ship-skeleton{width:44px;height:62px;overflow:visible;filter:drop-shadow(0 0 6px rgba(0,229,255,0.45));transition:filter .3s;}
+  #ship-wrap.boost #ship-skeleton{filter:drop-shadow(0 0 14px rgba(255,150,60,0.85));}
+  #ship-wrap.brake #ship-skeleton{filter:drop-shadow(0 0 10px rgba(255,80,64,0.85));}
 
   /* ── верхние угловые кнопки (круги) ─────────────────────── */
   .corner-btn{position:absolute;top:14px;width:46px;height:46px;border-radius:50%;
@@ -56,6 +73,15 @@
   .corner-btn:active{border-color:var(--accent2);background:rgba(0,229,255,0.1);}
   #btn-menu{left:14px;}
   #btn-galaxy{right:14px;}
+
+  /* ── HUD-полоска между угловыми кнопками: ускорение/скорость/дистанция до
+     цели (по прямому требованию пользователя) ─────────────────────────── */
+  #hud-top{position:absolute;top:14px;left:68px;right:68px;height:46px;z-index:24;
+    background:var(--panel-bg);border:1px solid var(--border);backdrop-filter:blur(6px);
+    display:flex;justify-content:space-around;align-items:center;}
+  .hud-item{display:flex;flex-direction:column;align-items:center;line-height:1.3;}
+  .hud-label{font-family:var(--mono);font-size:6.5px;letter-spacing:1px;color:var(--text);opacity:.6;}
+  .hud-val{font-family:var(--mono);font-size:11px;color:var(--accent2);font-weight:600;}
 
   /* ── боковые манёвренные регуляторы (слева/справа), на уровне корабля ── */
   .steer{position:absolute;top:68%;transform:translateY(-50%);width:38px;height:150px;z-index:22;
@@ -79,7 +105,7 @@
 
   #object-list{width:92px;height:92px;background:var(--panel-bg);border:1px solid var(--border);
     backdrop-filter:blur(6px);display:flex;flex-direction:column;overflow:hidden;cursor:pointer;flex-shrink:0;
-    transition:height .25s ease-out;}
+    transition:height .25s ease-out;position:relative;}
   #object-list.expanded{height:300px;overflow-y:auto;} /* до нижнего края боковых регуляторов (design 390×844) */
   #object-list .ol-rows{flex:1;padding:4px 0;}
   .ol-row{display:flex;align-items:center;gap:5px;padding:3px 6px;font-family:var(--mono);font-size:8.5px;}
@@ -104,9 +130,38 @@
     cursor:pointer;white-space:nowrap;display:none;z-index:30;}
   #radar-fly-btn.show{display:block;}
   #radar-fly-btn:active{background:rgba(0,229,255,0.16);}
+  #radar-fly-estimate{position:absolute;left:50%;top:-58px;transform:translateX(-50%);
+    font-family:var(--mono);font-size:7.5px;color:var(--text);opacity:.75;letter-spacing:.5px;
+    white-space:nowrap;display:none;text-align:center;line-height:1.4;}
+  #radar-fly-estimate.show{display:block;}
+
+  /* Зеркало radar-fly-btn над #object-list — показывает, что список
+     объектов на радаре можно развернуть (по прямому требованию
+     пользователя: раньше это можно было узнать только кликнув по панели
+     наугад, без видимой подсказки). */
+  #ol-expand-btn{position:absolute;left:50%;top:-32px;transform:translateX(-50%);
+    background:var(--panel-bg);border:1.2px solid var(--accent2);color:var(--accent2);
+    font-family:var(--mono);font-size:9px;letter-spacing:1px;padding:5px 12px;
+    cursor:pointer;white-space:nowrap;z-index:30;}
+  #ol-expand-btn:active{background:rgba(0,229,255,0.16);}
 
   /* ── меню трёх кнопок (центр, форма «летающей тарелки») ── */
-  #three-menu{flex-shrink:0;width:163px;display:flex;flex-direction:column;align-items:center;}
+  #three-menu{flex-shrink:0;width:163px;display:flex;flex-direction:column;align-items:center;position:relative;}
+
+  /* Панель из 3 кнопок быстрого доступа над three-menu — вместе с
+     #ol-expand-btn (над object-list) и #radar-fly-btn (над radar-wrap)
+     образует единую полосу «5 кнопок быстрого доступа»: РАЗВЕРНУТЬ — ЗАРЯДИТЬ
+     — УСКОРИТЬ/МЕДЛЕННЕЕ — РАКЕТА — ЛЕТЕТЬ (по прямому требованию
+     пользователя). */
+  #quick-mid{position:absolute;left:50%;top:-32px;transform:translateX(-50%);
+    display:flex;gap:4px;z-index:30;}
+  .quick-btn{background:var(--panel-bg);border:1.2px solid var(--accent2);color:var(--accent2);
+    font-family:var(--mono);font-size:14px;line-height:1;padding:5px 7px;
+    cursor:pointer;text-align:center;}
+  .quick-btn:active{background:rgba(0,229,255,0.16);}
+  .quick-btn.disabled{opacity:.35;border-color:var(--border);color:var(--text);}
+  .quick-btn.boosted{border-color:var(--danger);color:var(--danger);
+    background:rgba(255,80,64,0.12);}
   .tm-strip{width:100%;height:14px;cursor:pointer;background:var(--panel-bg);border:1px solid var(--border);
     display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:8px;
     color:var(--text);opacity:.55;}
@@ -135,6 +190,47 @@
     border:1px solid var(--border);padding:6px 14px;cursor:pointer;float:right;}
   #modal-close:active{border-color:var(--accent2);color:var(--accent2);}
 
+  /* ── окно осмотра корабля (клик по HUD наверху) ──────────── */
+  #ship-inspect{position:absolute;inset:0;background:rgba(4,6,15,0.97);display:none;
+    z-index:80;overflow-y:auto;padding:16px 12px 28px;-webkit-overflow-scrolling:touch;}
+  #ship-inspect.open{display:block;}
+  #si-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
+  #si-title{font-family:var(--mono);font-size:12px;letter-spacing:2px;color:var(--accent2);}
+  #si-close{font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--text);
+    border:1px solid var(--border);padding:6px 12px;cursor:pointer;}
+  #si-close:active{border-color:var(--accent2);color:var(--accent2);}
+  .si-section{margin-bottom:22px;}
+  .si-section-title{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent);
+    opacity:.85;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:4px;}
+  #si-grid-wrap{display:flex;justify-content:center;margin-bottom:8px;}
+  .si-cell{stroke:rgba(0,229,255,0.3);stroke-width:0.6;cursor:pointer;fill:rgba(255,255,255,0.03);}
+  .si-cell.built{fill:rgba(0,229,255,0.22);}
+  .si-cell.selected{stroke:var(--accent2);stroke-width:2;}
+  .si-cell-label{font-family:var(--mono);font-size:5px;fill:var(--text-bright);pointer-events:none;text-anchor:middle;}
+  .si-module-info{font-family:var(--mono);font-size:10.5px;color:var(--text-bright);
+    min-height:34px;text-align:center;margin-bottom:8px;line-height:1.5;}
+  .si-sector-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:8px;color:var(--text);margin-bottom:4px;}
+  .si-sector-table th,.si-sector-table td{border:1px solid var(--border);padding:3px 2px;text-align:center;}
+  .si-sector-table th{color:var(--accent);opacity:.8;font-weight:400;}
+  .si-hold-row{display:flex;justify-content:space-between;align-items:center;gap:8px;
+    padding:6px 8px;border:1px solid var(--border);margin-bottom:4px;font-family:var(--mono);font-size:10.5px;color:var(--text-bright);}
+  .si-hold-row .si-amt{color:var(--accent2);}
+  .si-hold-row button{font-family:var(--mono);font-size:9px;letter-spacing:0.5px;
+    border:1px solid var(--accent2);color:var(--accent2);background:none;padding:4px 8px;cursor:pointer;flex-shrink:0;}
+  .si-hold-row button:active{background:rgba(0,229,255,0.16);}
+  .si-empty-note{color:var(--text);opacity:.5;font-family:var(--mono);font-size:10px;padding:8px 2px;}
+  .si-stub{color:var(--text);opacity:.55;font-family:var(--mono);font-size:9.5px;line-height:1.5;
+    padding:10px;border:1px dashed var(--border);}
+  .si-pickup-box{display:flex;justify-content:space-between;align-items:center;gap:8px;
+    padding:8px;border:1px solid var(--accent2);background:rgba(0,229,255,0.08);margin-bottom:10px;
+    font-family:var(--mono);font-size:10px;color:var(--accent2);}
+  .si-pickup-box button{font-family:var(--mono);font-size:9px;border:1px solid var(--accent2);
+    color:var(--accent2);background:none;padding:4px 10px;cursor:pointer;flex-shrink:0;}
+  .si-tactic-row{display:flex;justify-content:space-between;align-items:center;gap:8px;
+    padding:6px 8px;border:1px solid var(--border);margin-bottom:4px;font-family:var(--mono);font-size:10.5px;color:var(--text-bright);}
+  .si-tactic-row button{font-family:var(--mono);font-size:9px;border:1px solid var(--border);
+    color:var(--text);background:none;padding:4px 8px;cursor:pointer;}
+
   /* ── тост ───────────────────────────────────────────────── */
   #toast{position:absolute;left:50%;bottom:212px;transform:translateX(-50%) translateY(10px);
     background:var(--panel-bg);border:1px solid var(--accent2);color:var(--accent2);
@@ -146,26 +242,26 @@
 <body>
 <div id="screen">
 
+  <canvas id="starfield"></canvas>
   <div id="space">
-    <canvas id="space-canvas"></canvas>
     <!-- Мир в масштабе 1:1 (1 клеть = ширина экрана, ТЗ.md §2.7.4). Лежит
          внутри #space, поэтому вращается вместе с ним при смене курса —
          вращается пространство, а не корабль (ТЗ_UI.md §2.1.2). -->
-    <svg id="world-layer" preserveAspectRatio="xMidYMid slice"></svg>
+    <svg id="world-layer" preserveAspectRatio="xMidYMid meet"></svg>
   </div>
 
   <div id="ship-wrap">
-    <svg id="ship-svg" viewBox="-27 -27 54 54">
-      <polygon class="sail" points="-2,-4 -22,2 -2,6" fill="rgba(200,225,255,0.18)" stroke="rgba(200,225,255,0.5)" stroke-width="0.7"/>
-      <polygon class="sail" points="2,-4 22,2 2,6" fill="rgba(200,225,255,0.18)" stroke="rgba(200,225,255,0.5)" stroke-width="0.7"/>
-      <ellipse class="brake-glow" cx="0" cy="-6" rx="10" ry="4" fill="rgba(255,80,60,0.35)"/>
-      <polygon points="0,-14 8,10 0,6 -8,10" fill="#1a2a44" stroke="var(--accent2)" stroke-width="1.4"/>
-      <polygon points="0,-14 3,4 0,2 -3,4" fill="#8bd4ff"/>
-      <polygon class="flame" points="-4,10 4,10 0,20" fill="#ffb347"/>
-    </svg>
+    <!-- Заполняется renderSkeleton() — сетка палуб реального корабля
+         (server: ShipView.decks), не статичная разметка. -->
+    <svg id="ship-skeleton" viewBox="0 0 35 49"></svg>
   </div>
 
   <div class="corner-btn" id="btn-menu">☰</div>
+  <div id="hud-top">
+    <div class="hud-item"><span class="hud-label">УСКОРЕНИЕ</span><span class="hud-val" id="hud-accel">0</span></div>
+    <div class="hud-item"><span class="hud-label">СКОРОСТЬ</span><span class="hud-val" id="hud-speed">0</span></div>
+    <div class="hud-item"><span class="hud-label">ДИСТАНЦИЯ</span><span class="hud-val" id="hud-dist">—</span></div>
+  </div>
   <div class="corner-btn" id="btn-galaxy">⬡</div>
 
   <div class="steer left" id="steer-left"><span class="steer-arrow">◀</span><span class="steer-label" id="steer-left-label">ЛЕВО</span></div>
@@ -173,10 +269,16 @@
 
   <div class="bottom-row">
     <div id="object-list">
+      <div id="ol-expand-btn">РАЗВЕРНУТЬ</div>
       <div class="ol-rows" id="ol-rows"></div>
     </div>
 
     <div id="three-menu">
+      <div id="quick-mid">
+        <div class="quick-btn" id="btn-charge" title="Зарядить аккумуляторы (металлический водород)">⚡</div>
+        <div class="quick-btn" id="btn-boost" title="Тап — импульс на гелии, удержание — форсаж">🚀</div>
+        <div class="quick-btn" id="btn-missile" title="Ракета (оружие ещё не реализовано)">🎯</div>
+      </div>
       <div class="tm-strip" id="tm-up">▲</div>
       <div class="tm-setname" id="tm-setname">БОЙ</div>
       <div class="tm-buttons" id="tm-buttons"></div>
@@ -184,6 +286,7 @@
     </div>
 
     <div id="radar-wrap">
+      <div id="radar-fly-estimate"></div>
       <div id="radar-fly-btn">ЛЕТЕТЬ</div>
       <svg viewBox="0 0 120 120">
         <circle cx="60" cy="60" r="58" fill="none" stroke="var(--border)" stroke-width="1"/>
@@ -206,6 +309,47 @@
       <div id="modal-title">—</div>
       <div id="modal-body">—</div>
       <div id="modal-close">ЗАКРЫТЬ</div>
+    </div>
+  </div>
+
+  <!-- ── окно осмотра корабля (клик по HUD ускорения/скорости/дистанции) ── -->
+  <div id="ship-inspect">
+    <div id="si-header">
+      <div id="si-title">ОСМОТР КОРАБЛЯ</div>
+      <div id="si-close">✕ ЗАКРЫТЬ</div>
+    </div>
+
+    <div class="si-section">
+      <div class="si-section-title">КОРПУС И СЕКТОРА ОБСТРЕЛА</div>
+      <div id="si-grid-wrap"><svg id="si-grid" viewBox="0 0 238 85"></svg></div>
+      <div class="si-module-info" id="si-module-info">Выберите палубу на схеме</div>
+      <table class="si-sector-table" id="si-sector-table"></table>
+    </div>
+
+    <div class="si-section">
+      <div class="si-section-title">ГРУЗОВОЙ ТРЮМ</div>
+      <div id="si-pickup-slot"></div>
+      <div id="si-cargo-list"></div>
+    </div>
+
+    <div class="si-section">
+      <div class="si-section-title">ГАЗОХРАНИЛИЩЕ</div>
+      <div id="si-gas-list"></div>
+    </div>
+
+    <div class="si-section">
+      <div class="si-section-title">ПАССАЖИРСКИЙ ОТСЕК</div>
+      <div class="si-stub">На будущее — в конструкторе уже есть Колониальный модуль, но логика перевозки пассажиров ещё не реализована.</div>
+    </div>
+
+    <div class="si-section">
+      <div class="si-section-title">ОРУЖИЕ И БОЕЗАПАС</div>
+      <div class="si-stub">Оружие в игре пока не реализовано — ни хардпоинтов в бою, ни боеприпасов, заряжать пока нечего.</div>
+    </div>
+
+    <div class="si-section">
+      <div class="si-section-title">БЫСТРЫЕ ТАКТИЧЕСКИЕ КОМАНДЫ</div>
+      <div id="si-tactics-list"></div>
     </div>
   </div>
 
@@ -235,6 +379,26 @@ let currentStar = null;
 let selectedTarget = null;
 let lastStarId = null;
 function isSameTarget(a, b){ return !!a && !!b && a.kind === b.kind && a.index === b.index; }
+
+// ── HUD между угловыми кнопками: ускорение/скорость/дистанция до выбранной
+// цели (по прямому требованию пользователя). ACCEL_DISPLAY_SCALE — та же
+// условная единица, что уже введена в client/ship-deck-sectors.html (иначе
+// 0.00035 не читается) — 1 уск.ед. = 0.00001 экран/с².
+const ACCEL_DISPLAY_SCALE = 100000;
+function updateHudTop(){
+  document.getElementById('hud-accel').textContent =
+    shipView ? (shipView.accelUe / World.SCREEN_UE * ACCEL_DISPLAY_SCALE).toFixed(1) : '0';
+  // Скорость — живая (World.shipSpeed): снимок приходит раз в секунду, а в
+  // перелёте автопилота вообще сообщал 0. Обновляется чаще опроса, но не
+  // покадрово (см. таймер у подписки ниже) — цифра, скачущая 60 раз в
+  // секунду, нечитаема.
+  document.getElementById('hud-speed').textContent =
+    shipView ? (World.shipSpeed() / 1000).toFixed(1) + 'к' : '0';
+  const distEl = document.getElementById('hud-dist');
+  if(!selectedTarget){ distEl.textContent = '—'; return; }
+  const hit = computeNearby().find(o => isSameTarget(selectedTarget, o));
+  distEl.textContent = hit ? hit.dist.toFixed(1) + 'кл' : '—';
+}
 
 const gameMonths = World.gameMonths;
 const planetLocal = World.planetPos;
@@ -268,10 +432,31 @@ function onWorld(w){
       selectedTarget = { kind:'planet', index: shipView.atPlanetIndex };
     }
   }
+  // controlState — локальный на этой странице, но корабль общий на всех
+  // устройствах (аккаунтов нет, server/fleets.go) — подхватываем реальное
+  // состояние из снимка на случай, если жать «Форсаж»/поворот начали не
+  // отсюда (другая вкладка/устройство), и освежаем кнопки ПОЛЁТ, если они
+  // сейчас показаны.
+  if(shipView && shipView.control){
+    const c = shipView.control;
+    if(c.thrust !== controlState.thrust || c.brake !== controlState.brake ||
+       c.turnLeft !== controlState.turnLeft || c.turnRight !== controlState.turnRight){
+      Object.assign(controlState, c);
+      applyControlVisuals();
+      if(SETS[setIndex].name === 'ПОЛЁТ') renderSet();
+    }
+  }
   renderObjectList();
   renderRadarBlips();
   renderWorldLayer();
   updateFlyUI();
+  updateHudTop();
+  updateBoostBtn();
+  if(document.getElementById('ship-inspect').classList.contains('open')){
+    renderSiGas();
+    renderSiCargo();
+  }
+  btnCharge.classList.toggle('disabled', !(shipView && shipView.batteryCapacity > 0));
 }
 
 // bearing: 0°=вверх экрана (курс корабля), по часовой — та же конвенция,
@@ -312,6 +497,7 @@ function selectTarget(o){
   renderObjectList();
   renderRadarBlips();
   updateFlyUI();
+  updateHudTop();
 }
 
 const OL_COLLAPSED_COUNT = 5; // сколько ближайших объектов показываем без разворота панели
@@ -383,23 +569,80 @@ function renderRadarBlips(){
 // гиганты твёрдой поверхности не имеют — как и на карте системы, кнопка
 // для них не показывается вовсе.
 let flyBtnMode = 'fly'; // 'fly' | 'land'
+
+// ── оценка полёта над кнопкой «ЛЕТЕТЬ» (по прямому требованию пользователя —
+// время в ч/м/с и расход топлива видны ДО нажатия). Только для режима «ЛЕТЕТЬ»
+// — у уже достигнутой цели («ПОСАДКА») лететь никуда не нужно, эстимейт
+// бессмыслен. Токен отбрасывает устаревшие ответы, если цель на радаре
+// сменилась быстрее, чем пришёл предыдущий /api/ship/eta.
+let flyEstimateToken = 0;
+let flyEstimateKey = null; // не перезапрашивать на каждый опрос мира (~1/с), если цель не сменилась
+const FUEL_LABELS = { hydrogen: 'водород', helium3: 'гелий-3' };
+function formatDurationHMS(totalSec){
+  const sec = Math.max(0, Math.round(totalSec));
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  const parts = [];
+  if(h) parts.push(h + 'ч');
+  if(h || m) parts.push(m + 'м');
+  parts.push(s + 'с');
+  return parts.join(' ');
+}
+function updateFlyEstimate(){
+  const box = document.getElementById('radar-fly-estimate');
+  if(flyBtnMode !== 'fly' || !selectedTarget || !currentStar){
+    flyEstimateKey = null;
+    box.classList.remove('show');
+    return;
+  }
+  const planetIndex = selectedTarget.kind === 'planet' ? selectedTarget.index : 0;
+  const key = selectedTarget.kind + ':' + currentStar.id + ':' + planetIndex;
+  if(key === flyEstimateKey) return; // цель та же, что в прошлый опрос — эстимейт уже на экране
+  flyEstimateKey = key;
+  const myToken = ++flyEstimateToken;
+  World.estimateTravel(selectedTarget.kind, currentStar.id, planetIndex).then(est => {
+    if(myToken !== flyEstimateToken) return; // цель уже сменилась — ответ устарел
+    let html = formatDurationHMS(est.seconds);
+    if(est.fuelKey && est.fuelUnits > 0.05){
+      html += `<br>⛽${est.fuelUnits.toFixed(1)} ${FUEL_LABELS[est.fuelKey] || est.fuelKey}`;
+    }
+    box.innerHTML = html;
+    box.classList.add('show');
+  }).catch(() => {
+    if(myToken !== flyEstimateToken) return;
+    box.classList.remove('show');
+  });
+}
+
 function updateFlyUI(){
   const btn = document.getElementById('radar-fly-btn');
-  if(!selectedTarget || !currentStar || !shipView){ btn.classList.remove('show'); return; }
+  if(!selectedTarget || !currentStar || !shipView){ btn.classList.remove('show'); updateFlyEstimate(); return; }
+  // К светилу своей системы кнопки «ЛЕТЕТЬ» нет вовсе (ТЗ.md §2.7.6, прямое
+  // требование пользователя: «звезду нельзя выбрать в качестве цели полёта
+  // буквально») — звезда остаётся в списке и на радаре как ориентир с
+  // дистанцией, но целью навигации не служит; сервер такую команду тоже
+  // отклоняет (ErrStarNotTarget).
+  if(selectedTarget.kind === 'star'){
+    flyBtnMode = 'none'; // и предпросчёт по звезде не запрашиваем — сервер вернёт отказ
+    btn.classList.remove('show');
+    updateFlyEstimate();
+    return;
+  }
   const alreadyThere = !shipView.transit && shipView.systemStarId === currentStar.id &&
     selectedTarget.kind === 'planet' && shipView.atPlanetIndex === selectedTarget.index;
   if(alreadyThere){
-    if(shipView.landed){ btn.classList.remove('show'); return; } // уже сел — сейчас перекинет на planet.html
+    if(shipView.landed){ btn.classList.remove('show'); updateFlyEstimate(); return; } // уже сел — сейчас перекинет на planet.html
     const p = currentStar.planets && currentStar.planets[selectedTarget.index];
-    if(p && p.type === 'gas'){ btn.classList.remove('show'); return; }
+    if(p && p.type === 'gas'){ btn.classList.remove('show'); updateFlyEstimate(); return; }
     flyBtnMode = 'land';
     btn.textContent = 'ПОСАДКА';
     btn.classList.add('show');
+    updateFlyEstimate();
     return;
   }
   flyBtnMode = 'fly';
   btn.textContent = 'ЛЕТЕТЬ';
   btn.classList.add('show');
+  updateFlyEstimate();
 }
 // Пока идёт посадка (после ответа сервера, до конца анимации) — не даём
 // onWorld() перехватить и увести сразу на planet.html: анимация должна
@@ -436,11 +679,6 @@ document.getElementById('radar-fly-btn').addEventListener('click', async (e) => 
 // ══════════════════════════════════════════════════════════════════════════
 const LANDING_ANIM_MS = 4200;
 function animateLanding(){
-  // #space анимирует transform через CSS-transition .25s (для плавных
-  // манёвров, applySpaceRotation) — на покадровое обновление зума эта
-  // transition наложилась бы каждый кадр и дала вязкое отставание вместо
-  // плавного приближения. На время посадки — прямое обновление без нее.
-  spaceEl.style.transition = 'none';
   const t0 = performance.now();
   function step(now){
     const frac = Math.min(1, (now - t0) / LANDING_ANIM_MS);
@@ -479,14 +717,38 @@ function svgEl(tag, attrs){
   return e;
 }
 
+// worldViewCells — сколько клетей укладывается в СТОРОНУ слоя мира. Считается
+// от фактических размеров (#space — квадрат в 320% ширины экрана), а не от
+// константы: масштаб обязан остаться «1 клеть = ширина экрана» (ТЗ.md §2.7.4)
+// при любом размере окна. Кешируется — renderWorldLayer зовут покадрово, а
+// чтение clientWidth заставляет браузер считать раскладку.
+// Кеш сбрасывается не только по resize: при первом кадре раскладки может ещё
+// не быть (clientWidth == 0), и запомнить такое значение нельзя — масштаб
+// остался бы неверным навсегда.
+let viewCellsCache = 0, viewCellsForWidth = 0;
+function worldViewCells(){
+  const layerW = worldLayer.clientWidth;
+  const screenW = document.getElementById('screen').clientWidth;
+  if(!layerW || !screenW) return viewCellsCache || SCALE.shipCellsPerScreen;
+  if(layerW !== viewCellsForWidth){
+    viewCellsForWidth = layerW;
+    viewCellsCache = SCALE.shipCellsPerScreen * layerW / screenW;
+  }
+  return viewCellsCache;
+}
+
 function renderWorldLayer(){
   worldLayer.innerHTML = '';
   if(!currentStar || !shipView) return;
 
-  // Ширина обзора = 1 клеть; #space растянут на 180% экрана (inset:-40%),
-  // поэтому по ширине слоя укладывается 1.8 клети — так при повороте
-  // пространства углы кадра не оказываются пустыми.
-  const viewCells = SCALE.shipCellsPerScreen * 1.8;
+  // Масштаб — ровно тот, что заявлен в ТЗ.md §2.7.4: 1 клеть = ШИРИНА ЭКРАНА
+  // телефона. Считается от фактических размеров элементов, а не от константы
+  // «во сколько раз #space больше экрана»: раньше тут стоял множитель 1.8, но
+  // квадратный viewBox с preserveAspectRatio="slice" на НЕквадратном (высоком)
+  // слое подгонялся по высоте — по ширине экрана в итоге укладывалась
+  // не клеть, а 0.46 клети, то есть весь HUD был увеличен в ~2.2 раза против
+  // ТЗ. Квадратный #space + meet + расчёт от px убирают это расхождение.
+  const viewCells = worldViewCells();
   const half = viewCells / 2;
   worldLayer.setAttribute('viewBox', `${-half} ${-half} ${viewCells} ${viewCells}`);
 
@@ -513,35 +775,322 @@ function renderWorldLayer(){
       class:'w-planet', cx:c.x, cy:c.y, r:(p.d||2)/2, fill: World.planetColor(p),
     }));
   });
+
+  // предсказание траектории — пунктирный луч от носа (см. computeTrajectoryPoints)
+  const traj = computeTrajectoryPoints(viewCells);
+  if(traj.points.length){
+    const d = 'M 0 0 ' + traj.points.map(p => `L ${p.x} ${-p.y}`).join(' ');
+    worldLayer.appendChild(svgEl('path', { class: 'w-trajectory w-trajectory-' + traj.kind, d }));
+    // Отметка конца маршрута в перелёте — куда именно автопилот ведёт корабль.
+    if(traj.kind === 'route'){
+      const end = traj.points[traj.points.length - 1];
+      worldLayer.appendChild(svgEl('circle', {
+        class:'w-route-mark', cx:end.x, cy:-end.y, r: viewCells * 0.012,
+      }));
+    }
+  }
 }
 
-// ── звёздный фон-заглушка ────────────────────────────────────────────────
+// ── пунктир направления движения ─────────────────────────────────────────
+// По прямому требованию пользователя: «луч, который покажет пунктиром
+// слабо заметным траекторию движения корабля в ближайшие 3 секунды, чтоб
+// видеть наглядно, как поворачивается корабль и выравнивается курс, и в бою
+// — понимать планируемый манёвр». Численно интегрируем ВПЕРЁД теми же
+// формулами, что и сервер (settleFlight, ship.go) — точность до шага
+// физики сервера (0.05с) тут не нужна: это превью, не авторитетная позиция,
+// а от текущего набора зажатых кнопок (controlState), не от того, что уже
+// прислал сервер, — иначе луч отставал бы на секунду опроса.
+//
+// ДОСТРОЕН по прямой жалобе пользователя («не простроен пунктир направления
+// движения, хотя в ТЗ задан»). Формально он был и раньше, но увидеть его в
+// игре было почти нельзя, и по трём причинам сразу:
+//  1) в перелёте автопилота луч не рисовался ВООБЩЕ (ранний выход по
+//     shipView.transit) — то есть в основном режиме движения его не было;
+//  2) горизонт был жёстко 3 секунды: при штатном ускорении (сотни у.е./с²)
+//     за 3 с корабль проходит тысячные доли клети — луч выходил короче
+//     пикселя и просто не был виден;
+//  3) на стоянке (скорость 0) луч вырождался в точку — направление носа
+//     ничем не показывалось.
+// Теперь: в перелёте — пунктир до самой цели маршрута; в ручном полёте —
+// предсказание той же кинематикой, что считает сервер (settleFlight), но с
+// РАСТЯЖИМЫМ горизонтом: интегрируем дальше, пока луч не наберёт заметную
+// длину (или пока не упрёмся в потолок горизонта); на месте — короткий
+// прямой луч по курсу, чтобы направление носа было видно всегда.
+const TRAJECTORY_SECONDS = 3;        // базовый горизонт предсказания, «время корабля»
+const TRAJECTORY_MAX_SECONDS = 600;  // потолок растяжения горизонта
+const TRAJECTORY_STEP_SEC = 0.15;
+const TRAJECTORY_MIN_FRAC = 0.3;     // минимальная длина луча в долях обзора
+function computeTrajectoryPoints(viewCells){
+  if(!shipView) return { kind:'aim', points:[] };
+
+  // ── автопилот: пунктир до цели маршрута ────────────────────────────────
+  const t = shipView.transit;
+  if(t){
+    if(t.mode !== 'system') return { kind:'aim', points:[] }; // в межзвёздном перелёте вокруг пустота
+    const me = shipLocal();
+    // Маршрут может огибать светило (Transit.hasMid) — тогда пунктир ломаный,
+    // через ту же путевую точку, по которой реально идёт корабль.
+    const pts = [];
+    if(t.hasMid) pts.push({ x: t.midX - me.x, y: t.midY - me.y });
+    pts.push({ x: t.toX - me.x, y: t.toY - me.y });
+    return { kind:'route', points: pts };
+  }
+
+  // ── ручной полёт: предсказание по текущим зажатым органам управления ────
+  const accel = shipView.accelUe || 0;
+  const turnRateRad = (shipView.turnRateDeg || 0) * Math.PI / 180;
+  const maxSpeed = shipView.maxSpeed || 300000;
+  const minLen = viewCells * TRAJECTORY_MIN_FRAC;
+  let heading = World.shipHeadingDeg() * Math.PI / 180;
+  let speed = World.shipSpeed();
+  let x = 0, y = 0, len = 0, turned = 0;
+  const pts = [];
+  const horizonSec = TRAJECTORY_SECONDS * World.timeFactor();
+  let elapsed = 0;
+  while(elapsed < TRAJECTORY_MAX_SECONDS && !(elapsed >= horizonSec && len >= minLen)){
+    // За базовым горизонтом шаг крупнее: там луч только «дотягивается» до
+    // видимой длины, а не показывает точную форму ближайшего манёвра.
+    const dt = elapsed < horizonSec ? TRAJECTORY_STEP_SEC : TRAJECTORY_STEP_SEC * 8;
+    if(controlState.turnLeft){ heading += turnRateRad * dt; turned += turnRateRad * dt; }
+    if(controlState.turnRight){ heading -= turnRateRad * dt; turned += turnRateRad * dt; }
+    if(controlState.thrust) speed = Math.min(maxSpeed, speed + accel * dt);
+    if(controlState.brake) speed = Math.max(0, speed - accel * dt);
+    const step = speed / World.SCREEN_UE * dt;
+    x += step * Math.cos(heading);
+    y += step * Math.sin(heading);
+    len += step;
+    elapsed += dt;
+    pts.push({ x, y });
+    if(speed <= 0 && !controlState.thrust) break; // стоим и не разгоняемся — дальше луч не вырастет
+    // На зажатом повороте корабль идёт по кругу: тянуть луч дальше полуоборота
+    // бессмысленно — он свернётся в спираль поверх самого себя. Полудуги
+    // достаточно, чтобы увидеть, куда ведёт манёвр.
+    if(turned > Math.PI) break;
+  }
+  // Корабль стоит (или тормозит в ноль) — показываем хотя бы направление
+  // носа: короткий прямой луч, иначе игрок не видит, куда развёрнут корабль.
+  if(len < viewCells * 0.02){
+    const aim = viewCells * 0.16;
+    return { kind:'aim', points:[{ x: aim * Math.cos(heading), y: aim * Math.sin(heading) }] };
+  }
+  return { kind:'course', points: pts };
+}
+
+// ── фон: звёзды по пройденному пути + пыль по скорости ───────────────────
+// ПЕРЕПИСАН ДВАЖДЫ по прямым замечаниям пользователя.
+//
+// Первое («движение фона не заметно, нет ощущения что корабль движется —
+// нужно либо движение фоновых звёзд, либо пролетающие микрочастицы, которые
+// покажут скорость и поворот») вскрыло три причины: фон брал скорость из
+// снимка сервера, а в перелёте автопилота та была НУЛЁМ (первопричина
+// вылечена в world.js/ship.go); канва лежала внутри #space и поворачивалась
+// вместе с ним CSS-ом, то есть весь фон был одной жёсткой картинкой без
+// глубины; и сам фон был одним слоем одинаковых точек, скроллящихся по Y.
+//
+// Второе («пролетая не так много клетей, создаётся ощущение что пролетел
+// много; частицы должны отражать скорость показательно, чтоб полёт
+// ощущался даже на небольших скоростях, а по мере разгона их ускорение
+// падало логарифмически; звёздный фон показывает смену звёзд фактически по
+// пролёту клети») развело фон на ДВЕ РАЗНЫЕ модели — и это ключевое:
+//
+//  • ЗВЁЗДЫ — не «эффект скорости», а честная картина мира: их положение
+//    считается ОТ ФАКТИЧЕСКОЙ ПОЗИЦИИ КОРАБЛЯ в клетях, в том же масштабе,
+//    что и слой мира (1 клеть = ширина экрана, ТЗ.md §2.7.4). Пролетел
+//    клеть — картина звёзд сменилась ровно на экран, ни больше ни меньше.
+//    Никакой интеграл скорости тут не участвует, поэтому «ощущение, что
+//    пролетел много» больше не может разойтись с тем, сколько пролетели на
+//    самом деле. Поле бесконечное за счёт заворачивания координат в тайл
+//    (два слоя с несоразмерными тайлами — чтобы повтор не читался глазом).
+//
+//  • ПЫЛЬ (ближние микрочастицы) — наоборот, чистое ощущение скорости, и
+//    именно ей разрешено «привирать»: связь скорости частиц со скоростью
+//    корабля ЛОГАРИФМИЧЕСКАЯ С НАСЫЩЕНИЕМ (колено DUST_KNEE — низкое, чтобы
+//    даже скромный ход уже было видно; дальше кривая выполаживается, и
+//    тысячекратный разгон ускоряет пыль всего в несколько раз). Пыль живёт
+//    в системе координат КАМЕРЫ: каждый кадр её поворачивают на приращение
+//    курса (поэтому разворот виден по вееру пыли даже на месте) и сдвигают
+//    «на корму». На скорости частицы вытягиваются в короткие штрихи.
+const STARFIELD = {
+  // ── пыль
+  DUST_KNEE: 50,             // у.е. — уже на этой скорости пыль заметно идёт
+  DUST_MAX_PX_PER_SEC: 600,  // px/с на пределе скорости (насыщение кривой)
+  DUST_MAX_FRAC: 1.25,       // потолок на отладочном ускорении времени
+  DUST_COUNT: 70,
+  DUST_COLOR: '#7fe6ff',
+  // ── звёзды: tileCells — период заворачивания поля, клети (несоразмерные,
+  // чтобы рисунок не повторялся заметно); count — сколько звёзд на тайл.
+  STAR_LAYERS: [
+    { tileCells: 3.1, count: 50, size:[0.6,1.6], alpha:[0.30,0.85], color:'#cce4ff' },
+    { tileCells: 5.3, count: 44, size:[0.4,1.0], alpha:[0.15,0.45], color:'#8fb6d9' },
+  ],
+};
 (function drawStarfield(){
-  const canvas = document.getElementById('space-canvas');
+  const canvas = document.getElementById('starfield');
   const ctx = canvas.getContext('2d');
+  const screenEl = document.getElementById('screen');
+  // dpr зажат: канва во весь экран перерисовывается покадрово, на телефоне с
+  // dpr 3 это втрое больше пикселей без видимой разницы на точках в 1–2 px.
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+
+  // Начало координат — корабль (те же 50%/68%, что #ship-wrap и #space).
+  let originX = 0, originY = 0, wrapHalf = 1, cellPx = 1;
+  let dust = [], stars = [];
+  function seed(){
+    dust = Array.from({length: STARFIELD.DUST_COUNT}, () => ({
+      x: (Math.random()*2 - 1) * wrapHalf,
+      y: (Math.random()*2 - 1) * wrapHalf,
+      size: 0.5 + Math.random()*0.7,
+      alpha: 0.25 + Math.random()*0.45,
+    }));
+    // Звёзды раскиданы в КЛЕТЯХ внутри своего тайла — это координаты в мире,
+    // а не на экране: экранные считаются каждый кадр от позиции корабля.
+    stars = [];
+    STARFIELD.STAR_LAYERS.forEach(layer => {
+      for(let i = 0; i < layer.count; i++){
+        stars.push({
+          layer,
+          bx: Math.random() * layer.tileCells,
+          by: Math.random() * layer.tileCells,
+          size: layer.size[0] + Math.random()*(layer.size[1]-layer.size[0]),
+          alpha: layer.alpha[0] + Math.random()*(layer.alpha[1]-layer.alpha[0]),
+        });
+      }
+    });
+  }
   function resize(){
-    canvas.width = canvas.clientWidth * devicePixelRatio;
-    canvas.height = canvas.clientHeight * devicePixelRatio;
+    const w = screenEl.clientWidth, h = screenEl.clientHeight;
+    if(!w || !h) return false; // раскладки ещё нет — попробуем на следующем кадре
+    // Округление обязательно: canvas.width — целое, и дробный dpr иначе давал
+    // бы вечное несовпадение с проверкой размера в draw (пересев частиц
+    // каждый кадр).
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    originX = w / 2;
+    originY = h * 0.68;
+    // 1 клеть = ширина экрана (ТЗ.md §2.7.4) — тот же масштаб, что у слоя
+    // мира, иначе звёзды и планеты уезжали бы с разной скоростью.
+    cellPx = w / SCALE.shipCellsPerScreen;
+    // Половина квадрата, в котором «заворачиваются» частицы: должна
+    // перекрывать самый дальний угол экрана от корабля, иначе частица
+    // перескакивала бы с края на край прямо на глазах у игрока.
+    wrapHalf = Math.hypot(Math.max(originX, w-originX), Math.max(originY, h-originY)) + 12;
+    seed();
+    return true;
   }
   resize();
   window.addEventListener('resize', resize);
-  const stars = Array.from({length:120}, () => ({
-    x: Math.random(), y: Math.random(), r: Math.random()*1.4+0.3, a: Math.random()*0.6+0.2
-  }));
-  function draw(){
+
+  // wrap — вернуть координату в квадрат [−half, +half] (для пыли — в px, для
+  // звёзд — в клетях с периодом тайла).
+  function wrap(v, half){
+    const s = half * 2;
+    return ((v + half) % s + s) % s - half;
+  }
+
+  // Позиция, ОТ КОТОРОЙ отсчитывается звёздное поле: обычно локальные
+  // координаты системы, а в межзвёздном перелёте — секторные (в тех же
+  // клетях): иначе на самом длинном перелёте игры фон стоял бы неподвижно.
+  function fieldPos(){
+    const t = shipView && shipView.transit;
+    if(t && t.mode === 'interstellar'){
+      const sp = World.shipSectorPos();
+      if(sp) return { x: sp.x, y: sp.r };
+    }
+    return World.shipPos();
+  }
+
+  let lastHeading = null, lastT = null;
+  function draw(t){
+    const dt = lastT == null ? 0 : Math.min(0.1, (t - lastT) / 1000); // >0.1с (вкладка была скрыта) не отыгрываем
+    lastT = t;
+    // Размер экрана мог быть ещё не известен на момент запуска (или окно
+    // изменили) — сверяем каждый кадр, это одно сравнение.
+    if(canvas.width !== Math.round(screenEl.clientWidth * dpr) ||
+       canvas.height !== Math.round(screenEl.clientHeight * dpr)){
+      if(!resize()){ requestAnimationFrame(draw); return; }
+    }
+
+    const maxSpeed = (shipView && shipView.maxSpeed) || 300000;
+    // Скорость — из общего модуля (World.shipSpeed): она живая и в ручном
+    // полёте, и в перелёте автопилота. Множитель ускорения времени учтён:
+    // на пресетах админ-панели мир проносится мимо во столько же раз быстрее.
+    const speed = (shipView ? World.shipSpeed() : 0) * World.timeFactor();
+    const knee = STARFIELD.DUST_KNEE;
+    let dustFrac = Math.log(1 + speed/knee) / Math.log(1 + maxSpeed/knee);
+    if(!(dustFrac > 0)) dustFrac = 0;
+    if(dustFrac > STARFIELD.DUST_MAX_FRAC) dustFrac = STARFIELD.DUST_MAX_FRAC;
+
+    // Поворот: фон неподвижен в мире, значит при смене курса он
+    // поворачивается вокруг корабля. Звёздам поворот отдаётся полным углом
+    // (они пересчитываются от позиции), пыли — приращением за кадр.
+    const headingDeg = currentHeadingDeg();
+    if(lastHeading == null) lastHeading = headingDeg;
+    let dHeading = ((headingDeg - lastHeading + 540) % 360) - 180; // кратчайшая дуга
+    lastHeading = headingDeg;
+    // Курс растёт против часовой в МИРЕ (0=+X), а камера смотрит по курсу —
+    // значит на ЭКРАНЕ (ось Y вниз) фон на то же приращение поворачивается по
+    // часовой: та же связь, что в applySpaceRotation, где CSS получает
+    // rotate(heading−90) с положительным углом по часовой.
+    const dRad = dHeading * Math.PI / 180;
+    const dca = Math.cos(dRad), dsa = Math.sin(dRad);
+
+    ctx.setTransform(dpr, 0, 0, dpr, originX*dpr, originY*dpr);
+    const viewW = canvas.width/dpr, viewH = canvas.height/dpr;
     ctx.fillStyle = '#04060f';
-    ctx.fillRect(0,0,canvas.width,canvas.height);
-    stars.forEach(s=>{
-      ctx.globalAlpha = s.a;
-      ctx.fillStyle = '#cce4ff';
+    ctx.fillRect(-originX, -originY, viewW, viewH);
+
+    // ── звёзды: экранное положение = (звезда − корабль) в клетях, в масштабе
+    // экрана, повёрнутое по курсу. Та же формула, что у слоя мира
+    // (renderWorldLayer rel() + CSS rotate(heading−90)) — поэтому звёзды и
+    // планеты движутся согласованно, как один мир.
+    const me = fieldPos();
+    const camRad = (headingDeg - 90) * Math.PI / 180;
+    const cca = Math.cos(camRad), csa = Math.sin(camRad);
+    const marginX = originX + 4, marginY = originY + 4;
+    for(const s of stars){
+      const half = s.layer.tileCells / 2;
+      const dx = wrap(s.bx - me.x, half) * cellPx;
+      const dy = -wrap(s.by - me.y, half) * cellPx; // ось Y экрана вниз
+      const x = dx*cca - dy*csa, y = dx*csa + dy*cca;
+      if(x < -marginX || x > viewW - marginX || y < -marginY || y > viewH - marginY) continue;
+      ctx.globalAlpha = s.alpha;
+      ctx.fillStyle = s.layer.color;
       ctx.beginPath();
-      ctx.arc(s.x*canvas.width, s.y*canvas.height, s.r*devicePixelRatio, 0, Math.PI*2);
+      ctx.arc(x, y, s.size, 0, Math.PI*2);
       ctx.fill();
-    });
+    }
+
+    // ── пыль: интегрируется по времени от «ощущаемой» скорости
+    const flowPx = dustFrac * STARFIELD.DUST_MAX_PX_PER_SEC * dt;
+    const streak = dustFrac * STARFIELD.DUST_MAX_PX_PER_SEC * 0.045;
+    ctx.strokeStyle = STARFIELD.DUST_COLOR;
+    ctx.fillStyle = STARFIELD.DUST_COLOR;
+    for(const p of dust){
+      if(dHeading){
+        const x = p.x*dca - p.y*dsa, y = p.x*dsa + p.y*dca;
+        p.x = x; p.y = y;
+      }
+      // «Вперёд» на экране — вверх, значит мир утекает вниз (+Y).
+      p.y = wrap(p.y + flowPx, wrapHalf);
+      p.x = wrap(p.x, wrapHalf);
+
+      ctx.globalAlpha = p.alpha;
+      if(streak > 1.2){
+        ctx.lineWidth = p.size;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y - streak);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
     ctx.globalAlpha = 1;
     requestAnimationFrame(draw);
   }
-  draw();
+  requestAnimationFrame(draw);
 })();
 
 // ── тост ──────────────────────────────────────────────────────────────────
@@ -567,24 +1116,113 @@ document.getElementById('modal').onclick = (e)=>{ if(e.target.id==='modal') e.cu
 document.getElementById('btn-menu').onclick = ()=>openModal('МЕНЮ', 'Заглушка: выход в главное меню.');
 // Карта звёздной системы или сектора — в зависимости от того, где сейчас
 // корабль (ТЗ_UI.md §2.3): в межзвёздном перелёте показывать нечего кроме
-// самого сектора, иначе — система, в которой корабль находится сейчас.
+// самого сектора, иначе — система, в которой корабль находится сейчас. Это
+// поведение — теперь только у РАДАРА (по прямому замечанию пользователя: «на
+// карту системы и так ведёт радар»); верхняя правая кнопка — самостоятельный
+// короткий путь ВСЕГДА на карту сектора, см. ниже.
 function openMapForShipLocation(){
   if(shipView && shipView.landed){ location.href = 'planet.html'; return; }
   location.href = (shipView && shipView.transit && shipView.transit.mode === 'interstellar') ? 'galaxy.html' : 'system.html';
 }
-document.getElementById('btn-galaxy').onclick = openMapForShipLocation;
+// Верхняя правая кнопка — всегда карта СЕКТОРА (galaxy.html), не системы:
+// на карту системы уже ведёт радар (openMapForShipLocation выше), дублировать
+// его тут незачем — пользователю нужен именно короткий путь к обзору сектора.
+document.getElementById('btn-galaxy').onclick = ()=>{
+  if(shipView && shipView.landed){ location.href = 'planet.html'; return; }
+  location.href = 'galaxy.html';
+};
 
 // ── радар и список объектов ─────────────────────────────────────────────
 document.getElementById('radar-wrap').onclick = openMapForShipLocation;
 // Клик по списку объектов раскрывает панель вверх (до зоны меню), а не открывает модалку —
 // показывает все видимые объекты, а не только 4 ближайших.
-document.getElementById('object-list').onclick = ()=>{
-  document.getElementById('object-list').classList.toggle('expanded');
+function toggleObjectList(){
+  const expanded = document.getElementById('object-list').classList.toggle('expanded');
+  document.getElementById('ol-expand-btn').textContent = expanded ? 'СВЕРНУТЬ' : 'РАЗВЕРНУТЬ';
   renderObjectList();
-};
+}
+document.getElementById('object-list').onclick = toggleObjectList;
+
+// ── скелет корабля: сетка палуб реального дизайна (server: ShipView.decks,
+// те же row/col, что в client/ship-deck-sectors.html) вместо прежней условной
+// стрелки — по прямому требованию пользователя. Каждая клетка — прямоугольный
+// «чекбокс», заполнение снизу пропорционально HP палубы (Current/Max), цвет
+// от целой (accent2) до пробитой (danger). В будущем на этот же скелет
+// «наденется» скин — сейчас всегда голый каркас (тоже прямая просьба).
+const SKEL_CELL = 7; // px в системе координат viewBox — те же 5×7, что в конструкторе
+const skeletonSvg = document.getElementById('ship-skeleton');
+function hpColor(ratio){
+  const full = [0,229,255], empty = [255,80,64]; // --accent2 → --danger
+  const c = full.map((v,i) => Math.round(v + (empty[i]-v) * (1-ratio)));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+// TAPER_AT_NOSE — по прямому требованию пользователя корпус не должен
+// собираться из одинаковых квадратов: клети сужаются к носу (col=6),
+// оставаясь полной ширины у кормы (col=0) — силуэт вытянутого корабля, а не
+// кирпича. Сужается только ШИРИНА (лат. ось, row) — высота клети (col, вдоль
+// корпуса) не трогается, иначе между соседними палубами появлялись бы щели
+// по продольной оси. Прямоугольник каждой клети центрируется в своём
+// row-слоте (иначе более узкие носовые клети съезжали бы к одному борту).
+const TAPER_AT_NOSE = 0.45; // доля исходной ширины у самого носа (col=6)
+let lastSkeletonKey = null; // не перерисовывать, если состав/HP не менялись с прошлого раза
+function renderSkeleton(){
+  const decks = (shipView && shipView.decks) || [];
+  const key = JSON.stringify(decks);
+  if(key === lastSkeletonKey) return;
+  lastSkeletonKey = key;
+  skeletonSvg.innerHTML = '';
+  decks.forEach(d => {
+    // col 0(корма)..6(нос) → экранная ось «вперёд» (нос вверх экрана, камера
+    // и так всегда смотрит по курсу — см. applySpaceRotation); row 0..4 →
+    // поперечная ось (борт).
+    const taper = 1 - (1 - TAPER_AT_NOSE) * (d.col / 6);
+    const w = SKEL_CELL * taper;
+    const x = d.row * SKEL_CELL + (SKEL_CELL - w) / 2;
+    const y = (7 - 1 - d.col) * SKEL_CELL;
+    const ratio = d.max > 0 ? Math.max(0, Math.min(1, d.current / d.max)) : 0;
+    skeletonSvg.appendChild(svgEl('rect', {
+      x, y, width: w, height: SKEL_CELL,
+      fill: 'rgba(6,12,28,0.7)', stroke: 'rgba(0,229,255,0.5)', 'stroke-width': 0.4,
+    }));
+    if(ratio > 0){
+      const fillH = SKEL_CELL * ratio;
+      skeletonSvg.appendChild(svgEl('rect', {
+        x, y: y + (SKEL_CELL - fillH), width: w, height: fillH,
+        fill: hpColor(ratio), opacity: 0.85,
+      }));
+    }
+  });
+}
 
 // ── меню трёх кнопок ─────────────────────────────────────────────────────
 const shipWrap = document.getElementById('ship-wrap');
+
+// controlState — какие органы ручного управления зажаты ПРЯМО СЕЙЧАС; единая
+// точка правды на этой странице, синхронизируется с сервером (World.setControl)
+// и с тем, что реально пришло в последнем снимке (onWorld, на случай если
+// другое устройство/владелец флота уже что-то нажал — «одна галактика на
+// всех», как и остальное состояние в проекте).
+const controlState = { thrust:false, brake:false, turnLeft:false, turnRight:false };
+// Форсаж/торможение — тот же визуальный отклик на скелете, что раньше давали
+// вырезанные flame/brake-glow (см. CSS #ship-wrap.boost/.brake #ship-skeleton).
+function applyControlVisuals(){
+  shipWrap.classList.toggle('boost', controlState.thrust);
+  shipWrap.classList.toggle('brake', controlState.brake);
+}
+let controlSyncing = false, controlDirty = false;
+async function syncControl(){
+  applyControlVisuals();
+  if(controlSyncing){ controlDirty = true; return; }
+  controlSyncing = true;
+  controlDirty = false;
+  try{ await World.setControl(controlState.thrust, controlState.brake, controlState.turnLeft, controlState.turnRight); }
+  catch(e){ toast('Не удалось передать управление: ' + e.message); }
+  finally{
+    controlSyncing = false;
+    if(controlDirty) syncControl(); // пока ждали ответ, состояние снова изменилось — досылаем актуальное
+  }
+}
+
 const SETS = [
   { name:'БОЙ', buttons:[
       { label:'Тактика\n1', kind:'radio', act:()=>toast('Тактика захода №1 — ведомые синхронны') },
@@ -592,14 +1230,23 @@ const SETS = [
       { label:'Тактика\n3', kind:'radio', act:()=>toast('Тактика захода №3 — ведомые синхронны') },
     ]},
   { name:'ПОЛЁТ', buttons:[
-      { label:'Паруса', kind:'toggle', act:(on)=>{ shipWrap.classList.toggle('sails', on); toast(on?'Паруса развёрнуты':'Паруса свёрнуты'); } },
-      { label:'Форсаж', kind:'toggle', act:(on)=>{ shipWrap.classList.toggle('boost', on); toast(on?'Форсаж включён':'Форсаж выключен'); } },
-      { label:'Тормож.', kind:'toggle', act:(on)=>{ shipWrap.classList.toggle('brake', on); toast(on?'Торможение':'Торможение отключено'); } },
+      { label:'Паруса', kind:'toggle', isOn:()=>shipWrap.classList.contains('sails'),
+        act:(on)=>{ shipWrap.classList.toggle('sails', on); toast(on?'Паруса развёрнуты':'Паруса свёрнуты'); } },
+      { label:'Форсаж', kind:'toggle', isOn:()=>controlState.thrust,
+        act:(on)=>{ controlState.thrust = on; syncControl(); toast(on?'Форсаж включён':'Форсаж выключен'); } },
+      { label:'Тормож.', kind:'toggle', isOn:()=>controlState.brake,
+        act:(on)=>{ controlState.brake = on; syncControl(); toast(on?'Торможение':'Торможение отключено'); } },
     ]},
   { name:'ДЕЙСТВИЯ', buttons:[
       { label:'Осмотр\nкорабля', kind:'momentary', act:()=>openModal('ОСМОТР КОРАБЛЯ', 'Заглушка: выберите свой корабль или брошенный на экране, чтобы увидеть характеристики/груз/модули.') },
       { label:'SOS', kind:'momentary', act:()=>toast('Сигнал SOS отправлен (заглушка)') },
-      { label:'Сброс\nгруза', kind:'momentary', act:()=>toast('Груз выброшен из трюма (заглушка)') },
+      // Служебная кнопка: настоящего боя/столкновений в игре ещё нет
+      // (ТЗ.md §2.7.5 — только текст, без реализации) — демонстрирует
+      // заполнение HP-чекбоксов скелета, по прямой просьбе пользователя.
+      { label:'Нанести\nурон', kind:'momentary', act: async ()=>{
+          try{ const deck = await World.debugDamage(); toast(`Палуба ${deck.row},${deck.col}: ${deck.current}/${deck.max}`); }
+          catch(e){ toast('Не удалось: ' + e.message); }
+        } },
     ]},
 ];
 let setIndex = 0;
@@ -611,7 +1258,7 @@ function renderSet(){
   wrap.innerHTML = '';
   set.buttons.forEach(b=>{
     const el = document.createElement('div');
-    el.className = 'tm-btn';
+    el.className = 'tm-btn' + (b.kind === 'toggle' && b.isOn && b.isOn() ? ' active' : '');
     el.style.whiteSpace = 'pre-line';
     el.textContent = b.label;
     el.onclick = ()=>{
@@ -637,34 +1284,61 @@ document.getElementById('tm-down').onclick = ()=>{ setIndex = (setIndex+SETS.len
 // ── боковые манёвренные регуляторы ──────────────────────────────────────
 // В режиме «БОЙ» — угол поворота корабля относительно цели.
 // В остальных режимах («ПОЛЁТ»/«ДЕЙСТВИЯ») — манёвр вправо/влево для уворота от астероидов/обломков.
+// Оба режима физически — одно и то же (turnLeft/turnRight), разница только в подписи.
 function updateSteerLabels(){
   const inCombat = SETS[setIndex].name === 'БОЙ';
   document.getElementById('steer-left-label').textContent = inCombat ? 'ПОВОРОТ' : 'МАНЁВР';
   document.getElementById('steer-right-label').textContent = inCombat ? 'ПОВОРОТ' : 'МАНЁВР';
 }
 
-// Корабль всегда смотрит «вперёд» (вверх экрана) и не вращается.
-// При смене курса вращается пространство вокруг корабля — поворот вправо
-// разворачивает мир против часовой стрелки (то, что было впереди, уходит влево), и наоборот.
+// ── камера: смотрит по курсу корабля, а не корабль по экрану ─────────────
+// По прямому уточнению пользователя: «корабль движется в мире, он центр
+// мира, но камера смотрит по курсу, а корабль по курсу в мире поворачивается
+// — таким образом поворот корабля поворачивает обзор». Значит НА ЭКРАНЕ
+// по-прежнему «нос вверх» (как и раньше), но угол поворота мира вокруг
+// корабля теперь берётся из НАСТОЯЩЕГО курса (World.shipHeadingDeg —
+// server/ship.go Heading, реальные разгон/торможение/поворот), а не из
+// локальной переменной, растущей на 3° за клик, как было раньше.
+//
+// Перевод headingDeg (математическая конвенция, 0=+X, рост против часовой)
+// в CSS-поворот: без поворота экранный «верх» соответствует мировому
+// «северу» (+Y, угол 90° — так уже считает renderWorldLayer/rel), поэтому
+// cameraDeg = headingDeg − 90 (поворачивает мир так, чтобы курс встал вверх).
+// Во время перелёта внутри системы (Transit) курс красивее взять из
+// направления самого перелёта — Heading на сервере в полёте не меняется
+// (ведёт автопилот, не ручное управление).
 const spaceEl = document.getElementById('space');
-let spaceAngle = 0;
 let spaceZoom = 1; // 1 обычно, растёт только во время анимации посадки (animateLanding)
-function applySpaceRotation(){ spaceEl.style.transform = `rotate(${spaceAngle}deg) scale(${spaceZoom})`; }
+// Курс в перелёте больше не «направление маршрута скачком»: World.shipHeadingDeg
+// сам возвращает разворот на маршрут (Transit.turnSec, server/ship.go) и потому
+// годится для камеры в любом режиме — обзор доворачивается той же скоростью
+// поворота, что и при ручном манёвре.
+function currentHeadingDeg(){ return World.shipHeadingDeg(); }
+function applySpaceRotation(){
+  const deg = currentHeadingDeg() - 90;
+  // translate(-50%,-50%) — часть позиционирования #space (квадрат центрирован
+  // на корабле, см. CSS): если её не повторить здесь, transform затрёт её и
+  // мир уедет вбок.
+  spaceEl.style.transform = `translate(-50%,-50%) rotate(${deg}deg) scale(${spaceZoom})`;
+}
 
 function wireSteer(el, dir){
-  const sign = dir === 'left' ? 1 : -1; // left → мир вращается по часовой, right → против часовой
-  let turnTimer = null;
+  const key = dir === 'left' ? 'turnLeft' : 'turnRight';
   const start = ()=>{
+    if(controlState[key]) return;
     el.classList.add('active');
     const inCombat = SETS[setIndex].name === 'БОЙ';
     toast(inCombat
       ? `Поворот ${dir==='left'?'влево':'вправо'} — прицеливание по цели`
       : `Манёвр ${dir==='left'?'влево':'вправо'} — уворот от препятствия`);
-    turnTimer = setInterval(()=>{ spaceAngle += sign*3; applySpaceRotation(); }, 60);
+    controlState[key] = true;
+    syncControl();
   };
   const end = ()=>{
+    if(!controlState[key]) return;
     el.classList.remove('active');
-    clearInterval(turnTimer);
+    controlState[key] = false;
+    syncControl();
   };
   el.addEventListener('pointerdown', start);
   el.addEventListener('pointerup', end);
@@ -674,19 +1348,344 @@ function wireSteer(el, dir){
 wireSteer(document.getElementById('steer-left'), 'left');
 wireSteer(document.getElementById('steer-right'), 'right');
 
+// ── панель из 3 кнопок быстрого доступа (ЗАРЯДИТЬ / УСКОРИТЬ-МЕДЛЕННЕЕ /
+// РАКЕТА, #quick-mid) — вместе с РАЗВЕРНУТЬ и ЛЕТЕТЬ образует полосу «5 кнопок
+// быстрого доступа», по прямому требованию пользователя.
+const btnCharge = document.getElementById('btn-charge');
+const btnBoost = document.getElementById('btn-boost');
+const btnMissile = document.getElementById('btn-missile');
+
+// РАКЕТА — оружие в игре пока не реализовано вовсе (ни хардпоинтов, ни
+// боеприпасов) — по прямой просьбе пользователя кнопка всё равно
+// присутствует как задел на будущее, сейчас чистая заглушка-тост, тот же
+// приём, что и у остальных нереализованных разделов в проекте.
+btnMissile.onclick = () => toast('Оружие пока не реализовано (заглушка)');
+
+// ЗАРЯДИТЬ — сжигает металлический водород в заряд аккумуляторов
+// (server/ship.go Charge). На всех 4 стартовых кораблях сейчас нет ни одной
+// батареи (ship-deck-sectors.html их не ставил) — ошибка сервера
+// «на корабле нет аккумуляторов» в этом случае ожидаема, не баг.
+btnCharge.onclick = async () => {
+  try{ await World.charge(); toast('Аккумуляторы заряжены'); }
+  catch(e){ toast('Не удалось зарядить: ' + e.message); }
+};
+
+// УСКОРИТЬ/МЕДЛЕННЕЕ — тап жжёт разовый импульс гелия («газонуть»),
+// удержание дольше BOOST_HOLD_MS защёлкивает устойчивый форсаж
+// (Ship.Boosted, server/ship.go) — из него выходят ОДНИМ нажатием той же
+// кнопки (уже показывающей «МЕДЛЕННЕЕ»), а не повторным удержанием, см.
+// комментарий у Ship.Boosted на сервере.
+const BOOST_HOLD_MS = 350;
+let boostHoldTimer = null, boostHoldFired = false;
+function updateBoostBtn(){
+  const boosted = !!(shipView && shipView.boosted);
+  btnBoost.textContent = boosted ? '🐢' : '🚀';
+  btnBoost.title = boosted ? 'Отключить форсаж — вернуться на штатное топливо' : 'Тап — импульс на гелии, удержание — форсаж';
+  btnBoost.classList.toggle('boosted', boosted);
+}
+function boostPointerEnd(){
+  if(boostHoldTimer){ clearTimeout(boostHoldTimer); boostHoldTimer = null; }
+}
+btnBoost.addEventListener('pointerdown', () => {
+  boostHoldFired = false; // сбрасывать ДО раннего return — иначе значение от прошлого удержания протухает сюда
+  if(shipView && shipView.boosted) return; // уже в форсаже — сработает по pointerup ниже
+  boostHoldTimer = setTimeout(async () => {
+    boostHoldFired = true;
+    try{ await World.boost('engage'); toast('Форсаж на гелии включён'); updateBoostBtn(); }
+    catch(e){ toast('Не удалось: ' + e.message); }
+  }, BOOST_HOLD_MS);
+});
+btnBoost.addEventListener('pointerup', async () => {
+  const wasHold = boostHoldFired;
+  boostPointerEnd();
+  // Отпускание СРАЗУ ПОСЛЕ того, как таймер только что защёлкнул форсаж —
+  // ничего больше не делает (иначе тот же жест немедленно выключал бы то,
+  // что сам только что включил). Выключает форсаж только ОТДЕЛЬНЫЙ,
+  // последующий тап — см. ветку ниже.
+  if(wasHold) return;
+  if(shipView && shipView.boosted){
+    try{ await World.boost('disengage'); toast('Форсаж выключен'); updateBoostBtn(); }
+    catch(e){ toast('Не удалось: ' + e.message); }
+    return;
+  }
+  try{ await World.boost('kick'); toast('Газанули!'); }
+  catch(e){ toast('Не удалось: ' + e.message); }
+});
+btnBoost.addEventListener('pointerleave', boostPointerEnd);
+btnBoost.addEventListener('pointercancel', boostPointerEnd);
+
+renderSet();
+
+// ══════════════════════════════════════════════════════════════════════════
+// ОКНО ОСМОТРА КОРАБЛЯ — открывается кликом по HUD (ускорение/скорость/
+// дистанция), по прямому требованию пользователя. Показывает: скелет ЭТОГО
+// конкретного корабля (реальные row/col/модули из shipView.decks — теперь
+// сервер отдаёт состав слотов, не только агрегированное HP, см.
+// server/shipphysics.go DeckHP.Modules) с секторами обстрела (та же ручная
+// привязка палуба→сектор, что в client/ship-deck-sectors.html
+// MANUAL_SECTOR_ROWS — скопирована буквально, числа обязаны совпадать),
+// клик по палубе показывает, что в неё установлено; трюм (с выбросом груза
+// в космос и подбором чужих коробок — server/cargo.go) и газохранилище;
+// пассажирский отсек и оружие — честные заглушки (логики за ними в игре
+// пока нет вовсе, не только UI); быстрые тактические команды — переименование
+// 3 слотов БОЙ-тактик (SETS выше), хранится в localStorage (это чисто
+// клиентская подпись кнопки, не игровое состояние — серверу не нужна).
+// ══════════════════════════════════════════════════════════════════════════
+
+// SI_SECTOR_ROWS/SI_CITADEL_SECTOR/SI_SECTOR_NAMES — буквальная копия
+// MANUAL_SECTOR_ROWS/CITADEL_SECTOR/SECTOR_NAMES из client/ship-deck-
+// sectors.html: жёсткая ручная привязка (row,col)→сектор, не формула —
+// должна остаться той же таблицей во всех местах, где встречается.
+const SI_SECTOR_ROWS = ['3445550', '3345500', '333Ц000', '3321100', '3221110'];
+const SI_CITADEL_SECTOR = 6;
+const SI_SECTOR_NAMES = [
+  'Нос', 'Правый борт (носовой)', 'Правый борт (кормовой)', 'Корма',
+  'Левый борт (кормовой)', 'Левый борт (носовой)', 'Центральная палуба (цитадель)',
+];
+function siSectorFor(row, col){
+  const ch = SI_SECTOR_ROWS[row][col];
+  return ch === 'Ц' ? SI_CITADEL_SECTOR : Number(ch);
+}
+
+// Имена ресурсов/компонентов/модулей — живые из /api/economy (тот же приём,
+// что planet.html/economy.html), а не задублированный на этой странице
+// список: единственный источник истины — сервер. Подгружается один раз при
+// первом открытии окна, не на каждый секундный опрос мира.
+let siEconomyNames = {}, siEconomyLoaded = false;
+async function ensureSiEconomyNames(){
+  if(siEconomyLoaded) return;
+  try{
+    const res = await fetch('api/economy', {cache:'no-store'});
+    const data = await res.json();
+    (data.resources || []).forEach(it => { siEconomyNames[it.key] = it.name; });
+    (data.recipes || []).forEach(it => { siEconomyNames[it.key] = it.name; });
+    ((data.shipComponents && data.shipComponents.items) || []).forEach(it => { siEconomyNames[it.key] = it.name; });
+    siEconomyLoaded = true;
+  }catch(e){ /* тихо — при неудаче просто покажем сырые ключи */ }
+}
+function siName(key){ return siEconomyNames[key] || key; }
+
+let siSelectedDeck = null; // {row,col}
+function renderSiGrid(){
+  const svg = document.getElementById('si-grid');
+  svg.innerHTML = '';
+  const decks = (shipView && shipView.decks) || [];
+  const byRC = {};
+  decks.forEach(d => { byRC[d.row + ':' + d.col] = d; });
+  for(let r = 0; r < 5; r++){
+    for(let c = 0; c < 7; c++){
+      const d = byRC[r + ':' + c];
+      const x = c * 34, y = r * 17;
+      const sel = siSelectedDeck && siSelectedDeck.row === r && siSelectedDeck.col === c;
+      const rect = svgEl('rect', {
+        x, y, width: 32, height: 15,
+        class: 'si-cell' + (d ? ' built' : '') + (sel ? ' selected' : ''),
+      });
+      if(d){
+        rect.addEventListener('click', () => {
+          siSelectedDeck = { row: r, col: c };
+          renderSiGrid();
+          renderSiModuleInfo(d);
+        });
+      }
+      svg.appendChild(rect);
+      if(d){
+        const sector = siSectorFor(r, c);
+        const label = svgEl('text', { x: x + 16, y: y + 10.5, class: 'si-cell-label' });
+        label.textContent = sector === SI_CITADEL_SECTOR ? 'Ц' : String(sector);
+        svg.appendChild(label);
+      }
+    }
+  }
+}
+function renderSiModuleInfo(d){
+  const info = document.getElementById('si-module-info');
+  if(!d){ info.textContent = 'Выберите палубу на схеме'; return; }
+  const sector = siSectorFor(d.row, d.col);
+  const mods = (d.modules || []).filter(m => m).map(siName);
+  info.innerHTML = `Палуба (${d.row},${d.col}) — ${SI_SECTOR_NAMES[sector]}<br>` +
+    `Прочность: ${d.current}/${d.max}<br>` +
+    (mods.length ? `Установлено: ${mods.join(', ')}` : 'Слоты пусты');
+}
+function renderSiSectorTable(){
+  const decks = (shipView && shipView.decks) || [];
+  const stats = {};
+  for(let s = 0; s <= SI_CITADEL_SECTOR; s++) stats[s] = { pp: 0, om: 0, zp: 0 };
+  decks.forEach(d => {
+    const s = siSectorFor(d.row, d.col);
+    stats[s].pp += d.max;
+    (d.modules || []).forEach(m => {
+      if(m === 'ship_weapon_mount') stats[s].om++;
+      if(m === 'ship_shield') stats[s].zp++;
+    });
+  });
+  const cols = [0, 1, 2, 3, 4, 5, SI_CITADEL_SECTOR];
+  const head = '<tr><th>Сектор</th>' + cols.map(s => `<th>${s === SI_CITADEL_SECTOR ? 'Ц' : s}</th>`).join('') + '</tr>';
+  const pp = '<tr><td>🧱 ПП</td>' + cols.map(s => `<td>${stats[s].pp}</td>`).join('') + '</tr>';
+  const om = '<tr><td>🎯 ОМ</td>' + cols.map(s => `<td>${stats[s].om}</td>`).join('') + '</tr>';
+  const zp = '<tr><td>🛡 ЗП</td>' + cols.map(s => `<td>${stats[s].zp}</td>`).join('') + '</tr>';
+  document.getElementById('si-sector-table').innerHTML = head + pp + om + zp;
+}
+
+async function renderSiCargo(){
+  const wrap = document.getElementById('si-cargo-list');
+  const pickupSlot = document.getElementById('si-pickup-slot');
+  wrap.innerHTML = '';
+  pickupSlot.innerHTML = '';
+  const cargo = (shipView && shipView.cargo) || {};
+  const cap = (shipView && shipView.cargoCapacity) || 0;
+  const keys = Object.keys(cargo);
+  const used = keys.reduce((s, k) => s + cargo[k], 0);
+
+  const header = document.createElement('div');
+  header.className = 'si-empty-note';
+  header.style.opacity = '.85';
+  header.textContent = cap > 0 ? `Занято: ${used.toFixed(0)} / ${cap.toFixed(0)}` : 'На корабле нет грузовых отсеков';
+  wrap.appendChild(header);
+
+  if(keys.length === 0){
+    const note = document.createElement('div');
+    note.className = 'si-empty-note';
+    note.textContent = 'Трюм пуст — в игре пока нет добычи или торговли для корабля, заполняется только подбором чужих сброшенных грузов.';
+    wrap.appendChild(note);
+  }
+  keys.forEach(k => {
+    const row = document.createElement('div');
+    row.className = 'si-hold-row';
+    row.innerHTML = `<span>${siName(k)}</span><span class="si-amt">${cargo[k].toFixed(1)}</span>`;
+    const btn = document.createElement('button');
+    btn.textContent = 'ВЫБРОСИТЬ';
+    btn.onclick = async () => {
+      try{ await World.jettison(k, cargo[k]); toast(`${siName(k)} выброшен в космос`); renderSiCargo(); }
+      catch(e){ toast('Не удалось: ' + e.message); }
+    };
+    row.appendChild(btn);
+    wrap.appendChild(row);
+  });
+
+  // Коробка рядом с кораблём — предложить подобрать (по прямому требованию
+  // пользователя: «появится коробка... которую можно подобрать»).
+  if(shipView && !shipView.transit){
+    try{
+      const boxes = await World.cargoBoxesAt(shipView.systemStarId);
+      const sx = Math.round(shipView.sx), sy = Math.round(shipView.sy);
+      const here = boxes.find(b => b.cellX === sx && b.cellY === sy);
+      if(here){
+        const box = document.createElement('div');
+        box.className = 'si-pickup-box';
+        const items = Object.keys(here.contents).map(k => `${siName(k)} ×${here.contents[k].toFixed(1)}`).join(', ');
+        box.innerHTML = `<span>Рядом коробка: ${items}</span>`;
+        const btn = document.createElement('button');
+        btn.textContent = 'ПОДОБРАТЬ';
+        btn.onclick = async () => {
+          try{ const picked = await World.pickup(); toast('Подобрано: ' + Object.keys(picked).map(k=>siName(k)).join(', ')); renderSiCargo(); }
+          catch(e){ toast('Не удалось: ' + e.message); }
+        };
+        box.appendChild(btn);
+        pickupSlot.appendChild(box);
+      }
+    }catch(e){ /* тихо — коробки необязательны для остального окна */ }
+  }
+}
+
+function renderSiGas(){
+  const wrap = document.getElementById('si-gas-list');
+  wrap.innerHTML = '';
+  if(!shipView){ return; }
+  const rows = [
+    ['hydrogen', 'Водород', shipView.fuelHydrogen],
+    ['helium3', 'Гелий-3', shipView.fuelHelium3],
+    ['metal_hydrogen', 'Металлический водород', shipView.fuelMetalHydrogen],
+  ];
+  rows.forEach(([key, label, amt]) => {
+    const row = document.createElement('div');
+    row.className = 'si-hold-row';
+    row.innerHTML = `<span>${label}</span><span class="si-amt">${amt.toFixed(1)}</span>`;
+    wrap.appendChild(row);
+  });
+  if(shipView.batteryCapacity > 0){
+    const row = document.createElement('div');
+    row.className = 'si-hold-row';
+    row.innerHTML = `<span>Заряд аккумуляторов</span><span class="si-amt">${shipView.batteryCharge.toFixed(0)} / ${shipView.batteryCapacity.toFixed(0)}</span>`;
+    wrap.appendChild(row);
+  }
+}
+
+// Быстрые тактические команды — переименование 3 слотов БОЙ-тактики (SETS[0]).
+// Хранится в localStorage: это подпись кнопки, не игровое состояние — сервер
+// про тактики знать не должен (настоящего боя всё равно ещё нет).
+const SI_TACTICS_KEY = 'ouroboros_tactic_labels';
+function siTacticLabels(){
+  try{ return JSON.parse(localStorage.getItem(SI_TACTICS_KEY)) || {}; }catch(e){ return {}; }
+}
+function renderSiTactics(){
+  const wrap = document.getElementById('si-tactics-list');
+  wrap.innerHTML = '';
+  const labels = siTacticLabels();
+  SETS[0].buttons.forEach((b, i) => {
+    const current = labels[i] || b.label.replace('\n', ' ');
+    const row = document.createElement('div');
+    row.className = 'si-tactic-row';
+    row.innerHTML = `<span>${current}</span>`;
+    const btn = document.createElement('button');
+    btn.textContent = 'ПЕРЕИМЕНОВАТЬ';
+    btn.onclick = () => {
+      const next = prompt('Название тактики', current);
+      if(next && next.trim()){
+        const l = siTacticLabels();
+        l[i] = next.trim();
+        localStorage.setItem(SI_TACTICS_KEY, JSON.stringify(l));
+        SETS[0].buttons[i].label = next.trim().replace(' ', '\n');
+        renderSiTactics();
+        if(SETS[setIndex].name === 'БОЙ') renderSet();
+      }
+    };
+    row.appendChild(btn);
+    wrap.appendChild(row);
+  });
+}
+// Применить сохранённые подписи тактик сразу при загрузке страницы (не
+// только при открытии окна осмотра) — чтобы меню БОЙ тоже их показывало.
+(function applySavedTacticLabels(){
+  const labels = siTacticLabels();
+  Object.keys(labels).forEach(i => { if(SETS[0].buttons[i]) SETS[0].buttons[i].label = labels[i].replace(' ', '\n'); });
+})();
+
+function openShipInspect(){
+  document.getElementById('ship-inspect').classList.add('open');
+  siSelectedDeck = null;
+  ensureSiEconomyNames().then(() => { renderSiGrid(); renderSiModuleInfo(null); });
+  renderSiGrid();
+  renderSiModuleInfo(null);
+  renderSiSectorTable();
+  renderSiCargo();
+  renderSiGas();
+  renderSiTactics();
+}
+document.getElementById('hud-top').onclick = openShipInspect;
+document.getElementById('si-close').onclick = () => document.getElementById('ship-inspect').classList.remove('open');
+
 renderSet();
 
 // ── подписка на общий мир ────────────────────────────────────────────────
 World.subscribe(onWorld);
 World.start();
+// Верхняя строка HUD (ускорение/скорость/дистанция) — 5 раз в секунду, между
+// опросами сервера: скорость в разгоне и дистанция до цели меняются
+// непрерывно, но покадрово такие цифры читать невозможно.
+setInterval(updateHudTop, 200);
 
-// Радар и слой мира — покадрово: планеты движутся по орбитам, и корабль
-// вместе со «своей» планетой. Раз в секунду, как приходят данные, они бы
-// дёргались. Список объектов, наоборот, обновляется по опросу: числа
-// дистанций, скачущие 60 раз в секунду, читать невозможно.
+// Радар, слой мира, скелет и камера — покадрово: планеты движутся по
+// орбитам, корабль вместе со «своей» планетой или по своему курсу/скорости
+// между опросами (World.shipPos/shipHeadingDeg уже это учитывают). Раз в
+// секунду, как приходят данные, всё это дёргалось бы. Список объектов,
+// наоборот, обновляется по опросу: числа дистанций, скачущие 60 раз в
+// секунду, читать невозможно.
 (function frame(){
   renderRadarBlips();
   renderWorldLayer();
+  renderSkeleton();
+  applySpaceRotation();
   requestAnimationFrame(frame);
 })();
 </script>

@@ -132,6 +132,18 @@ const World = (() => {
   // Реальных секунд в игровом месяце: игровое время идёт 1:1 с календарём
   // (server/clock.go gameSpeedRealtime), средний григорианский месяц.
   const SEC_PER_MONTH = 365.2425 * 24 * 3600 / 12;
+  // SCREEN_UE — у.е.·с на 1 экран/клеть (200000×5, ТЗ.md §2.7.4) — то же
+  // самое, что screenUE в server/ship.go, нужна клиенту для доводки позиции
+  // ручного полёта между опросами (shipManualDelta ниже).
+  const SCREEN_UE = 1000000;
+  // SPEED_REALTIME — «нормальная» скорость игровых часов (игровых месяцев в
+  // реальную секунду), то же число, что gameSpeedRealtime в server/clock.go.
+  // Нужна, чтобы клиент знал ТЕКУЩИЙ множитель ускорения времени (timeFactor
+  // ниже): сервер гонит физику корабля в этом же темпе (settleFlight), и без
+  // множителя доводка позиции между опросами отставала бы в сотни раз на
+  // отладочных пресетах админ-панели — корабль дёргался бы скачком на каждом
+  // опросе вместо плавного хода.
+  const SPEED_REALTIME = 12 / (365.2425 * 24 * 60 * 60);
 
   // ── часы: сервер — источник, клиент лишь экстраполирует ─────────────────
   const clock = { months:0, speed:0, at:0 };
@@ -148,12 +160,24 @@ const World = (() => {
   // ── состояние мира ──────────────────────────────────────────────────────
   const state = {
     ship: null,      // ShipView с сервера
+    shipSyncedAt: 0, // performance.now() на момент ПОСЛЕДНЕГО присвоения state.ship — см. setShip/shipHeadingDeg
     star: null,      // звезда системы, в которой сейчас корабль
     objects: null,   // весь состав сектора (нужен карте сектора)
     fleets: null,     // раскладка флотов игрока (server/fleets.go), нужна карте сектора
     online: false,
     error: null,
   };
+
+  // setShip — единая точка присвоения state.ship (опрос/навигация/ручное
+  // управление/переключение флота/debug-урон — все проходят здесь), чтобы
+  // shipSyncedAt всегда отражало момент последнего снимка. Нужен для
+  // клиентской доводки курса/позиции между опросами (shipHeadingDeg/shipPos
+  // ниже) — сервер шлёт снимок РАЗ В СЕКУНДУ, а корабль на ручном управлении
+  // продолжает поворачиваться/ускоряться и между опросами.
+  function setShip(ship){
+    state.ship = ship;
+    state.shipSyncedAt = performance.now();
+  }
 
   const listeners = new Set();
   function subscribe(fn){ listeners.add(fn); return () => listeners.delete(fn); }
@@ -174,7 +198,7 @@ const World = (() => {
       const gal = await galRes.json();
       const fleetList = await fleetRes.json();
       syncClock(gal.months, gal.speed);
-      state.ship = ship;
+      setShip(ship);
       state.objects = gal.objects || [];
       state.star = state.objects.find(o => o.id === ship.systemStarId) || null;
       state.fleets = fleetList || [];
@@ -233,9 +257,190 @@ const World = (() => {
     return p ? planetDockPos(p, angleOffset) : null;
   }
 
+  // ── кинематика автопилота: зеркало server/ship.go flightProfile ─────────
+  // Сервер присылает в Transit весь профиль перелёта (разгон/крейсер/
+  // торможение, ускорение, курс и разворот) — клиент по нему покадрово
+  // считает, ГДЕ корабль и с КАКОЙ скоростью, вместо прежней линейной
+  // интерполяции From→To по времени. Линейная давала постоянную «среднюю»
+  // скорость: корабль трогался рывком и так же рывком замирал у планеты —
+  // ровно то, что читалось как телепортация (прямая жалоба пользователя).
+  // Формулы обязаны совпадать с серверными: расхождение — это расхождение
+  // картинки с авторитетной позицией, которая приезжает раз в секунду.
+  function timeFactor(){
+    const f = clock.speed / SPEED_REALTIME;
+    return f > 0 ? f : 1;
+  }
+  let staleServerWarned = false;
+  function warnStaleServerOnce(){
+    if(staleServerWarned) return;
+    staleServerWarned = true;
+    console.warn('Сервер не присылает кинематику перелёта (Transit.profile) — ' +
+      'скорее всего запущена старая сборка сервера. Пересоберите/перезапустите ' +
+      'его (cd server && go run .), иначе перелёт рисуется по-старому: линейно, ' +
+      'без разгона и торможения.');
+  }
+  function profileStateAt(p, t){
+    const total = p.accelSec + p.cruiseSec + p.decelSec;
+    if(t <= 0) return { dist:0, speed:p.entrySpeed };
+    if(t >= total) return { dist:p.distanceUe, speed:p.exitSpeed };
+    if(t <= p.accelSec){
+      return { dist: p.entrySpeed*t + 0.5*p.accelUe*t*t, speed: p.entrySpeed + p.accelUe*t };
+    }
+    const distAcc = p.entrySpeed*p.accelSec + 0.5*p.accelUe*p.accelSec*p.accelSec;
+    t -= p.accelSec;
+    if(t <= p.cruiseSec) return { dist: distAcc + p.peakSpeed*t, speed: p.peakSpeed };
+    t -= p.cruiseSec;
+    // Торможение — СВОИМ ускорением: у планеты автопилот тормозит в её
+    // гравитационном колодце (server/ship.go navDecelFor), и оно на порядок
+    // сильнее разгонного. Старые снимки без decelUe (сервер прошлой сборки) —
+    // симметричный профиль, как было.
+    const decel = p.decelUe > 0 ? p.decelUe : p.accelUe;
+    return {
+      dist: distAcc + p.peakSpeed*p.cruiseSec + p.peakSpeed*t - 0.5*decel*t*t,
+      speed: p.peakSpeed - decel*t,
+    };
+  }
+  // transitState — доля пройденного пути, скорость (у.е.) и курс (градусы)
+  // на СЕЙЧАС. «Время корабля» = реальные секунды с отправления × множитель
+  // ускорения, зафиксированный сервером на момент прокладки курса
+  // (Transit.TimeFactor) — не текущий: перелёт, начатый на одном пресете
+  // времени, доигрывается в его темпе (ТЗ.md §2.7.4).
+  function transitState(t){
+    if(!t) return { frac:1, speed:0, headingDeg:0 };
+    const p = t.profile;
+    // ── страховка от рассинхрона версий ────────────────────────────────────
+    // Профиля нет — значит на том конце СТАРЫЙ сервер (собранный до этой
+    // правки), а клиент уже новый: например, запущен старый `server.exe`
+    // вместо пересобранного. Без этой ветки `frac` оставался бы 1, и корабль
+    // МГНОВЕННО оказывался бы в точке цели — «корабль исчез» сразу после
+    // нажатия ЛЕТЕТЬ. Откатываемся на прежнее поведение (линейно по времени)
+    // и один раз говорим об этом в консоль, чтобы причина была видна.
+    if(!p){
+      warnStaleServerOnce();
+      const departed = new Date(t.departedAt).getTime();
+      const arrive = new Date(t.arriveAt).getTime();
+      const frac = arrive > departed
+        ? Math.min(1, Math.max(0, (Date.now() - departed) / (arrive - departed)))
+        : 1;
+      return { frac, speed:0, headingDeg: t.headingToDeg || 0 };
+    }
+    const ts = Math.max(0, (Date.now() - new Date(t.departedAt).getTime()) / 1000) * (t.timeFactor > 0 ? t.timeFactor : 1);
+    const st = profileStateAt(p, ts);
+    const frac = p.distanceUe > 0 ? Math.min(1, st.dist / p.distanceUe) : 1;
+    return { frac, speed: st.speed, headingDeg: transitHeadingDeg(t, ts, frac) };
+  }
+  // ── ломаный маршрут: обход светила ──────────────────────────────────────
+  // Маршрут, проходящий слишком близко к звезде, сервер ломает на два участка
+  // (Transit.HasMid/MidX/MidY, server/ship.go avoidStarWaypoint — «корабли не
+  // приближаются к звёздам, если маршрут пересекает звезду, они огибают её»).
+  // Значит и позиция, и курс считаются по ПУТИ, а не линейной интерполяцией
+  // From→To: та срезала бы угол ровно там, где корабль обходит светило.
+  const CORNER_BLEND_CELLS = 0.35; // то же, что cornerBlendCells на сервере
+  function transitLegs(t){
+    if(!t.hasMid) return [Math.hypot(t.toX-t.fromX, t.toY-t.fromY), 0];
+    return [Math.hypot(t.midX-t.fromX, t.midY-t.fromY), Math.hypot(t.toX-t.midX, t.toY-t.midY)];
+  }
+  function transitPointAt(t, frac){
+    const [l1, l2] = transitLegs(t);
+    const total = l1 + l2;
+    if(total <= 0) return { x: t.toX, y: t.toY };
+    const d = frac * total;
+    const midX = t.hasMid ? t.midX : t.toX, midY = t.hasMid ? t.midY : t.toY;
+    if(d <= l1 || l2 <= 0){
+      const k = l1 > 0 ? Math.min(1, d / l1) : 0;
+      return { x: t.fromX + (midX - t.fromX) * k, y: t.fromY + (midY - t.fromY) * k };
+    }
+    const k = Math.min(1, (d - l1) / l2);
+    return { x: t.midX + (t.toX - t.midX) * k, y: t.midY + (t.toY - t.midY) * k };
+  }
+  // physicsStepSec на сервере (ship.go) — тот же приём численного
+  // интегрирования, зеркалим шаг.
+  const PHYSICS_STEP_SEC = 0.05;
+
+  // legFromTo/waypointAfter/integrateTurn/transitPositionAt — зеркало
+  // server/ship.go positionAt/integrateTurn/waypointAfter (ТЗ.md §2.7.6, по
+  // прямой жалобе пользователя: «когда корабль поворачивает, линия
+  // траектории сразу показывает куда, а не реальную траекторию — корабль
+  // должен идти с округлой траекторией»). Раньше позиция считалась чисто по
+  // пройденному РАССТОЯНИЮ вдоль прямой (transitPointAt выше) — курс
+  // поворачивался отдельно (transitHeadingDeg), независимо от позиции: нос
+  // разворачивался на месте, пока сам корабль уже ехал по прямой к цели.
+  // Подробное объяснение подхода (интеграл Френеля не берётся в замкнутом
+  // виде, поэтому фаза разворота считается численно, а после нее — честное
+  // прицеливание на актуальную путевую точку) — см. комментарий у
+  // server/ship.go Transit.positionAt, здесь не дублируется.
+  function waypointAfter(t, distSoFar){
+    const [l1] = transitLegs(t);
+    if(t.hasMid && distSoFar < l1) return { x: t.midX, y: t.midY };
+    return { x: t.toX, y: t.toY };
+  }
+  function integrateTurn(t, ts){
+    let x = t.fromX, y = t.fromY;
+    if(ts <= 0) return { x, y };
+    let steps = Math.floor(ts / PHYSICS_STEP_SEC);
+    if(steps < 1) steps = 1;
+    if(steps > 4000) steps = 4000; // physicsMaxSteps на сервере
+    const dt = ts / steps;
+    for(let i = 0; i < steps; i++){
+      const at = dt * (i + 0.5);
+      const headingRad = transitHeadingDeg(t, at, 0) * Math.PI / 180;
+      const speed = profileStateAt(t.profile, at).speed;
+      const cellsPerSec = speed / SCREEN_UE;
+      x += cellsPerSec * Math.cos(headingRad) * dt;
+      y += cellsPerSec * Math.sin(headingRad) * dt;
+    }
+    return { x, y };
+  }
+  function transitPositionAt(t, ts){
+    const total = t.profile.accelSec + t.profile.cruiseSec + t.profile.decelSec;
+    if(total <= 0 || ts <= 0) return { x: t.fromX, y: t.fromY };
+    if(ts >= total) return { x: t.toX, y: t.toY };
+    const turnEnd = Math.min(t.turnSec || 0, total);
+    if(ts <= turnEnd) return integrateTurn(t, ts);
+    const turn = integrateTurn(t, turnEnd);
+    const distAtTurnEnd = profileStateAt(t.profile, turnEnd).dist / SCREEN_UE;
+    const distNow = profileStateAt(t.profile, ts).dist / SCREEN_UE;
+    const aim = waypointAfter(t, distAtTurnEnd);
+    const dx = aim.x - turn.x, dy = aim.y - turn.y;
+    const segLen = Math.hypot(dx, dy);
+    if(segLen < 1e-9) return turn;
+    let k = (distNow - distAtTurnEnd) / segLen;
+    if(k > 1) k = 1;
+    return { x: turn.x + dx * k, y: turn.y + dy * k };
+  }
+  function shortestDeg(a, b){
+    let d = (b - a) % 360;
+    if(d > 180) d -= 360;
+    if(d <= -180) d += 360;
+    return d;
+  }
+  // Курс самого маршрута: направление текущего участка, у путевой точки —
+  // плавный переход между участками.
+  function transitCourseDeg(t, frac){
+    const midX = t.hasMid ? t.midX : t.toX, midY = t.hasMid ? t.midY : t.toY;
+    const h1 = Math.atan2(midY - t.fromY, midX - t.fromX) * 180 / Math.PI;
+    const [l1, l2] = transitLegs(t);
+    if(!t.hasMid || l2 <= 0) return h1;
+    const h2 = Math.atan2(t.toY - t.midY, t.toX - t.midX) * 180 / Math.PI;
+    const d = frac * (l1 + l2);
+    const blend = Math.min(CORNER_BLEND_CELLS, l1, l2);
+    if(blend <= 0) return d <= l1 ? h1 : h2;
+    if(d <= l1 - blend) return h1;
+    if(d >= l1 + blend) return h2;
+    return h1 + shortestDeg(h1, h2) * ((d - (l1 - blend)) / (2 * blend));
+  }
+  // Разворот на курс маршрута идёт одновременно с разгоном (см. Transit.TurnSec
+  // на сервере) — камера доворачивается плавно, а не скачком в момент нажатия
+  // «ЛЕТЕТЬ».
+  function transitHeadingDeg(t, ts, frac){
+    const course = t.mode === 'system' ? transitCourseDeg(t, frac) : t.headingToDeg;
+    if(!t.turnSec || ts >= t.turnSec) return course;
+    return t.headingFromDeg + shortestDeg(t.headingFromDeg, course) * (ts / t.turnSec);
+  }
+
   // shipPos — положение корабля в локальных координатах его системы.
   // Все случаи считаются локально покадрово, а не берутся из снимка:
-  //  1) в перелёте — интерполяция From→To по доле пройденного времени;
+  //  1) в перелёте — движение по профилю разгон/крейсер/торможение;
   //  2) стоит у планеты — НАСЛЕДУЕТ её орбитальное движение (та же угловая
   //     скорость, planetDockPos), иначе корабль дёргался бы за планетой с
   //     частотой опроса; координаты — внутри диска планеты, а не её центр;
@@ -245,11 +450,7 @@ const World = (() => {
     if(!ship) return { x:0, y:0 };
     const t = ship.transit;
     if(t && t.mode === 'system'){
-      const departed = new Date(t.departedAt).getTime();
-      const arrive = new Date(t.arriveAt).getTime();
-      const frac = arrive > departed
-        ? Math.min(1, Math.max(0, (Date.now() - departed) / (arrive - departed)))
-        : 1;
+      const frac = transitState(t).frac;
       // Долетели, но снимок с сервера ещё не пришёл (опрос раз в секунду):
       // не зависаем в конечной точке маршрута, пока планета продолжает уходить
       // по орбите, а сразу переходим на её живую стоянку. Иначе на подтверждении
@@ -258,13 +459,81 @@ const World = (() => {
         const docked = dockedPos(t.targetPlanetIndex, ship.dockAngleOffset);
         if(docked) return docked;
       }
-      return { x: t.fromX + (t.toX - t.fromX) * frac, y: t.fromY + (t.toY - t.fromY) * frac };
+      // Позиция — С УЧЁТОМ разворота в движении (transitPositionAt), не
+      // просто «по пройденному расстоянию вдоль прямой» (transitPointAt,
+      // прежнее поведение) — та же формула, что и сервер (см. комментарий
+      // у transitPositionAt выше). Время — та же «шипсекунда», что и весь
+      // остальной transitState (реальные секунды с отправления × TimeFactor).
+      const ts = Math.max(0, (Date.now() - new Date(t.departedAt).getTime()) / 1000) * (t.timeFactor > 0 ? t.timeFactor : 1);
+      return transitPositionAt(t, ts);
     }
     if(!t && ship.atPlanetIndex >= 0){
       const docked = dockedPos(ship.atPlanetIndex, ship.dockAngleOffset);
       if(docked) return docked;
     }
-    return { x: ship.sx, y: ship.sy };
+    // Свободный (ручной) полёт — сервер отдаёт снимок раз в секунду
+    // (start(pollMs)), а корабль на зажатом «Форсаже»/повороте продолжает
+    // двигаться между опросами; довручиваем позицию тем же курсом/скоростью,
+    // что уже в снимке (shipManualDelta) — иначе corабль дёргался бы раз в
+    // секунду вместо плавного хода.
+    const d = shipManualDelta();
+    return { x: ship.sx + d.dx, y: ship.sy + d.dy };
+  }
+
+  // shipManualDelta — курс СЕЙЧАС и смещение с момента последнего снимка
+  // (state.shipSyncedAt), для РУЧНОГО полёта (см. shipPos/shipHeadingDeg).
+  // Один линейный шаг, не пошаговая численная интеграция, как на сервере
+  // (settleFlight, ship.go) — на интервале между опросами (<1с) разница
+  // визуально не заметна, а деталь важна только для HUD, не для авторитетной
+  // позиции (та всегда пересчитывается сервером на каждый опрос/действие).
+  function shipManualDelta(){
+    const ship = state.ship;
+    if(!ship) return { headingRad:0, speed:0, dx:0, dy:0 };
+    // Физика корабля на сервере идёт в темпе игровых часов (settleFlight
+    // умножает шаг на тот же множитель) — доводка обязана делать то же, иначе
+    // на ускоренном времени картинка отстаёт от снимка и корабль дёргается
+    // вперёд на каждом опросе.
+    const dt = Math.max(0, (performance.now() - state.shipSyncedAt) / 1000) * timeFactor();
+    const c = ship.control || {};
+    let headingRad = ship.headingDeg * Math.PI / 180;
+    const turnRateRad = (ship.turnRateDeg || 0) * Math.PI / 180;
+    if(c.turnLeft) headingRad += turnRateRad * dt;
+    if(c.turnRight) headingRad -= turnRateRad * dt;
+    // Скорость между опросами тоже МЕНЯЕТСЯ, если тяга/торможение зажаты —
+    // раньше доводка считала её постоянной, и на разгоне показание скорости
+    // (а с ним и параллакс фона) раз в секунду прыгало ступенькой.
+    const accel = ship.accelUe || 0;
+    let speed = ship.speed || 0;
+    if(c.thrust) speed += accel * dt;
+    if(c.brake) speed -= accel * dt;
+    speed = Math.max(0, Math.min(ship.maxSpeed || speed, speed));
+    const avgCellsPerSec = ((ship.speed || 0) + speed) / 2 / SCREEN_UE;
+    return {
+      headingRad, speed,
+      dx: avgCellsPerSec * Math.cos(headingRad) * dt,
+      dy: avgCellsPerSec * Math.sin(headingRad) * dt,
+    };
+  }
+  // shipHeadingDeg — курс корабля СЕЙЧАС, градусы, математическая конвенция
+  // (0=+X, рост против часовой — та же, что headingDeg с сервера). В перелёте
+  // курс ведёт автопилот (Transit.headingAt: разворот на маршрут, дальше сам
+  // маршрут) — берём его оттуда, а не хранимый Heading.
+  function shipHeadingDeg(){
+    const t = state.ship && state.ship.transit;
+    if(t && t.profile) return transitState(t).headingDeg;
+    return shipManualDelta().headingRad * 180 / Math.PI;
+  }
+  // shipSpeed — скорость корабля СЕЙЧАС (у.е., ТЗ.md §2.7.4), одинаково для
+  // ручного полёта и автопилота. Всё, что показывает игроку скорость
+  // (звёздный фон, показание HUD, пунктир траектории), обязано брать её
+  // отсюда: снимок с сервера приходит раз в секунду, а в перелёте до этой
+  // правки вообще сообщал ноль.
+  function shipSpeed(){
+    const ship = state.ship;
+    if(!ship) return 0;
+    const t = ship.transit;
+    if(t && t.profile) return transitState(t).speed;
+    return shipManualDelta().speed;
   }
 
   // Положение корабля в СЕКТОРНЫХ координатах (r, дуга) — для карты сектора.
@@ -274,11 +543,7 @@ const World = (() => {
     if(!ship) return null;
     const t = ship.transit;
     if(t && t.mode === 'interstellar'){
-      const departed = new Date(t.departedAt).getTime();
-      const arrive = new Date(t.arriveAt).getTime();
-      const frac = arrive > departed
-        ? Math.min(1, Math.max(0, (Date.now() - departed) / (arrive - departed)))
-        : 1;
+      const frac = transitState(t).frac; // тот же профиль разгон/крейсер/торможение, что и внутри системы
       return { r: t.fromR + (t.toR - t.fromR) * frac, x: t.fromArc + (t.toArc - t.fromArc) * frac };
     }
     const star = state.star;
@@ -372,8 +637,12 @@ const World = (() => {
 
   // ── действия корабля ────────────────────────────────────────────────────
   // Сервер при ошибке отвечает text/plain (http.Error), а не JSON — поэтому
-  // сперва читаем текст и парсим только при res.ok.
-  async function post(path, body){
+  // сперва читаем текст и парсим только при res.ok. postJSON — низкоуровневый
+  // помощник (fetch+разбор), post — его обёртка для эндпоинтов, которые
+  // отвечают ГОЛЫМ ShipView (navigate/land/launch/control) и сразу
+  // применяются в state.ship. Активация флота и debug-урон отвечают ДРУГОЙ
+  // формой ({fleets,ship} / {deck,ship}) — у них свои обёртки ниже, не post().
+  async function postJSON(path, body){
     const res = await fetch(path, {
       method:'POST',
       headers: body ? {'Content-Type':'application/json'} : undefined,
@@ -381,8 +650,11 @@ const World = (() => {
     });
     const text = await res.text();
     if(!res.ok) throw new Error(text || ('HTTP ' + res.status));
-    const data = JSON.parse(text);
-    state.ship = data;      // сразу применяем — не ждём следующего опроса
+    return JSON.parse(text);
+  }
+  async function post(path, body){
+    const data = await postJSON(path, body);
+    setShip(data);      // сразу применяем — не ждём следующего опроса
     notify();
     return data;
   }
@@ -390,6 +662,57 @@ const World = (() => {
     post('api/ship/navigate', { kind, starId, planetIndex });
   const land   = () => post('api/ship/land');
   const launch = () => post('api/ship/launch');
+  // setControl — какие органы ручного управления зажаты ПРЯМО СЕЙЧАС
+  // (client/ship.html: боковые «манёвр», тумблеры «Форсаж»/«Тормож.») —
+  // курс/скорость/позиция между вызовами сервер доводит аналитически сам
+  // (server/ship.go settleFlight), клиент лишь сообщает набор нажатых кнопок.
+  const setControl = (thrust, brake, turnLeft, turnRight) =>
+    post('api/ship/control', { thrust, brake, turnLeft, turnRight });
+  // boost — кнопка УСКОРИТЬ/МЕДЛЕННЕЕ (client/ship.html): "kick" разовый
+  // импульс, "engage"/"disengage" защёлкивает/снимает устойчивый форсаж на
+  // гелии (server/ship.go SetBoost/Kick). charge — кнопка ЗАРЯДИТЬ, сжигает
+  // металлический водород в заряд аккумуляторов (server/ship.go Charge).
+  const boost = (action) => post('api/ship/boost', { action });
+  const charge = () => post('api/ship/charge');
+  // jettison/pickup — окно осмотра корабля (client/ship.html): выбросить
+  // груз из трюма в космос / подобрать груз с клети, где сейчас корабль
+  // (server/cargo.go). jettison отвечает голым ShipView (post()), pickup —
+  // {picked,ship} (своя обёртка, как activateFleet/debugDamage).
+  const jettison = (key, amount) => post('api/ship/jettison', { key, amount });
+  async function pickup(){
+    const data = await postJSON('api/ship/pickup', null);
+    setShip(data.ship);
+    notify();
+    return data.picked;
+  }
+  // cargoBoxesAt — коробки с грузом в звёздной системе (без кеша — окно
+  // осмотра корабля запрашивает по факту открытия/подбора, не на каждый
+  // секундный опрос всего сектора).
+  async function cargoBoxesAt(starId){
+    const res = await fetch(`api/cargo-boxes?starId=${starId}`, {cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  }
+
+  // activateFleet — переключить активный флот (реальное переключение, не
+  // локальный просмотр — см. client/galaxy.html). Отвечает {fleets,ship}, не
+  // голым ShipView, поэтому не через post().
+  async function activateFleet(id){
+    const data = await postJSON('api/fleets/activate', { id });
+    setShip(data.ship);
+    state.fleets = data.fleets;
+    notify();
+    return data;
+  }
+  // debugDamage — служебное действие (настоящего боя/столкновений ещё нет,
+  // ТЗ.md §2.7.5 — только текст): случайный урон случайной палубе активного
+  // корабля, чтобы показать заполнение HP-чекбоксов на скелете (ship.html).
+  async function debugDamage(){
+    const data = await postJSON('api/ship/debug-damage', null);
+    setShip(data.ship);
+    notify();
+    return data.deck;
+  }
 
   // planetSurfaceDetail — гекс-карта ОДНОЙ планеты С РЕСУРСАМИ по гексам
   // (server/main.go handlePlanetSurface). Намеренно НЕ часть общего опроса
@@ -413,13 +736,26 @@ const World = (() => {
     return promise;
   }
 
+  // estimateTravel — предпросчёт полёта ДО нажатия «лететь» (server/ship.go
+  // EstimateTravel): время и расход топлива для цели, ничего не меняя в
+  // состоянии корабля. GET, без кеша — вызывается при каждом выборе цели на
+  // радаре (client/ship.html), результат сиюминутный (по прямому требованию
+  // пользователя — оценка должна быть видна ПЕРЕД полётом).
+  async function estimateTravel(kind, starId, planetIndex = 0){
+    const res = await fetch(`api/ship/eta?kind=${kind}&starId=${starId}&planetIndex=${planetIndex}`, {cache:'no-store'});
+    const text = await res.text();
+    if(!res.ok) throw new Error(text || ('HTTP ' + res.status));
+    return JSON.parse(text);
+  }
+
   return {
-    FACTIONS, PLANET_TYPES, SURFACE_TYPES, BUILDING_TYPES, STAR_COLORS, STAR_NAMES, RESOURCES, SCALE, SEC_PER_MONTH,
+    FACTIONS, PLANET_TYPES, SURFACE_TYPES, BUILDING_TYPES, STAR_COLORS, STAR_NAMES, RESOURCES, SCALE, SEC_PER_MONTH, SCREEN_UE,
     state, subscribe, refresh, start,
     gameMonths, clock,
-    planetPos, shipPos, shipSectorPos,
+    planetPos, shipPos, shipSectorPos, shipHeadingDeg, shipSpeed, transitState, transitPointAt, transitPositionAt, timeFactor,
     orbitalPeriodHours, formatPeriod, planetMass, planetGravity, planetInfoGrid,
     starLabel, starColor, planetLabel, planetColor,
-    navigate, land, launch, planetSurfaceDetail,
+    navigate, land, launch, setControl, activateFleet, debugDamage, planetSurfaceDetail, estimateTravel,
+    boost, charge, jettison, pickup, cargoBoxesAt,
   };
 })();

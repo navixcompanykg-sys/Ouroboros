@@ -103,7 +103,7 @@
 
 <div class="note-bar">
   Рецепты (табл. 2) и стоимость построек (табл. 3) — временные справочные значения из ТЗ_Экономика.md, администратором не редактируются.
-  Редактируются только цена и масса базовых ресурсов (табл. 1) — от них пересчитывается всё остальное.
+  Редактируются цена и масса базовых ресурсов (табл. 1) — от них пересчитывается всё остальное, и отдельно выработка/потребление энергии модулей корабля (табл. 6).
 </div>
 
 <div class="tabs">
@@ -112,6 +112,7 @@
   <div class="tab-btn" id="tab-buildings">3 · ЗДАНИЯ</div>
   <div class="tab-btn" id="tab-ship">4 · КОРАБЛЬ</div>
   <div class="tab-btn" id="tab-summary">5 · СВОДКА</div>
+  <div class="tab-btn" id="tab-energy">6 · ЭНЕРГИЯ</div>
 </div>
 
 <div class="table-wrap" id="wrap-res">
@@ -175,6 +176,18 @@
   </table>
 </div>
 
+<div class="table-wrap" id="wrap-energy" style="display:none">
+  <table class="main" id="table-energy">
+    <thead><tr>
+      <th>МОДУЛЬ КОРАБЛЯ</th>
+      <th class="col-num sortable" data-col="gen">ВЫРАБОТКА (АДМИН)</th>
+      <th class="col-num sortable" data-col="active">АКТИВНОЕ, ПИК (АДМИН)</th>
+      <th class="col-num sortable" data-col="passive">ПАССИВНОЕ, ПОСТОЯННО (АДМИН)</th>
+    </tr></thead>
+    <tbody id="body-energy"></tbody>
+  </table>
+</div>
+
 <div class="table-footer" id="table-footer">—</div>
 
 <div id="offline">
@@ -232,7 +245,7 @@ let economy = null;   // последний снимок /api/economy
 let sectorStock = {}; // ключ ресурса → сумма по сектору (из /api/galaxy)
 let planetCount = 0;  // всего планет в секторе (для оценки сжигания водорода, см. renderSummary)
 let activeTab = 'res';
-let sort = { res: {col:'sector', dir:'desc'}, recipes: {col:null, dir:'asc'}, buildings: {col:null, dir:'asc'}, ship: {col:null, dir:'asc'}, summary: {col:'ratio', dir:'asc'} };
+let sort = { res: {col:'sector', dir:'desc'}, recipes: {col:null, dir:'asc'}, buildings: {col:null, dir:'asc'}, ship: {col:null, dir:'asc'}, summary: {col:'ratio', dir:'asc'}, energy: {col:null, dir:'asc'} };
 
 async function loadAll() {
   try {
@@ -281,7 +294,7 @@ function computeSectorStock(objects) {
 }
 
 // ── вкладки ──────────────────────────────────────────────────────────────
-const TABS = ['res', 'recipes', 'buildings', 'ship', 'summary'];
+const TABS = ['res', 'recipes', 'buildings', 'ship', 'summary', 'energy'];
 function setTab(tab) {
   activeTab = tab;
   TABS.forEach(t => {
@@ -310,6 +323,7 @@ function renderAll() {
   else if (activeTab === 'buildings') renderBuildings();
   else if (activeTab === 'ship') renderShip();
   else if (activeTab === 'summary') renderSummary();
+  else if (activeTab === 'energy') renderEnergy();
 }
 
 // ── табл. 1: ресурсы ────────────────────────────────────────────────────
@@ -370,6 +384,61 @@ function numInput(value, onCommit) {
 async function saveOverride(key, patch) {
   try {
     const res = await fetch('api/economy/resource', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ key, ...patch }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    economy = await res.json();
+    renderAll();
+  } catch (e) {
+    setSync(false, e.message);
+  }
+}
+
+// ── табл. 6: энергетика модулей корабля — выработка / активное(пиковое) /
+// пассивное(постоянное) потребление, все три редактируемые.
+// client/ship-deck-sectors.html читает эти значения вместо своего прежнего
+// хардкода (GET/POST /api/economy/ship-module). Числа — из ТЗ_Корабль.md
+// §4.20, кроме модулей, где сам документ говорит «не задано»/«качественно»
+// (СМ. комментарий у shipModuleEnergyDefaults, server/economy.go).
+function energyCell(td, value, defaultValue, key, field) {
+  td.appendChild(numInput(value, v => saveModuleOverride(key, {[field]: v})));
+  if (value !== defaultValue) {
+    const reset = document.createElement('span');
+    reset.className = 'reset-link'; reset.textContent = '↺ заводское';
+    reset.title = 'Сбросить к заводскому значению (' + defaultValue + ')';
+    reset.onclick = () => saveModuleOverride(key, {[field]: defaultValue});
+    td.appendChild(reset);
+  }
+}
+function renderEnergy() {
+  let rows = (economy.shipModuleEnergy || []).slice();
+  const s = sort.energy;
+  const val = (r, col) => col === 'gen' ? r.powerGen : col === 'active' ? r.powerActive : col === 'passive' ? r.powerPassive : 0;
+  if (s.col) rows.sort((a,b) => s.dir === 'asc' ? val(a,s.col)-val(b,s.col) : val(b,s.col)-val(a,s.col));
+
+  document.querySelectorAll('#table-energy th.sortable').forEach(th => th.classList.toggle('sorted', th.dataset.col === s.col));
+
+  const body = document.getElementById('body-energy');
+  body.innerHTML = '';
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="col-name">${r.name}</td><td class="col-num"></td><td class="col-num"></td><td class="col-num"></td>`;
+    energyCell(tr.children[1], r.powerGen, r.defaultPowerGen, r.key, 'powerGen');
+    energyCell(tr.children[2], r.powerActive, r.defaultPowerActive, r.key, 'powerActive');
+    energyCell(tr.children[3], r.powerPassive, r.defaultPowerPassive, r.key, 'powerPassive');
+    body.appendChild(tr);
+  });
+  document.getElementById('table-footer').innerHTML =
+    `ВСЕГО МОДУЛЕЙ: <b>${rows.length}</b> — выработку дают Атомный реактор/Газохранилище/Солнечная панель. `
+    + `«Активное» — пиковый расход только в момент действия (двигатель при разгоне, оружие при выстреле, РЭБ и щит при попадании в бою) — у щита это предел одновременно поглощаемого урона (15). `
+    + `«Пассивное» — постоянный фоновый расход, пока модуль установлен (СЖО/радар/вычислительный/дежурство щита). Грузовой отсек, Ангар, Стыковочный док, Солнечный парус и источники энергии не потребляют вовсе. `
+    + `Числа — ТЗ_Корабль.md §4.20, кроме помеченных оценкой (детали в комментарии у shipModuleEnergyDefaults на сервере).`;
+}
+
+async function saveModuleOverride(key, patch) {
+  try {
+    const res = await fetch('api/economy/ship-module', {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ key, ...patch }),
     });

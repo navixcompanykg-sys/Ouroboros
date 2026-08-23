@@ -64,5 +64,107 @@
       "price": 15,
       "mass": 5
     }
+  },
+  "shipModules": {
+    "ship_battery": {
+      "powerGen": 0,
+      "powerActive": 0,
+      "powerPassive": 0
+    },
+    "ship_cargo": {
+      "powerGen": 0,
+      "powerActive": 0,
+      "powerPassive": 0
+    },
+    "ship_colonist": {
+      "powerGen": 0,
+      "powerActive": 2,
+      "powerPassive": 2
+    },
+    "ship_computer": {
+      "powerGen": 0,
+      "powerActive": 5,
+      "powerPassive": 5
+    },
+    "ship_dock": {
+      "powerGen": 0,
+      "powerActive": 0,
+      "powerPassive": 0
+    },
+    "ship_ecm": {
+      "powerGen": 0,
+      "powerActive": 3,
+      "powerPassive": 0
+    },
+    "ship_engine": {
+      "powerGen": 0,
+      "powerActive": 5,
+      "powerPassive": 0
+    },
+    "ship_engine_ion": {
+      "powerGen": 0,
+      "powerActive": 100,
+      "powerPassive": 0
+    },
+    "ship_gas_storage": {
+      "powerGen": 10,
+      "powerActive": 0,
+      "powerPassive": 0
+    },
+    "ship_hangar": {
+      "powerGen": 0,
+      "powerActive": 0,
+      "powerPassive": 0
+    },
+    "ship_life_support": {
+      "powerGen": 0,
+      "powerActive": 2,
+      "powerPassive": 2
+    },
+    "ship_miner": {
+      "powerGen": 0,
+      "powerActive": 3,
+      "powerPassive": 0
+    },
+    "ship_radar": {
+      "powerGen": 0,
+      "powerActive": 1,
+      "powerPassive": 1
+    },
+    "ship_reactor": {
+      "powerGen": 40,
+      "powerActive": 0,
+      "powerPassive": 0
+    },
+    "ship_repair": {
+      "powerGen": 0,
+      "powerActive": 2,
+      "powerPassive": 0
+    },
+    "ship_shield": {
+      "powerGen": 0,
+      "powerActive": 15,
+      "powerPassive": 1
+    },
+    "ship_solar_panel": {
+      "powerGen": 10,
+      "powerActive": 0,
+      "powerPassive": 0
+    },
+    "ship_solar_sail": {
+      "powerGen": 0,
+      "powerActive": 0,
+      "powerPassive": 0
+    },
+    "ship_teleport": {
+      "powerGen": 0,
+      "powerActive": 40,
+      "powerPassive": 0
+    },
+    "ship_weapon_mount": {
+      "powerGen": 0,
+      "powerActive": 1,
+      "powerPassive": 0
+    }
   }
 }

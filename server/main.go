@@ -31,7 +31,6 @@ import (
 var (
 	clk      *Clock
 	sim      *Sim
-	ship     *Ship
 	seed     int64
 	clientFS string
 )
@@ -64,8 +63,8 @@ func main() {
 	forceHabitableCapitals(sim)
 	loadEconomy() // после sim — рекомендованная цена считается от реального запаса ресурсов сектора
 	loadShipDefaults()
-	ship = NewShip(findCapitalID(sim), findCapitalRadius(sim))
-	initFleets(sim)
+	loadStationDefaults()
+	initFleets(sim) // заводит по *Ship на каждый из 4 флотов (fleets.go assignFleetShips) — нужны loadEconomy/loadShipDefaults выше для расчёта тяги
 	stop := make(chan struct{})
 	go clk.Run(stop)
 	go driveSim(stop)
@@ -83,10 +82,21 @@ func main() {
 	mux.HandleFunc("/api/ship/navigate", handleShipNavigate)
 	mux.HandleFunc("/api/ship/land", handleShipLand)
 	mux.HandleFunc("/api/ship/launch", handleShipLaunch)
+	mux.HandleFunc("/api/ship/control", handleShipControl)
+	mux.HandleFunc("/api/ship/debug-damage", handleShipDebugDamage)
+	mux.HandleFunc("/api/ship/eta", handleShipETA)
+	mux.HandleFunc("/api/ship/boost", handleShipBoost)
+	mux.HandleFunc("/api/ship/charge", handleShipCharge)
+	mux.HandleFunc("/api/ship/jettison", handleShipJettison)
+	mux.HandleFunc("/api/ship/pickup", handleShipPickup)
+	mux.HandleFunc("/api/cargo-boxes", handleCargoBoxes)
 	mux.HandleFunc("/api/fleets", handleFleets)
+	mux.HandleFunc("/api/fleets/activate", handleFleetActivate)
 	mux.HandleFunc("/api/economy", handleEconomy)
 	mux.HandleFunc("/api/economy/resource", handleEconomyResource)
+	mux.HandleFunc("/api/economy/ship-module", handleEconomyShipModule)
 	mux.HandleFunc("/api/ship-defaults", handleShipDefaults)
+	mux.HandleFunc("/api/station-defaults", handleStationDefaults)
 	mux.Handle("/", noCache(http.FileServer(http.Dir(clientFS))))
 
 	addr := fmt.Sprintf(":%d", *port)
@@ -121,10 +131,10 @@ func resolveClientDir() (string, error) {
 	return "", fmt.Errorf("ship.html не найден ни в одном из %v", candidates)
 }
 
-// findCapitalID/findCapitalRadius — где стоит корабль при старте сервера:
-// в системе столицы Империи (Role=="capital", тот же объект, вокруг которого
-// centred круг перелётов на карте сектора, см. galaxy.html). Если по какой-то
-// причине столица не нашлась (не должно происходить), берём первую звезду.
+// findCapitalID — система столицы Империи (Role=="capital", тот же объект,
+// вокруг которого centred круг перелётов на карте сектора, см. galaxy.html) —
+// родной мир флота с ID=0 (fleets.go initFleets). Если по какой-то причине
+// столица не нашлась (не должно происходить), берём первую звезду.
 func findCapitalID(sim *Sim) int {
 	objects, _ := sim.Snapshot()
 	for _, o := range objects {
@@ -138,13 +148,6 @@ func findCapitalID(sim *Sim) int {
 		}
 	}
 	return 0
-}
-
-func findCapitalRadius(sim *Sim) float64 {
-	if star, ok := sim.Object(findCapitalID(sim)); ok {
-		return star.SystemRadius
-	}
-	return 30
 }
 
 // forceHabitableCapitals — в каждой из 4 стабильных систем (столица +
@@ -243,9 +246,23 @@ type timeResponse struct {
 	Seq  uint64 `json:"seq"`
 }
 
+// writeJSON — единственный способ ответа API. Ошибку кодирования РАНЬШЕ
+// глотали молча (`_ = json.NewEncoder(w).Encode(v)`), и это опасная тишина:
+// `encoding/json` отказывается кодировать NaN/±Inf, ответ уходит клиенту
+// оборванным на середине, тот не может его разобрать — и снаружи это выглядит
+// как «связь с сервером оборвалась» без единой строки в консоли сервера.
+// Теперь кодируем в буфер: сломанный ответ становится честной 500-й с
+// объяснением в логе (проверка на NaN в снимке корабля — ещё и постоянным
+// тестом, server/shipflight_test.go).
 func writeJSON(w http.ResponseWriter, v any) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		log.Printf("не удалось закодировать ответ %T: %v", v, err)
+		http.Error(w, "внутренняя ошибка сервера: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(v)
+	_, _ = w.Write(b)
 }
 
 // GET /api/time — «сколько сейчас». Клиент синхронизируется этим при загрузке
@@ -415,10 +432,12 @@ const (
 	maxEventsPerFrame = 500 // выше — отправляем resync вместо простыни событий
 )
 
-// GET /api/ship — текущее положение корабля (ship.go: один глобальный
-// корабль на сервере, реальное время полёта, не игровые месяцы).
+// GET /api/ship — текущее положение АКТИВНОГО флота (fleets.go activeShip):
+// у каждого из 4 флотов свой *Ship, но клиент всегда работает с тем, что
+// сейчас выбран — переключение см. handleFleetActivate. Реальное время
+// полёта, не игровые месяцы (ship.go).
 func handleShip(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, ship.Snapshot(time.Now()))
+	writeJSON(w, activeShip().Snapshot(time.Now()))
 }
 
 // POST /api/ship/navigate {"kind":"star"|"planet","starId":N,"planetIndex":N}
@@ -439,11 +458,11 @@ func handleShipNavigate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `ожидается {"kind":"star"|"planet","starId":N,"planetIndex":N}`, http.StatusBadRequest)
 		return
 	}
-	if err := ship.Navigate(sim, time.Now(), body.Kind, body.StarID, body.PlanetIndex); err != nil {
+	if err := activeShip().Navigate(sim, time.Now(), body.Kind, body.StarID, body.PlanetIndex); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	writeJSON(w, ship.Snapshot(time.Now()))
+	writeJSON(w, activeShip().Snapshot(time.Now()))
 }
 
 // POST /api/ship/land — посадка на планету, у которой корабль сейчас
@@ -453,11 +472,11 @@ func handleShipLand(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "нужен POST", http.StatusMethodNotAllowed)
 		return
 	}
-	if err := ship.Land(sim, time.Now()); err != nil {
+	if err := activeShip().Land(sim, time.Now()); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	writeJSON(w, ship.Snapshot(time.Now()))
+	writeJSON(w, activeShip().Snapshot(time.Now()))
 }
 
 // POST /api/ship/launch — взлёт с поверхности.
@@ -466,18 +485,211 @@ func handleShipLaunch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "нужен POST", http.StatusMethodNotAllowed)
 		return
 	}
-	if err := ship.Launch(time.Now()); err != nil {
+	if err := activeShip().Launch(time.Now()); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	writeJSON(w, ship.Snapshot(time.Now()))
+	writeJSON(w, activeShip().Snapshot(time.Now()))
 }
 
-// GET /api/fleets — раскладка флотов игрока по стабильным мирам (fleets.go).
-// Только текущий флот (Current==true) реально симулируется через ship.go;
-// остальные — статичные данные о гарнизоне на орбите родного мира.
+// POST /api/ship/control {"thrust":bool,"brake":bool,"turnLeft":bool,"turnRight":bool}
+// — ручное управление (client/ship.html): какие органы управления зажаты
+// ПРЯМО СЕЙЧАС. Курс/скорость/позиция между вызовами доводятся аналитически
+// (ship.go settleFlight), а не тикают на сервере фоном.
+func handleShipControl(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "нужен POST", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Thrust, Brake, TurnLeft, TurnRight bool
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, `ожидается {"thrust":bool,"brake":bool,"turnLeft":bool,"turnRight":bool}`, http.StatusBadRequest)
+		return
+	}
+	if err := activeShip().SetControl(time.Now(), body.Thrust, body.Brake, body.TurnLeft, body.TurnRight); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, activeShip().Snapshot(time.Now()))
+}
+
+// POST /api/ship/debug-damage — служебное действие: случайный урон случайной
+// палубе активного корабля (см. ship.go DebugDamage — настоящего боя/
+// столкновений в игре ещё нет, это временная демонстрация заполнения
+// HP-чекбоксов на HUD, по прямой просьбе пользователя).
+func handleShipDebugDamage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "нужен POST", http.StatusMethodNotAllowed)
+		return
+	}
+	deck, err := activeShip().DebugDamage(time.Now())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, struct {
+		Deck DeckHP   `json:"deck"`
+		Ship ShipView `json:"ship"`
+	}{deck, activeShip().Snapshot(time.Now())})
+}
+
+// POST /api/ship/boost {"action":"kick"|"engage"|"disengage"} — кнопка
+// УСКОРИТЬ/МЕДЛЕННЕЕ (client/ship.html): "kick" — разовый импульс (короткий
+// тап), "engage"/"disengage" — защёлкнуть/снять устойчивый форсаж на гелии
+// (Ship.Boosted, удержание кнопки/явное «МЕДЛЕННЕЕ»).
+func handleShipBoost(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "нужен POST", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Action string `json:"action"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, `ожидается {"action":"kick"|"engage"|"disengage"}`, http.StatusBadRequest)
+		return
+	}
+	var err error
+	switch body.Action {
+	case "kick":
+		err = activeShip().Kick(time.Now())
+	case "engage":
+		err = activeShip().SetBoost(time.Now(), true)
+	case "disengage":
+		err = activeShip().SetBoost(time.Now(), false)
+	default:
+		http.Error(w, `action должен быть "kick", "engage" или "disengage"`, http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, activeShip().Snapshot(time.Now()))
+}
+
+// POST /api/ship/charge — кнопка ЗАРЯДИТЬ (client/ship.html): сжигает
+// металлический водород, пополняя заряд аккумуляторов (ship.go Charge).
+func handleShipCharge(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "нужен POST", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := activeShip().Charge(time.Now()); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, activeShip().Snapshot(time.Now()))
+}
+
+// POST /api/ship/jettison {"key":"...", "amount":N} — выбросить груз из
+// трюма в космос (окно осмотра корабля, cargo.go Jettison).
+func handleShipJettison(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "нужен POST", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Key    string  `json:"key"`
+		Amount float64 `json:"amount"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, `ожидается {"key":"...","amount":N}`, http.StatusBadRequest)
+		return
+	}
+	if err := activeShip().Jettison(body.Key, body.Amount); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, activeShip().Snapshot(time.Now()))
+}
+
+// POST /api/ship/pickup — подобрать груз с клети, где сейчас корабль
+// (cargo.go Pickup).
+func handleShipPickup(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "нужен POST", http.StatusMethodNotAllowed)
+		return
+	}
+	picked, err := activeShip().Pickup(time.Now())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, struct {
+		Picked map[string]float64 `json:"picked"`
+		Ship   ShipView           `json:"ship"`
+	}{picked, activeShip().Snapshot(time.Now())})
+}
+
+// GET /api/cargo-boxes?starId=N — коробки с грузом, сброшенные в этой
+// звёздной системе (cargo.go).
+func handleCargoBoxes(w http.ResponseWriter, r *http.Request) {
+	starID, err := strconv.Atoi(r.URL.Query().Get("starId"))
+	if err != nil {
+		http.Error(w, "ожидается ?starId=N", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, cargoBoxesInStar(starID))
+}
+
+// GET /api/ship/eta?kind=star|planet&starId=N&planetIndex=N — предпросчёт
+// полёта ДО нажатия «лететь» (ship.go EstimateTravel): время в секундах и
+// расход топлива, ничего не меняя в состоянии корабля. GET, не POST — чтение,
+// вызывается на каждый выбор цели на радаре (client/ship.html).
+func handleShipETA(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	kind := q.Get("kind")
+	if kind != "star" && kind != "planet" {
+		http.Error(w, `ожидается ?kind=star|planet&starId=N&planetIndex=N`, http.StatusBadRequest)
+		return
+	}
+	starID, err1 := strconv.Atoi(q.Get("starId"))
+	planetIndex, err2 := strconv.Atoi(q.Get("planetIndex"))
+	if err1 != nil || (kind == "planet" && err2 != nil) {
+		http.Error(w, `ожидается ?kind=star|planet&starId=N&planetIndex=N`, http.StatusBadRequest)
+		return
+	}
+	est, err := activeShip().EstimateTravel(sim, time.Now(), kind, starID, planetIndex)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, est)
+}
+
+// GET /api/fleets — раскладка флотов игрока по стабильным мирам (fleets.go),
+// у каждого свой *Ship. Current — какой из них сейчас активен (переключение —
+// handleFleetActivate).
 func handleFleets(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, fleets)
+	writeJSON(w, fleetsView())
+}
+
+// POST /api/fleets/activate {"id":N} — переключить активный флот. Реально
+// переключает, чей корабль отдаёт /api/ship и принимает /api/ship/* — раньше
+// это меню в client/galaxy.html было чисто локальным (см. историю правки).
+func handleFleetActivate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "нужен POST", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		ID int `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, `ожидается {"id":N}`, http.StatusBadRequest)
+		return
+	}
+	if !activateFleet(body.ID) {
+		http.Error(w, "неизвестный флот", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, struct {
+		Fleets []Fleet  `json:"fleets"`
+		Ship   ShipView `json:"ship"`
+	}{fleetsView(), activeShip().Snapshot(time.Now())})
 }
 
 // GET /api/economy — снимок панели «Экономика» (client/economy.html): цены и
@@ -508,6 +720,34 @@ func handleEconomyResource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := setResourceOverride(body.Key, body.Price, body.Mass); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, economySnapshot())
+}
+
+// POST /api/economy/ship-module {"key":"...", "powerGen"?, "powerActive"?, "powerPassive"?:число} —
+// правка администратора: выработка и/или активное(пиковое)/пассивное
+// (постоянное) потребление энергии одним модулем корабля (вкладка «ЭНЕРГИЯ»
+// client/economy.html). Тот же принцип, что и handleEconomyResource —
+// частичная правка, сразу на диск, возвращает пересчитанный снимок целиком
+// (client/ship-deck-sectors.html читает его же).
+func handleEconomyShipModule(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "нужен POST", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Key          string   `json:"key"`
+		PowerGen     *float64 `json:"powerGen"`
+		PowerActive  *float64 `json:"powerActive"`
+		PowerPassive *float64 `json:"powerPassive"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Key == "" {
+		http.Error(w, `ожидается {"key":"...", "powerGen"?, "powerActive"?, "powerPassive"?:число}`, http.StatusBadRequest)
+		return
+	}
+	if err := setShipModuleOverride(body.Key, body.PowerGen, body.PowerActive, body.PowerPassive); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

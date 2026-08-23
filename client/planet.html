@@ -167,6 +167,7 @@
   .sy-stat-row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:6.3px;
     color:var(--text);padding:1.5px 0;}
   .sy-stat-row b{color:var(--text-bright);font-weight:400;}
+  .sy-fuel-warn span,.sy-fuel-warn b{color:var(--warn);}
   #sy-actions{flex-shrink:0;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:6px;}
   #sy-actions .con-btn{font-size:6.3px;padding:7px 2px;}
   #sy-slots-title{flex-shrink:0;font-family:var(--mono);font-size:6px;color:var(--text);opacity:.6;
@@ -1242,6 +1243,87 @@ const SHIP_MODULES = [
 // спецэффект, не считаем в «огневую мощь») — archive/docs/TZFleet.md §4.1.
 const WEAPON_AVG_DAMAGE = (80 + 180 + 150 + 220 + 200 + 400) / 6;
 
+// ── тяга и ускорение (ТЗ.md §2.7.4) — синхронизировано с
+// client/ship-deck-sectors.html (те же формулы и константы, см. подробные
+// комментарии там у HYDROGEN_ACCEL_UE_S2/computeReferenceMass/
+// engineThrustConstants — здесь то же самое, но referenceMass считается от
+// shipDefaults, а не от shipStates, потому что у Верфи нет своей копии
+// библиотеки в памяти, она читает её напрямую). Предел скорости и масштаб
+// «экранов» — прямо из ТЗ (300 000 у.е. предел; 1 экран/5с на 200 000 у.е.).
+const SPEED_LIMIT_UE = 300000;
+const SCREEN_UE = 1000000;
+// УСК.ЕД. (условная единица ускорения) = экран/с² × 100000, чисто для
+// отображения (длинные дроби неудобно читать) — синхронизировано с
+// ACCEL_DISPLAY_SCALE в client/ship-deck-sectors.html.
+const ACCEL_DISPLAY_SCALE = 100000;
+const SECTOR_SCREENS = 30; // «звёздная зона» — 25–35 экранов по ТЗ, середина диапазона
+const HYDROGEN_ACCEL_UE_S2 = 200000 / 36000; // «Водородный» двигатель, время разгона до 200000 у.е. без гравитации
+const ION_EFFICIENCY_VS_REGULAR = 0.7; // ионный — на 30% меньше ускорения на единицу энергии
+const GAS_RATE_HYDROGEN = 10;
+const GAS_RATE_HELIUM3 = 100;
+
+function shipModuleEnergyEntry(key){
+  return whEconomy && whEconomy.shipModuleEnergy ? whEconomy.shipModuleEnergy.find(e => e.key === key) : null;
+}
+
+// computeReferenceMassPlanet — референсная масса для калибровки тяги: масса
+// Крейсера/Баржи (decks:6) из библиотеки shipDefaults, как если бы все
+// свободные слоты были заняты модулями средней массы класса. Та же формула,
+// что computeReferenceMass в client/ship-deck-sectors.html, только источник
+// данных — shipDefaults (сырой ответ /api/ship-defaults), а не shipStates
+// (у Верфи нет собственного редактируемого состояния всей библиотеки разом).
+function computeReferenceMassPlanet(){
+  if(!shipDefaults) return null;
+  let n = 0, massSum = 0, moduleMassSum = 0, moduleCount = 0, freeSlotsSum = 0;
+  shipDefaults.forEach(s => {
+    const builtDecks = (s.decks || []).length;
+    if(builtDecks === 0) return;
+    const bracket = shipClassBracket(builtDecks);
+    if(bracket.decks !== 6) return; // Крейсер/Баржа
+    const massStats = shipComputeMass({ decks: builtDecks }, { modules: s.decks.map(d => d.modules || []) });
+    let mCount = 0, mMassSum = 0;
+    s.decks.forEach(d => (d.modules || []).forEach(modKey => {
+      if(!modKey) return;
+      mCount++;
+      const info = shipItemInfo(modKey);
+      if(info) mMassSum += info.totalMass;
+    }));
+    const freeSlots = Math.max(0, builtDecks * bracket.perDeck - mCount);
+    n++; massSum += massStats.totalMass; moduleMassSum += mMassSum; moduleCount += mCount; freeSlotsSum += freeSlots;
+  });
+  if(n === 0) return null;
+  const avgMass = massSum / n, avgFreeSlots = freeSlotsSum / n;
+  const avgModuleMass = moduleCount > 0 ? moduleMassSum / moduleCount : 0;
+  return avgMass + avgFreeSlots * avgModuleMass;
+}
+
+// engineThrustConstantsPlanet — тяга одного модуля каждого типа двигателя, в
+// у.е.·у.м./с² (см. HYDROGEN_ACCEL_UE_S2 выше). Отношение тяги ионного к
+// обычному выводится из живых powerActive (не хардкод 2.8 — если админ
+// поправит потребление на вкладке «ЭНЕРГИЯ», соотношение пересчитается само).
+function engineThrustConstantsPlanet(){
+  const referenceMass = computeReferenceMassPlanet();
+  if(referenceMass === null) return null;
+  const regEntry = shipModuleEnergyEntry('ship_engine');
+  const ionEntry = shipModuleEnergyEntry('ship_engine_ion');
+  const regActive = regEntry ? regEntry.powerActive : 5;
+  const ionActive = ionEntry ? ionEntry.powerActive : 20;
+  const thrustEngine = HYDROGEN_ACCEL_UE_S2 * referenceMass;
+  const ionThrustRatio = regActive > 0 ? (ionActive / regActive) * ION_EFFICIENCY_VS_REGULAR : 0;
+  return { referenceMass, regActive, ionActive, ship_engine: thrustEngine, ship_engine_ion: thrustEngine * ionThrustRatio };
+}
+
+function formatDuration(seconds){
+  if(!Number.isFinite(seconds)) return '—';
+  if(seconds < 60) return seconds.toFixed(1) + ' с';
+  if(seconds < 3600){
+    const m = Math.floor(seconds / 60), s = Math.round(seconds - m * 60);
+    return m + ' мин ' + s + ' с';
+  }
+  const h = Math.floor(seconds / 3600), m = Math.round((seconds - h * 3600) / 60);
+  return h + ' ч ' + m + ' мин';
+}
+
 // ── силуэт корабля на сетке палуб (присланный пользователем эскиз: не квадрат
 // «сторона=√палуб», а вытянутая/крестообразная форма, растущая в сложности
 // вместе с числом палуб) — по одной форме на каждое встречающееся в игре
@@ -1430,12 +1512,20 @@ function shipSlotLabel(modKey){
   return mod ? mod.name : modKey;
 }
 
-function shipComputeStats(cls, state){
+// shipComputeMass — только масса/стоимость/прочность/груз/базовые ресурсы,
+// БЕЗ ускорения. Вынесена отдельно от shipComputeStats, потому что расчёт
+// тяги (engineThrustConstantsPlanet → computeReferenceMassPlanet) сам
+// нуждается в массе корабля — если бы referenceMass считалась через
+// shipComputeStats (который вызывает engineThrustConstantsPlanet), получилась
+// бы бесконечная рекурсия. shipComputeStats ниже использует эту функцию для
+// базовых полей и досчитывает ускорение поверх неё.
+function shipComputeMass(cls, state){
   const frame = shipItemInfo('ship_frame');
   let totalMass = frame ? frame.totalMass * cls.decks : 0;
   let totalValue = frame ? frame.totalValue * cls.decks : 0;
   let durability = cls.decks * 3; // §2: голая палуба без брони = 3
-  let cargo = 0, engines = 0, weapons = 0, lifeSupport = 0, teleports = 0, computers = 0;
+  let cargo = 0, weapons = 0, lifeSupport = 0, teleports = 0, computers = 0;
+  let regularEngines = 0, ionEngines = 0, gasStorage = 0;
   const baseTotals = {};
   const addBase = (totals, mult) => Object.entries(totals || {}).forEach(([k,v]) => { baseTotals[k] = (baseTotals[k]||0) + v*mult; });
   if(frame) addBase(frame.baseTotals, cls.decks);
@@ -1447,7 +1537,9 @@ function shipComputeStats(cls, state){
     durability += shipItemDurability(modKey);
     if(modKey === 'ship_cargo') cargo += 1000;               // §4.19
     if(modKey === 'ship_life_support'){ cargo += 200; lifeSupport++; } // §4.1
-    if(modKey === 'ship_engine' || modKey === 'ship_engine_ion') engines++; // оба типа двигателя (ТЗ_Корабль.md §4.5) считаются в ускорение одинаково
+    if(modKey === 'ship_engine') regularEngines++;
+    if(modKey === 'ship_engine_ion') ionEngines++;
+    if(modKey === 'ship_gas_storage') gasStorage++;
     if(modKey === 'ship_weapon_mount') weapons++;
     if(modKey === 'ship_teleport') teleports++;
     if(modKey === 'ship_computer') computers++;
@@ -1455,11 +1547,42 @@ function shipComputeStats(cls, state){
 
   return {
     totalMass, totalValue, durability, cargo, baseTotals,
+    regularEngines, ionEngines, gasStorage, weapons, lifeSupport, teleports, computers,
+  };
+}
+
+// shipComputeStats — mass + тяга/ускорение/время (ТЗ.md §2.7.4, см. константы
+// выше) поверх неё. Двигатели топятся Газохранилищем, не реактором
+// (ТЗ_Корабль.md §4.5) — если топлива не хватает на полную мощность всех
+// двигателей, тяга снижается пропорционально (fuelRatio), синхронизировано
+// 1:1 с renderShipSummary в client/ship-deck-sectors.html.
+function shipComputeStats(cls, state){
+  const m = shipComputeMass(cls, state);
+  const thrust = engineThrustConstantsPlanet();
+  let accelUE = 0, fuelRatio = 1, fuelDemand = 0, fuelSupply = 0;
+  if(thrust && m.totalMass > 0){
+    const thrustSum = m.regularEngines * thrust.ship_engine + m.ionEngines * thrust.ship_engine_ion;
+    fuelDemand = m.regularEngines * thrust.regActive + m.ionEngines * thrust.ionActive;
+    const fuelRate = m.ionEngines > 0 ? GAS_RATE_HELIUM3 : GAS_RATE_HYDROGEN;
+    fuelSupply = m.gasStorage * fuelRate;
+    fuelRatio = fuelDemand > 0 ? Math.min(1, fuelSupply / fuelDemand) : 1;
+    accelUE = (thrustSum * fuelRatio) / m.totalMass;
+  }
+  const accelScreen = accelUE / SCREEN_UE;
+  const timeAcrossSectors = accelScreen > 0 ? Math.sqrt(2 * (3 * SECTOR_SCREENS) / accelScreen) : Infinity;
+  const timeToLimit = accelUE > 0 ? SPEED_LIMIT_UE / accelUE : Infinity;
+  const engines = m.regularEngines + m.ionEngines;
+
+  return {
+    ...m,
+    engines,
     // ── условные оценки, формулы нигде в ТЗ не заданы (см. шапку раздела) ──
-    acceleration: totalMass > 0 ? +(engines * 50000 / totalMass).toFixed(2) : 0,
-    firepower: Math.round(weapons * WEAPON_AVG_DAMAGE),
-    flightDays: lifeSupport * 30,
-    jumpRange: teleports > 0 ? +(1 + computers*0.5).toFixed(1) : 0,
+    accelScreen: thrust ? accelScreen : null,
+    timeAcrossSectors, timeToLimit,
+    fuelShort: engines > 0 && fuelDemand > fuelSupply, fuelRatio, fuelDemand, fuelSupply,
+    firepower: Math.round(m.weapons * WEAPON_AVG_DAMAGE),
+    flightDays: m.lifeSupport * 30,
+    jumpRange: m.teleports > 0 ? +(1 + m.computers*0.5).toFixed(1) : 0,
   };
 }
 
@@ -1523,11 +1646,14 @@ async function renderShipyard(){
   document.getElementById('sy-stats').innerHTML = `
     <div class="sy-stat-row"><span>Прочность</span><b>${stats.durability}</b></div>
     <div class="sy-stat-row"><span>Грузоподъёмность</span><b>${stats.cargo} у.м.</b></div>
-    <div class="sy-stat-row"><span>Ускорение*</span><b>${stats.acceleration}</b></div>
+    <div class="sy-stat-row" title="1 уск.ед. = 0.00001 экран/с²"><span>Ускорение*</span><b>${stats.accelScreen !== null ? (stats.accelScreen * ACCEL_DISPLAY_SCALE).toFixed(2) + ' уск.ед.' : '—'}</b></div>
+    <div class="sy-stat-row"><span>3 звёздные зоны (${3 * SECTOR_SCREENS} экр.)*</span><b>${formatDuration(stats.timeAcrossSectors)}</b></div>
+    <div class="sy-stat-row"><span>До предела скорости*</span><b>${formatDuration(stats.timeToLimit)}</b></div>
     <div class="sy-stat-row"><span>Масса</span><b>${stats.totalMass.toFixed(0)} у.м.</b></div>
     <div class="sy-stat-row"><span>Огневая мощь*</span><b>${stats.firepower}</b></div>
     <div class="sy-stat-row"><span>Полёт без посадки*</span><b>${stats.flightDays} сут</b></div>
     <div class="sy-stat-row"><span>Дальность прыжка*</span><b>${stats.jumpRange || '—'}</b></div>
+    ${stats.fuelShort ? `<div class="sy-stat-row sy-fuel-warn"><span>⚠ топливо</span><b>${Math.round(stats.fuelRatio * 100)}% тяги (${stats.fuelSupply}/${stats.fuelDemand})</b></div>` : ''}
   `;
 
   // ── слоты выбранной палубы: ряды по 4, лишнее сверх perDeck — перечёркнуто ──

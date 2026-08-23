@@ -1338,13 +1338,37 @@ func rollExtinctLife(rng *rand.Rand, pt string, water int) bool {
 	return rng.Float64() < (float64(water)/100)*chance
 }
 
-// systemRadiusRange — радиус звёздной области, клети (ТЗ.md §2.7.4: 25–35).
+// systemRadius — РАМКА звёздной области (граница карты/системы, поле
+// `Object.SystemRadius`), клети. ОДНА величина на весь сектор, не диапазон
+// (было 25–35 вразброс по звезде) — по прямому требованию пользователя:
+// «давай всем секторам одну размерность зададим по максимальной, просто у
+// некоторых звёзд будет больше область пустоты».
+//
+// ИСПРАВЛЕНО по прямому замечанию пользователя: первая версия этой правки
+// заодно растянула ПЛОТНОСТЬ ОРБИТ до одного максимума у каждой звезды —
+// не то, что просили («я не просил орбиты растягивать... есть звёзды, где
+// планеты плотнее и ближе к звезде, но сектор всё равно 35 клетей»). Теперь
+// РАЗВЕДЕНО на два самостоятельных числа: `systemRadius` — только рамка,
+// одна на всех; `contentRadiusMin/Max` (ниже, `generatePlanets`) — где
+// РЕАЛЬНО кончаются орбиты планет этой конкретной звезды, случайно и
+// по-прежнему вразброс, как было до этой правки, — компактные системы с
+// плотными близкими орбитами остаются возможны, просто внутри одной и той же
+// внешней рамки 35, а не физически меньшей карты.
 const (
-	systemRadiusMin = 25.0
-	systemRadiusMax = 35.0
-	orbitStep       = 4.0 // шаг орбит, экраны (ТЗ.md §2.8: 4 ± 1)
-	orbitJitter     = 1.0
-	orbitOccupancy  = 0.82 // доля занятых слотов: часть орбит пустует
+	systemRadius   = 35.0
+	orbitStep      = 4.0 // шаг орбит, экраны (ТЗ.md §2.8: 4 ± 1)
+	orbitJitter    = 1.0
+	orbitOccupancy = 0.82 // доля занятых слотов: часть орбит пустует
+
+	// contentRadiusMin/Max — РАЗБРОС того, докуда реально доходят орбиты
+	// планет конкретной звезды (см. generatePlanets) — те же исходные числа,
+	// что раньше были у самой рамки (systemRadiusMin/Max, до её унификации),
+	// просто теперь это отдельная, внутренняя величина, а не то, что видит
+	// клиент. Компактные системы (ближе к contentRadiusMin) и просторные
+	// (ближе к contentRadiusMax) остаются возможны — обе внутри одной и той
+	// же внешней рамки systemRadius=35.
+	contentRadiusMin = 25.0
+	contentRadiusMax = 35.0
 )
 
 // ── метеоритная активность и кольца звезды ──────────────────────────────────
@@ -1415,13 +1439,20 @@ func makeStarEnvironment(rng *rand.Rand, starType string, starR, starMassSolar f
 // хаоса, у края — беднее и летучими, в стабильной зоне Империи — выработаны).
 // starMassSolar — масса светила, задаёт скорость обращения планет (Кеплер).
 func generatePlanets(rng *rand.Rand, starType string, starR, starMassSolar float64) ([]Planet, float64) {
-	sysR := systemRadiusMin + rng.Float64()*(systemRadiusMax-systemRadiusMin)
+	// contentR — где РЕАЛЬНО кончаются орбиты планет ЭТОЙ звезды: случайно,
+	// вразброс (как было до унификации рамки) — «есть звёзды, где планеты
+	// плотнее и ближе к звезде» (прямые слова пользователя). НЕ то же самое,
+	// что возвращаемая наружу `systemRadius` (рамка карты/системы, одна на
+	// весь сектор, см. константу выше) — этот разброс только определяет,
+	// докуда тянется орбитная сетка КОНКРЕТНОЙ звезды, а не размер поля.
+	contentR := contentRadiusMin + rng.Float64()*(contentRadiusMax-contentRadiusMin)
 	// один бросок «богатства» на всю систему — см. rollStarWealth
 	starWealth := rollStarWealth(rng)
 
-	// орбиты: первая на шаге от звезды, дальше с шагом 4 ± 1
+	// орбиты: первая на шаге от звезды, дальше с шагом 4 ± 1, до contentR —
+	// НЕ до рамки systemRadius (та фиксирована и может быть заметно шире).
 	var orbits []float64
-	for o := orbitStep + (rng.Float64()*2-1)*orbitJitter; o <= sysR; {
+	for o := orbitStep + (rng.Float64()*2-1)*orbitJitter; o <= contentR; {
 		orbits = append(orbits, o)
 		o += orbitStep + (rng.Float64()*2-1)*orbitJitter
 	}
@@ -1431,13 +1462,17 @@ func generatePlanets(rng *rand.Rand, starType string, starR, starMassSolar float
 		if rng.Float64() > orbitOccupancy {
 			continue // орбита пустует
 		}
-		planets = append(planets, makePlanet(rng, starType, starR, o, sysR, len(planets), starWealth, starMassSolar))
+		planets = append(planets, makePlanet(rng, starType, starR, o, contentR, len(planets), starWealth, starMassSolar))
 	}
 	// система без единой планеты выглядит как ошибка генерации — гарантируем одну
 	if len(planets) == 0 && len(orbits) > 0 {
-		planets = append(planets, makePlanet(rng, starType, starR, orbits[0], sysR, 0, starWealth, starMassSolar))
+		planets = append(planets, makePlanet(rng, starType, starR, orbits[0], contentR, 0, starWealth, starMassSolar))
 	}
-	return planets, sysR
+	// Наружу — ВСЕГДА фиксированная рамка (systemRadius), не contentR: именно
+	// её видит клиент как «радиус звёздной области» и по ней автопилот считает
+	// «край системы» (ship.go systemEdgeRadius) — одна и та же величина для
+	// любой звезды, вне зависимости от того, насколько плотно у неё легли орбиты.
+	return planets, systemRadius
 }
 
 // generatePlanetResources — цикл по resourceDefs: база × редкость ×
@@ -1510,7 +1545,7 @@ func makePlanet(rng *rand.Rand, starType string, starR, orbit, sysR float64, idx
 
 	// нормированное положение орбиты внутри системы — для бонуса гелия-3 и
 	// для непрерывного градиента orbitMod
-	orbitNorm := math.Min(1, orbit/systemRadiusMax)
+	orbitNorm := math.Min(1, orbit/systemRadius)
 	orbitFrac := math.Min(1, orbit/sysR)
 	zoneMult := zoneScarcity(zoneOfR(starR))
 
@@ -1605,7 +1640,7 @@ func recomputeAsHabitable(rng *rand.Rand, p *Planet, starType string, starR, sys
 	p.Life = true
 	hydro := float64(p.Water) / 100
 
-	orbitNorm := math.Min(1, p.Orbit/systemRadiusMax)
+	orbitNorm := math.Min(1, p.Orbit/systemRadius)
 	orbitFrac := math.Min(1, p.Orbit/sysR)
 	zoneMult := zoneScarcity(zoneOfR(starR))
 	starWealth := rollStarWealth(rng) // свой бросок той же формулой — starWealth планеты нигде не хранится, используется только на лету при генерации

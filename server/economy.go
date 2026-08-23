@@ -147,6 +147,76 @@ func recommendedPrice(key string) float64 {
 	return recommendedPriceFromTotals(key, totals, maxOf(totals))
 }
 
+// ── энергетика модулей корабля (client/ship-deck-sectors.html) ─────────────
+//
+// Зеркало SHIP_MODULES оттуда, редактируемое администратором
+// (client/economy.html, вкладка «ЭНЕРГИЯ») — раньше числа были хардкодом
+// прямо в JS конструктора кораблей. Первая версия (Gen/Use) была условной
+// оценкой «в ТЗ формул нет» — это оказалось неверно: в ТЗ_Корабль.md §4.20
+// уже есть настоящая сводная таблица потребления по модулям (числа
+// зафиксированы пользователем в отдельной сессии над тем документом), эта
+// правка сверяет код с ней. Заодно пользователь уточнил деление, которого
+// в плоском Use не было: у модуля есть ПАССИВНЫЙ расход (постоянно, пока
+// корабль жив/работает — СЖО/радар/computer/щит-дежурство) и АКТИВНЫЙ пик
+// (только в момент действия — двигатель при разгоне, оружие при выстреле,
+// РЭБ в бою, щит при поглощении удара). Грузовой отсек/Ангар/Стыковочный
+// док/Солнечный парус — по ТЗ 0 в обоих режимах. Источники энергии
+// (реактор/газохранилище/панель/аккумулятор) сами не потребляют (в ТЗ прямо
+// «источник, не потребитель» — 4.7).
+//
+// ВАЖНО (пока не смоделировано числами, только пометка для будущего шага):
+// по ТЗ §4.5 оба типа двигателя топятся ВОДОРОДОМ/ГЕЛИЕМ-3 из Газохранилища,
+// а не «общей электрикой» реактора — то есть у корабля фактически ДВЕ
+// независимые сети (топливная — только двигатели, от Газохранилища;
+// электрическая — всё остальное, от реактора/панели/аккумулятора). Учёт
+// реального расхода топлива (курс сжигания, §4.7: 1 водород→10 энергии,
+// 1 гелий-3→100, металл. водород не оцифрован в ТЗ вовсе) — отдельный шаг
+// (расчёт тяги/ускорения), здесь фиксируются только сами числа расхода.
+var shipModuleEnergyOrder = []string{
+	"ship_life_support", "ship_colonist", "ship_weapon_mount", "ship_solar_sail",
+	"ship_engine", "ship_engine_ion", "ship_reactor", "ship_gas_storage",
+	"ship_battery", "ship_repair", "ship_solar_panel", "ship_teleport",
+	"ship_miner", "ship_radar", "ship_ecm", "ship_computer", "ship_shield",
+	"ship_dock", "ship_hangar", "ship_cargo",
+}
+
+type shipModulePower struct{ Gen, Active, Passive float64 }
+
+// shipModuleEnergyDefaults — «заводские» значения. Источник — ТЗ_Корабль.md
+// §4.20, кроме мест, отмеченных ниже как собственная оценка (в ТЗ явно
+// написано «не задано»/«качественно», числа не даны):
+//   - ship_colonist — оценка (в ТЗ только «качественно потребляет энергию»);
+//   - ship_repair/ship_miner — оценка (в ТЗ «не задано, только при действии»);
+//   - ship_computer — оценка, поднята с прежней (в ТЗ «не задано, качественно
+//     постоянно МНОГО» — заметно больше рядовых 1-2 у СЖО/радара);
+//   - ship_engine_ion — не из ТЗ (модуль введён в v2), по прямому требованию
+//     пользователя поднят с ×4 (5→20) до ×20 (5→100) от обычного двигателя —
+//     атомный реактор (powerGen=40) теперь физически не может в одиночку
+//     тянуть даже один такой двигатель на полную мощность (что и было целью
+//     правки — см. shipphysics.go settleEnergyCycle);
+//     недостача энергии не блокирует полёт целиком, а линейно снижает тягу
+//     через уже существующий FuelRatio (shipphysics.go computeShipPhysics);
+
+//   - ship_solar_panel — ТЗ даёт 3 уровня по орбитам (10/2/1), здесь взят
+//     оптимистичный «ближние орбиты» как единственное статическое число —
+//     инструмент вне контекста конкретной звезды;
+//   - ship_teleport — ТЗ считает «40 за КАЖДЫЙ сектор прыжка», здесь — плоское
+//     разовое значение без учёта дальности (дальность прыжка тут не задана).
+var shipModuleEnergyDefaults = map[string]shipModulePower{
+	"ship_life_support": {0, 2, 2}, "ship_colonist": {0, 2, 2}, "ship_weapon_mount": {0, 1, 0},
+	"ship_solar_sail": {0, 0, 0}, "ship_engine": {0, 5, 0}, "ship_engine_ion": {0, 100, 0},
+	"ship_reactor": {40, 0, 0}, "ship_gas_storage": {10, 0, 0}, "ship_battery": {0, 0, 0},
+	"ship_repair": {0, 2, 0}, "ship_solar_panel": {10, 0, 0}, "ship_teleport": {0, 40, 0},
+	"ship_miner": {0, 3, 0}, "ship_radar": {0, 1, 1}, "ship_ecm": {0, 3, 0},
+	"ship_computer": {0, 5, 5}, "ship_shield": {0, 15, 1}, "ship_dock": {0, 0, 0},
+	"ship_hangar": {0, 0, 0}, "ship_cargo": {0, 0, 0},
+}
+
+func isShipModuleKey(key string) bool {
+	_, ok := shipModuleEnergyDefaults[key]
+	return ok
+}
+
 // ── персистентные оверрайды администратора ──────────────────────────────────
 
 type resourceOverride struct {
@@ -154,8 +224,15 @@ type resourceOverride struct {
 	Mass  *float64 `json:"mass,omitempty"`
 }
 
+type shipModuleOverride struct {
+	PowerGen     *float64 `json:"powerGen,omitempty"`
+	PowerActive  *float64 `json:"powerActive,omitempty"`
+	PowerPassive *float64 `json:"powerPassive,omitempty"`
+}
+
 type economyData struct {
-	Resources map[string]resourceOverride `json:"resources"`
+	Resources   map[string]resourceOverride   `json:"resources"`
+	ShipModules map[string]shipModuleOverride `json:"shipModules,omitempty"`
 }
 
 var (
@@ -180,13 +257,17 @@ func loadEconomy() {
 			if d.Resources == nil {
 				d.Resources = map[string]resourceOverride{}
 			}
+			if d.ShipModules == nil {
+				d.ShipModules = map[string]shipModuleOverride{}
+			}
 			econData = d
+			seedShipModuleDefaultsLocked() // старый файл мог не знать о вкладке «Энергия» — дозаполняем недостающие ключи
 			return
 		} else {
 			log.Printf("economy_data.json повреждён (%v) — пересоздаю с рекомендованными значениями", jerr)
 		}
 	}
-	econData = economyData{Resources: map[string]resourceOverride{}}
+	econData = economyData{Resources: map[string]resourceOverride{}, ShipModules: map[string]shipModuleOverride{}}
 	totals := sectorResourceTotals()
 	maxStock := maxOf(totals)
 	for _, key := range econResourceOrder {
@@ -194,7 +275,27 @@ func loadEconomy() {
 		m := econDefaultMass[key]
 		econData.Resources[key] = resourceOverride{Price: &p, Mass: &m}
 	}
+	seedShipModuleDefaultsLocked()
 	saveEconomyLocked()
+}
+
+// seedShipModuleDefaultsLocked — заполняет econData.ShipModules заводскими
+// значениями для любых ключей из shipModuleEnergyDefaults, которых там ещё
+// нет (новый файл целиком, либо старый файл без вкладки «Энергия»). Не
+// трогает уже сохранённые оверрайды администратора. Вызывающий держит econMu.
+func seedShipModuleDefaultsLocked() {
+	dirty := false
+	for key, def := range shipModuleEnergyDefaults {
+		if _, ok := econData.ShipModules[key]; ok {
+			continue
+		}
+		gen, active, passive := def.Gen, def.Active, def.Passive
+		econData.ShipModules[key] = shipModuleOverride{PowerGen: &gen, PowerActive: &active, PowerPassive: &passive}
+		dirty = true
+	}
+	if dirty {
+		saveEconomyLocked()
+	}
 }
 
 func saveEconomyLocked() {
@@ -242,6 +343,56 @@ func setResourceOverride(key string, price, mass *float64) error {
 		ov.Mass = mass
 	}
 	econData.Resources[key] = ov
+	saveEconomyLocked()
+	return nil
+}
+
+func shipModulePowerGen(key string) float64 {
+	econMu.RLock()
+	defer econMu.RUnlock()
+	if ov, ok := econData.ShipModules[key]; ok && ov.PowerGen != nil {
+		return *ov.PowerGen
+	}
+	return shipModuleEnergyDefaults[key].Gen
+}
+
+func shipModulePowerActive(key string) float64 {
+	econMu.RLock()
+	defer econMu.RUnlock()
+	if ov, ok := econData.ShipModules[key]; ok && ov.PowerActive != nil {
+		return *ov.PowerActive
+	}
+	return shipModuleEnergyDefaults[key].Active
+}
+
+func shipModulePowerPassive(key string) float64 {
+	econMu.RLock()
+	defer econMu.RUnlock()
+	if ov, ok := econData.ShipModules[key]; ok && ov.PowerPassive != nil {
+		return *ov.PowerPassive
+	}
+	return shipModuleEnergyDefaults[key].Passive
+}
+
+// setShipModuleOverride — правка администратора: nil-поле оставляет прежнее
+// значение, тем же принципом, что setResourceOverride.
+func setShipModuleOverride(key string, powerGen, powerActive, powerPassive *float64) error {
+	if !isShipModuleKey(key) {
+		return fmt.Errorf("неизвестный модуль корабля: %s", key)
+	}
+	econMu.Lock()
+	defer econMu.Unlock()
+	ov := econData.ShipModules[key]
+	if powerGen != nil {
+		ov.PowerGen = powerGen
+	}
+	if powerActive != nil {
+		ov.PowerActive = powerActive
+	}
+	if powerPassive != nil {
+		ov.PowerPassive = powerPassive
+	}
+	econData.ShipModules[key] = ov
 	saveEconomyLocked()
 	return nil
 }
@@ -1041,12 +1192,29 @@ type economyShipView struct {
 }
 
 type economySnapshotResponse struct {
-	Resources       []economyResourceView `json:"resources"`
-	Recipes         []economyRecipeView   `json:"recipes"`
-	Buildings       []economyBuildingView `json:"buildings"`
-	Demand          map[string]float64    `json:"demand"`          // базовые ресурсы, по всей цепочке (см. ниже)
-	ComponentDemand map[string]float64    `json:"componentDemand"` // компоненты (все 21, все ТУ), см. componentDemandTotals
-	ShipComponents  economyShipView       `json:"shipComponents"`
+	Resources        []economyResourceView         `json:"resources"`
+	Recipes          []economyRecipeView           `json:"recipes"`
+	Buildings        []economyBuildingView         `json:"buildings"`
+	Demand           map[string]float64            `json:"demand"`          // базовые ресурсы, по всей цепочке (см. ниже)
+	ComponentDemand  map[string]float64            `json:"componentDemand"` // компоненты (все 21, все ТУ), см. componentDemandTotals
+	ShipComponents   economyShipView               `json:"shipComponents"`
+	ShipModuleEnergy []economyShipModuleEnergyView `json:"shipModuleEnergy"`
+}
+
+// economyShipModuleEnergyView — вкладка «ЭНЕРГИЯ» client/economy.html:
+// редактируемые выработка/активное(пик)/пассивное(постоянное) потребление 20
+// модулей корабля (client/ship-deck-sectors.html читает эти значения вместо
+// своего прежнего хардкода). Default* — заводские значения (ТЗ_Корабль.md
+// §4.20), чтобы UI мог показать кнопку «сбросить», как у цены ресурса.
+type economyShipModuleEnergyView struct {
+	Key                 string  `json:"key"`
+	Name                string  `json:"name"`
+	PowerGen            float64 `json:"powerGen"`
+	PowerActive         float64 `json:"powerActive"`
+	PowerPassive        float64 `json:"powerPassive"`
+	DefaultPowerGen     float64 `json:"defaultPowerGen"`
+	DefaultPowerActive  float64 `json:"defaultPowerActive"`
+	DefaultPowerPassive float64 `json:"defaultPowerPassive"`
 }
 
 // componentDemandTotals — спрос НА КОМПОНЕНТЫ (не на базовые ресурсы): сколько
@@ -1181,6 +1349,23 @@ func economySnapshot() economySnapshotResponse {
 	shipItems = append(shipItems, buildTeleportItem(teleportDef, teleportBase, otherModuleValues, cache, demand))
 	shipItems = append(shipItems, buildIonEngineItem(ionEngineDef, ionEngineBase, enginePrice, cache, demand))
 
+	shipModuleEnergy := make([]economyShipModuleEnergyView, 0, len(shipModuleEnergyOrder))
+	for _, key := range shipModuleEnergyOrder {
+		name := key
+		for _, s := range shipItemCosts {
+			if s.Key == key {
+				name = s.Name
+				break
+			}
+		}
+		def := shipModuleEnergyDefaults[key]
+		shipModuleEnergy = append(shipModuleEnergy, economyShipModuleEnergyView{
+			Key: key, Name: name,
+			PowerGen: shipModulePowerGen(key), PowerActive: shipModulePowerActive(key), PowerPassive: shipModulePowerPassive(key),
+			DefaultPowerGen: def.Gen, DefaultPowerActive: def.Active, DefaultPowerPassive: def.Passive,
+		})
+	}
+
 	return economySnapshotResponse{
 		Resources: resources, Recipes: recipes, Buildings: buildings, Demand: demand,
 		ComponentDemand: componentDemandTotals(),
@@ -1189,5 +1374,6 @@ func economySnapshot() economySnapshotResponse {
 			Note:   "Рецепты — теория из ТЗ_Корабль.md (классы/палубы/модули/оружие), в игровую механику постройки и боя не заведены. Показаны здесь для расчёта спроса на ресурсы наравне со зданиями и компонентами.",
 			Items:  shipItems,
 		},
+		ShipModuleEnergy: shipModuleEnergy,
 	}
 }

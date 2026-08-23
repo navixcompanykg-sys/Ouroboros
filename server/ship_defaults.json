@@ -8,11 +8,12 @@
         "modules": [
           "ship_life_support",
           "ship_radar",
-          "ship_engine",
+          "ship_engine_ion",
+          "ship_reactor",
           "ship_gas_storage",
-          "ship_engine",
           "ship_weapon_mount",
-          "ship_weapon_mount"
+          "ship_weapon_mount",
+          "ship_reactor"
         ]
       }
     ]
@@ -28,9 +29,9 @@
           "ship_radar",
           "ship_engine",
           "ship_engine",
-          "ship_cargo",
           "ship_gas_storage",
-          "ship_weapon_mount"
+          "ship_weapon_mount",
+          "ship_cargo"
         ]
       }
     ]
@@ -44,7 +45,7 @@
         "modules": [
           "ship_weapon_mount",
           "ship_weapon_mount",
-          "ship_gas_storage",
+          "ship_weapon_mount",
           "ship_gas_storage"
         ]
       },
@@ -54,10 +55,9 @@
         "modules": [
           "ship_life_support",
           "ship_radar",
-          "ship_engine",
-          "ship_engine",
-          "ship_engine",
-          "ship_engine"
+          "ship_engine_ion",
+          "ship_reactor",
+          "ship_reactor"
         ]
       }
     ]
@@ -68,14 +68,24 @@
       {
         "row": 2,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_engine_ion",
+          "ship_engine_ion",
+          "ship_reactor",
+          "ship_weapon_mount",
+          "ship_gas_storage"
+        ]
       },
       {
         "row": 2,
         "col": 3,
         "modules": [
           "ship_life_support",
-          "ship_radar"
+          "ship_radar",
+          "ship_reactor",
+          "ship_reactor",
+          "ship_reactor",
+          "ship_reactor"
         ]
       }
     ]
@@ -86,24 +96,38 @@
       {
         "row": 2,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 3,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount",
+          "ship_reactor",
+          "ship_reactor"
+        ]
       },
       {
         "row": 1,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_engine_ion",
+          "ship_engine_ion",
+          "ship_weapon_mount",
+          "ship_reactor"
+        ]
       },
       {
         "row": 2,
         "col": 3,
         "modules": [
           "ship_life_support",
-          "ship_radar"
+          "ship_radar",
+          "ship_reactor",
+          "ship_gas_storage"
         ]
       }
     ]
@@ -114,24 +138,41 @@
       {
         "row": 3,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_reactor",
+          "ship_reactor",
+          "ship_weapon_mount",
+          "ship_cargo"
+        ]
       },
       {
         "row": 2,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_engine_ion",
+          "ship_engine_ion",
+          "ship_engine_ion",
+          "ship_battery"
+        ]
       },
       {
         "row": 1,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_reactor",
+          "ship_reactor",
+          "ship_weapon_mount",
+          "ship_gas_storage"
+        ]
       },
       {
         "row": 2,
         "col": 3,
         "modules": [
           "ship_life_support",
-          "ship_radar"
+          "ship_radar",
+          "ship_reactor",
+          "ship_reactor"
         ]
       }
     ]
@@ -142,7 +183,12 @@
       {
         "row": 2,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount",
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 2,
@@ -152,14 +198,20 @@
       {
         "row": 2,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_engine",
+          "ship_engine",
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 2,
         "col": 3,
         "modules": [
           "ship_life_support",
-          "ship_radar"
+          "ship_radar",
+          "ship_gas_storage"
         ]
       }
     ]
@@ -170,24 +222,39 @@
       {
         "row": 3,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_gas_storage",
+          "ship_weapon_mount",
+          "ship_cargo",
+          "ship_cargo"
+        ]
       },
       {
         "row": 2,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_cargo",
+          "ship_cargo"
+        ]
       },
       {
         "row": 1,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_engine",
+          "ship_engine",
+          "ship_engine",
+          "ship_engine"
+        ]
       },
       {
         "row": 2,
         "col": 3,
         "modules": [
           "ship_life_support",
-          "ship_radar"
+          "ship_radar",
+          "ship_gas_storage"
         ]
       }
     ]
@@ -198,7 +265,11 @@
       {
         "row": 2,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount",
+          "ship_battery"
+        ]
       },
       {
         "row": 2,
@@ -208,24 +279,41 @@
       {
         "row": 3,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount",
+          "ship_reactor",
+          "ship_reactor"
+        ]
       },
       {
         "row": 2,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_engine_ion",
+          "ship_engine_ion",
+          "ship_engine_ion",
+          "ship_reactor"
+        ]
       },
       {
         "row": 1,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount",
+          "ship_reactor",
+          "ship_reactor"
+        ]
       },
       {
         "row": 2,
         "col": 3,
         "modules": [
           "ship_life_support",
-          "ship_radar"
+          "ship_radar",
+          "ship_reactor",
+          "ship_gas_storage"
         ]
       }
     ]
@@ -236,34 +324,59 @@
       {
         "row": 3,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_battery",
+          "ship_weapon_mount",
+          "ship_weapon_mount",
+          "ship_cargo"
+        ]
       },
       {
         "row": 3,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_cargo",
+          "ship_reactor",
+          "ship_reactor",
+          "ship_reactor"
+        ]
       },
       {
         "row": 2,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_engine_ion",
+          "ship_engine_ion",
+          "ship_engine_ion",
+          "ship_engine_ion"
+        ]
       },
       {
         "row": 1,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_cargo",
+          "ship_reactor",
+          "ship_reactor"
+        ]
       },
       {
         "row": 1,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_reactor",
+          "ship_reactor"
+        ]
       },
       {
         "row": 2,
         "col": 3,
         "modules": [
           "ship_life_support",
-          "ship_radar"
+          "ship_radar",
+          "ship_reactor",
+          "ship_gas_storage"
         ]
       }
     ]
@@ -274,34 +387,53 @@
       {
         "row": 2,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 3,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 3,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 1,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_engine",
+          "ship_engine",
+          "ship_engine",
+          "ship_gas_storage"
+        ]
       },
       {
         "row": 1,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 2,
         "col": 3,
         "modules": [
           "ship_life_support",
-          "ship_radar"
+          "ship_radar",
+          "ship_gas_storage"
         ]
       }
     ]
@@ -312,34 +444,57 @@
       {
         "row": 1,
         "col": 5,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_cargo",
+          "ship_cargo",
+          "ship_cargo"
+        ]
       },
       {
         "row": 3,
         "col": 5,
-        "modules": []
+        "modules": [
+          "ship_cargo"
+        ]
       },
       {
         "row": 3,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount",
+          "ship_cargo",
+          "ship_cargo"
+        ]
       },
       {
         "row": 2,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_engine",
+          "ship_engine",
+          "ship_engine",
+          "ship_engine"
+        ]
       },
       {
         "row": 1,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_engine",
+          "ship_engine",
+          "ship_gas_storage",
+          "ship_gas_storage"
+        ]
       },
       {
         "row": 2,
         "col": 3,
         "modules": [
           "ship_life_support",
-          "ship_radar"
+          "ship_radar",
+          "ship_gas_storage"
         ]
       }
     ]
@@ -350,47 +505,82 @@
       {
         "row": 1,
         "col": 5,
-        "modules": []
+        "modules": [
+          "ship_gas_storage",
+          "ship_battery",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 3,
         "col": 5,
-        "modules": []
+        "modules": [
+          "ship_cargo",
+          "ship_reactor",
+          "ship_reactor"
+        ]
       },
       {
         "row": 3,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount",
+          "ship_cargo"
+        ]
       },
       {
         "row": 3,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_cargo",
+          "ship_reactor",
+          "ship_reactor"
+        ]
       },
       {
         "row": 4,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_reactor",
+          "ship_reactor",
+          "ship_reactor"
+        ]
       },
       {
         "row": 3,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_cargo",
+          "ship_reactor"
+        ]
       },
       {
         "row": 2,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_engine_ion",
+          "ship_engine_ion",
+          "ship_reactor"
+        ]
       },
       {
         "row": 1,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_engine_ion",
+          "ship_engine_ion",
+          "ship_engine_ion"
+        ]
       },
       {
         "row": 0,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_cargo"
+        ]
       },
       {
         "row": 1,
@@ -407,7 +597,8 @@
         "col": 3,
         "modules": [
           "ship_life_support",
-          "ship_radar"
+          "ship_radar",
+          "ship_reactor"
         ]
       }
     ]
@@ -418,22 +609,38 @@
       {
         "row": 2,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_gas_storage",
+          "ship_gas_storage",
+          "ship_gas_storage"
+        ]
       },
       {
         "row": 2,
         "col": 5,
-        "modules": []
+        "modules": [
+          "ship_gas_storage",
+          "ship_gas_storage",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 3,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_cargo",
+          "ship_cargo"
+        ]
       },
       {
         "row": 3,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_cargo",
+          "ship_cargo"
+        ]
       },
       {
         "row": 4,
@@ -443,32 +650,54 @@
       {
         "row": 1,
         "col": 1,
-        "modules": []
+        "modules": [
+          "ship_engine",
+          "ship_engine",
+          "ship_engine"
+        ]
       },
       {
         "row": 2,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_cargo"
+        ]
       },
       {
         "row": 3,
         "col": 1,
-        "modules": []
+        "modules": [
+          "ship_engine",
+          "ship_engine",
+          "ship_engine"
+        ]
       },
       {
         "row": 0,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_engine",
+          "ship_engine",
+          "ship_engine"
+        ]
       },
       {
         "row": 1,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_cargo",
+          "ship_cargo"
+        ]
       },
       {
         "row": 1,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_cargo",
+          "ship_cargo"
+        ]
       },
       {
         "row": 2,
@@ -486,7 +715,11 @@
       {
         "row": 1,
         "col": 5,
-        "modules": []
+        "modules": [
+          "ship_battery",
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 2,
@@ -506,44 +739,71 @@
       {
         "row": 3,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 3,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_reactor",
+          "ship_reactor",
+          "ship_reactor"
+        ]
       },
       {
         "row": 3,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount",
+          "ship_reactor"
+        ]
       },
       {
         "row": 2,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_engine_ion",
+          "ship_reactor",
+          "ship_gas_storage"
+        ]
       },
       {
         "row": 1,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_engine_ion",
+          "ship_engine_ion",
+          "ship_engine_ion"
+        ]
       },
       {
         "row": 1,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount",
+          "ship_reactor"
+        ]
       },
       {
         "row": 1,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_reactor"
+        ]
       },
       {
         "row": 2,
         "col": 3,
         "modules": [
           "ship_life_support",
-          "ship_radar"
+          "ship_radar",
+          "ship_reactor"
         ]
       }
     ]
@@ -554,22 +814,36 @@
       {
         "row": 2,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_gas_storage",
+          "ship_gas_storage",
+          "ship_gas_storage"
+        ]
       },
       {
         "row": 3,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 4,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 4,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 4,
@@ -579,27 +853,44 @@
       {
         "row": 3,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_engine",
+          "ship_engine"
+        ]
       },
       {
         "row": 1,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_engine",
+          "ship_engine",
+          "ship_engine"
+        ]
       },
       {
         "row": 0,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 0,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 0,
         "col": 5,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 1,
@@ -627,52 +918,81 @@
       {
         "row": 2,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_gas_storage",
+          "ship_battery"
+        ]
       },
       {
         "row": 4,
         "col": 6,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 3,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 3,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_reactor",
+          "ship_reactor"
+        ]
       },
       {
         "row": 4,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_reactor",
+          "ship_reactor"
+        ]
       },
       {
         "row": 4,
         "col": 5,
-        "modules": []
+        "modules": [
+          "ship_reactor",
+          "ship_reactor"
+        ]
       },
       {
         "row": 3,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 4,
         "col": 1,
-        "modules": []
+        "modules": [
+          "ship_reactor",
+          "ship_reactor"
+        ]
       },
       {
         "row": 1,
         "col": 0,
-        "modules": []
+        "modules": [
+          "ship_engine_ion",
+          "ship_engine_ion"
+        ]
       },
       {
         "row": 1,
         "col": 1,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 2,
@@ -687,7 +1007,10 @@
       {
         "row": 3,
         "col": 0,
-        "modules": []
+        "modules": [
+          "ship_engine_ion",
+          "ship_engine_ion"
+        ]
       },
       {
         "row": 3,
@@ -697,7 +1020,10 @@
       {
         "row": 0,
         "col": 1,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 1,
@@ -707,7 +1033,10 @@
       {
         "row": 0,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 0,
@@ -740,87 +1069,137 @@
       {
         "row": 1,
         "col": 5,
-        "modules": []
+        "modules": [
+          "ship_reactor",
+          "ship_gas_storage"
+        ]
       },
       {
         "row": 2,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_battery",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 2,
         "col": 5,
-        "modules": []
+        "modules": [
+          "ship_cargo",
+          "ship_reactor"
+        ]
       },
       {
         "row": 2,
         "col": 6,
-        "modules": []
+        "modules": [
+          "ship_reactor",
+          "ship_reactor"
+        ]
       },
       {
         "row": 3,
         "col": 5,
-        "modules": []
+        "modules": [
+          "ship_reactor",
+          "ship_reactor"
+        ]
       },
       {
         "row": 3,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_cargo"
+        ]
       },
       {
         "row": 3,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_reactor",
+          "ship_reactor"
+        ]
       },
       {
         "row": 4,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_reactor",
+          "ship_reactor"
+        ]
       },
       {
         "row": 3,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_cargo"
+        ]
       },
       {
         "row": 4,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_reactor",
+          "ship_reactor"
+        ]
       },
       {
         "row": 1,
         "col": 0,
-        "modules": []
+        "modules": [
+          "ship_engine_ion",
+          "ship_engine_ion"
+        ]
       },
       {
         "row": 1,
         "col": 1,
-        "modules": []
+        "modules": [
+          "ship_engine_ion",
+          "ship_engine_ion"
+        ]
       },
       {
         "row": 2,
         "col": 1,
-        "modules": []
+        "modules": [
+          "ship_engine_ion",
+          "ship_reactor"
+        ]
       },
       {
         "row": 2,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_cargo"
+        ]
       },
       {
         "row": 3,
         "col": 0,
-        "modules": []
+        "modules": [
+          "ship_engine_ion",
+          "ship_engine_ion"
+        ]
       },
       {
         "row": 3,
         "col": 1,
-        "modules": []
+        "modules": [
+          "ship_reactor"
+        ]
       },
       {
         "row": 0,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_cargo"
+        ]
       },
       {
         "row": 1,
@@ -830,7 +1209,10 @@
       {
         "row": 0,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_cargo"
+        ]
       },
       {
         "row": 1,
@@ -858,37 +1240,57 @@
       {
         "row": 2,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_gas_storage",
+          "ship_gas_storage"
+        ]
       },
       {
         "row": 2,
         "col": 5,
-        "modules": []
+        "modules": [
+          "ship_gas_storage",
+          "ship_gas_storage"
+        ]
       },
       {
         "row": 2,
         "col": 6,
-        "modules": []
+        "modules": [
+          "ship_gas_storage",
+          "ship_gas_storage"
+        ]
       },
       {
         "row": 3,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 3,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_cargo",
+          "ship_cargo"
+        ]
       },
       {
         "row": 3,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_cargo"
+        ]
       },
       {
         "row": 4,
         "col": 1,
-        "modules": []
+        "modules": [
+          "ship_cargo"
+        ]
       },
       {
         "row": 4,
@@ -898,32 +1300,48 @@
       {
         "row": 0,
         "col": 0,
-        "modules": []
+        "modules": [
+          "ship_engine",
+          "ship_engine"
+        ]
       },
       {
         "row": 1,
         "col": 0,
-        "modules": []
+        "modules": [
+          "ship_engine",
+          "ship_engine"
+        ]
       },
       {
         "row": 1,
         "col": 1,
-        "modules": []
+        "modules": [
+          "ship_engine"
+        ]
       },
       {
         "row": 2,
         "col": 1,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_cargo"
+        ]
       },
       {
         "row": 2,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_cargo"
+        ]
       },
       {
         "row": 3,
         "col": 0,
-        "modules": []
+        "modules": [
+          "ship_engine",
+          "ship_engine"
+        ]
       },
       {
         "row": 3,
@@ -933,32 +1351,49 @@
       {
         "row": 4,
         "col": 0,
-        "modules": []
+        "modules": [
+          "ship_engine",
+          "ship_engine"
+        ]
       },
       {
         "row": 0,
         "col": 1,
-        "modules": []
+        "modules": [
+          "ship_engine",
+          "ship_engine"
+        ]
       },
       {
         "row": 0,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_cargo"
+        ]
       },
       {
         "row": 1,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_cargo"
+        ]
       },
       {
         "row": 1,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_cargo"
+        ]
       },
       {
         "row": 1,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_cargo",
+          "ship_cargo"
+        ]
       },
       {
         "row": 2,
@@ -981,17 +1416,26 @@
       {
         "row": 1,
         "col": 5,
-        "modules": []
+        "modules": [
+          "ship_gas_storage",
+          "ship_gas_storage"
+        ]
       },
       {
         "row": 1,
         "col": 6,
-        "modules": []
+        "modules": [
+          "ship_gas_storage",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 2,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 2,
@@ -1021,12 +1465,18 @@
       {
         "row": 3,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 3,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 4,
@@ -1036,42 +1486,66 @@
       {
         "row": 3,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 1,
         "col": 1,
-        "modules": []
+        "modules": [
+          "ship_engine",
+          "ship_engine"
+        ]
       },
       {
         "row": 2,
         "col": 1,
-        "modules": []
+        "modules": [
+          "ship_engine",
+          "ship_engine"
+        ]
       },
       {
         "row": 2,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 3,
         "col": 1,
-        "modules": []
+        "modules": [
+          "ship_engine",
+          "ship_engine"
+        ]
       },
       {
         "row": 1,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 0,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 1,
         "col": 3,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 1,
@@ -1115,11 +1589,12 @@
         "modules": [
           "ship_life_support",
           "ship_radar",
+          "ship_engine_ion",
+          "ship_reactor",
+          "ship_reactor",
+          "ship_gas_storage",
           "ship_weapon_mount",
-          "ship_engine",
-          "ship_engine",
-          "ship_engine",
-          "ship_reactor"
+          "ship_cargo"
         ]
       }
     ]
@@ -1130,14 +1605,22 @@
       {
         "row": 2,
         "col": 4,
-        "modules": []
+        "modules": [
+          "ship_weapon_mount",
+          "ship_weapon_mount",
+          "ship_weapon_mount",
+          "ship_weapon_mount"
+        ]
       },
       {
         "row": 2,
         "col": 3,
         "modules": [
           "ship_life_support",
-          "ship_radar"
+          "ship_radar",
+          "ship_engine",
+          "ship_engine",
+          "ship_gas_storage"
         ]
       }
     ]
@@ -1148,14 +1631,24 @@
       {
         "row": 2,
         "col": 2,
-        "modules": []
+        "modules": [
+          "ship_engine",
+          "ship_engine",
+          "ship_engine",
+          "ship_weapon_mount",
+          "ship_cargo",
+          "ship_cargo"
+        ]
       },
       {
         "row": 2,
         "col": 3,
         "modules": [
           "ship_life_support",
-          "ship_radar"
+          "ship_radar",
+          "ship_gas_storage",
+          "ship_gas_storage",
+          "ship_weapon_mount"
         ]
       }
     ]
@@ -1274,6 +1767,61 @@
         "modules": [
           "ship_life_support",
           "ship_radar"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Стартовый",
+    "decks": [
+      {
+        "row": 2,
+        "col": 4,
+        "modules": [
+          "ship_miner",
+          "ship_battery",
+          "ship_colonist",
+          "ship_cargo"
+        ]
+      },
+      {
+        "row": 3,
+        "col": 3,
+        "modules": [
+          "ship_engine_ion",
+          "ship_engine_ion",
+          "ship_reactor",
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 2,
+        "col": 2,
+        "modules": [
+          "ship_reactor",
+          "ship_reactor",
+          "ship_reactor",
+          "ship_reactor"
+        ]
+      },
+      {
+        "row": 1,
+        "col": 3,
+        "modules": [
+          "ship_engine_ion",
+          "ship_engine_ion",
+          "ship_cargo",
+          "ship_gas_storage"
+        ]
+      },
+      {
+        "row": 2,
+        "col": 3,
+        "modules": [
+          "ship_life_support",
+          "ship_radar",
+          "ship_reactor",
+          "ship_reactor"
         ]
       }
     ]

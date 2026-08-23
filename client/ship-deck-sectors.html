@@ -27,7 +27,7 @@
   #class-averages td{font-family:var(--mono);font-size:8.5px;color:var(--text-bright);
     padding:4px 6px;border-bottom:1px solid var(--border);white-space:nowrap;}
   #class-averages-note{font-family:var(--mono);font-size:8px;color:var(--text);opacity:.6;margin-top:4px;}
-  #sector-legend{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;max-width:900px;}
+  #sector-legend,#stat-legend{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;max-width:900px;}
   .legend-item{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9px;
     color:var(--text-bright);border:1px solid var(--border);background:var(--panel-bg);padding:4px 7px;}
   .legend-item b{color:var(--accent2);font-weight:400;}
@@ -92,19 +92,46 @@
   .ship-sum-other{margin-top:4px;font-family:var(--mono);font-size:7.5px;color:var(--text);opacity:.85;
     border:1px solid var(--border);padding:4px 5px;line-height:1.6;}
   .ship-sum-other b{color:var(--text-bright);font-weight:400;}
+  .ship-sum-fuel{margin-top:3px;color:var(--warn);}
   .configure-btn{width:100%;margin-top:6px;text-align:center;font-family:var(--mono);font-size:9px;
     letter-spacing:.5px;padding:7px 4px;border:1.2px solid var(--gold);color:var(--gold);cursor:pointer;
     background:rgba(255,207,107,0.08);}
   .configure-btn:hover{background:rgba(255,207,107,0.18);}
 
-  #module-modal-overlay{position:fixed;inset:0;background:rgba(4,6,15,0.88);z-index:100;
+  /* ── СТАНЦИИ — отдельная секция, своя (более широкая) карточка: сетка
+     6×12, БЕЗ круга секторов обстрела (у станции его нет, не запрошено).
+     ⚠ Упрощено по прямому требованию пользователя («точно по аналогии с
+     кораблями... ты сделал что-то вообще не юзабельное») — убрано отдельное
+     «ядро»/бронирование/слияние-разбиение, вся сетка — обычные клетки,
+     кликабельные один в один как палубы корабля. «Отсек 3×5» — инструмент-
+     штамп (см. JS), не отдельное состояние в CSS/DOM. */
+  #stations{display:flex;flex-wrap:wrap;gap:22px;margin-top:10px;}
+  .station-block{border:1px solid var(--gold);background:var(--panel-bg);padding:10px 16px;width:460px;}
+  .station-grid-wrap{position:relative;margin:0 auto;}
+  .station-grid{position:relative;display:grid;gap:1px;background:rgba(60,130,200,0.35);
+    border:1px solid rgba(60,130,200,0.5);margin:0 auto;}
+  .station-cell{background:rgba(6,12,28,0.15);display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:6.5px;color:var(--text-bright);opacity:.3;cursor:pointer;user-select:none;}
+  .station-cell:hover{opacity:.6;}
+  .station-cell.built{background:rgba(6,12,28,0.75);opacity:1;border:1px solid rgba(0,229,255,0.4);}
+  /* stamp-preview — превью отсека-штампа под курсором (наведение, ДО клика)
+     — прямое требование пользователя: «нет возможности этот блок подвинуть»
+     — теперь двигается мышью, клик только фиксирует уже видимую позицию. */
+  .station-cell.stamp-preview{background:rgba(255,207,107,0.35);opacity:1;border:1px dashed var(--gold);}
+  .station-toolbar{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
+  /* stamp-armed — режим штампа включён: наведение показывает превью, клик
+     ставит блок целиком (см. JS buildStationCell/stampAnchor). */
+  .block-btn.stamp-armed{border-color:var(--gold);color:var(--gold);background:rgba(255,207,107,0.14);}
+
+  #module-modal-overlay,#station-modal-overlay{position:fixed;inset:0;background:rgba(4,6,15,0.88);z-index:100;
     display:none;align-items:center;justify-content:center;padding:16px;}
-  #module-modal-overlay.show{display:flex;}
+  #module-modal-overlay.show,#station-modal-overlay.show{display:flex;}
   #module-modal{width:100%;max-width:560px;max-height:88vh;overflow-y:auto;background:var(--panel-bg);
     border:1.5px solid var(--gold);padding:16px;}
   #module-modal-title{font-family:var(--sans);font-weight:600;font-size:14px;color:var(--text-bright);
     margin-bottom:2px;}
   #module-modal-class{font-family:var(--mono);font-size:9px;color:var(--accent2);margin-bottom:6px;}
+  #station-modal-title{font-family:var(--sans);font-weight:600;font-size:14px;color:var(--text-bright);margin-bottom:8px;}
   #module-modal-stats{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;margin-bottom:4px;
     font-family:var(--mono);font-size:9px;color:var(--text);border:1px solid var(--border);padding:6px 8px;}
   #module-modal-stats b{color:var(--text-bright);font-weight:400;}
@@ -123,19 +150,19 @@
   .mm-locked{display:block;width:100%;margin-bottom:3px;background:rgba(255,207,107,0.1);
     border:1px solid var(--gold);color:var(--gold);font-family:var(--mono);font-size:8px;
     padding:4px;text-align:center;}
-  #module-modal-table{width:100%;border-collapse:collapse;margin-bottom:12px;}
-  #module-modal-table th{font-family:var(--mono);font-size:8px;color:var(--text);opacity:.7;
+  #module-modal-table,#station-modal-table{width:100%;border-collapse:collapse;margin-bottom:12px;}
+  #module-modal-table th,#station-modal-table th{font-family:var(--mono);font-size:8px;color:var(--text);opacity:.7;
     text-align:left;padding:4px 6px;border-bottom:1px solid var(--border);}
-  #module-modal-table td{font-family:var(--mono);font-size:9px;color:var(--text-bright);
+  #module-modal-table td,#station-modal-table td{font-family:var(--mono);font-size:9px;color:var(--text-bright);
     padding:4px 6px;border-bottom:1px solid var(--border);}
-  #module-modal-table select{width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border);
+  #module-modal-table select,#station-modal-table select{width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border);
     color:var(--text-bright);font-family:var(--mono);font-size:9px;padding:4px;}
-  #module-modal-table .mm-price{font-family:var(--mono);font-size:8px;color:var(--text);opacity:.75;
+  #module-modal-table .mm-price,#station-modal-table .mm-price{font-family:var(--mono);font-size:8px;color:var(--text);opacity:.75;
     white-space:nowrap;}
-  #module-modal-empty{font-family:var(--mono);font-size:10px;color:var(--warn);margin-bottom:12px;}
-  #module-modal-close{width:100%;text-align:center;font-family:var(--mono);font-size:10px;
+  #module-modal-empty,#station-modal-empty{font-family:var(--mono);font-size:10px;color:var(--warn);margin-bottom:12px;}
+  #module-modal-close,#station-modal-close{width:100%;text-align:center;font-family:var(--mono);font-size:10px;
     letter-spacing:.5px;padding:8px;border:1.2px solid var(--ok);color:var(--ok);cursor:pointer;}
-  #module-modal-close:hover{background:rgba(68,204,136,0.14);}
+  #module-modal-close:hover,#station-modal-close:hover{background:rgba(68,204,136,0.14);}
 </style>
 </head>
 <body>
@@ -144,16 +171,33 @@
 
 <div id="class-averages"></div>
 
+<div id="stat-legend"></div>
 <div id="sector-legend"></div>
 
 <div id="toolbar">
   <button id="add-ship-btn">+ ДОБАВИТЬ КОРАБЛЬ</button>
+  <button id="add-station-btn">+ ДОБАВИТЬ СТАНЦИЮ</button>
   <button id="export-btn">Экспорт JSON (имена + палуба→сектор+модуль)</button>
   <span id="storage-status">—</span>
 </div>
 <textarea id="export-output" readonly></textarea>
 
 <div id="ships"></div>
+
+<h1 style="margin-top:22px;">СТАНЦИИ — сетка 6×12, клетки — точно как у корабля. «ОТСЕК 3×5» строит блок 15 клеток за один клик</h1>
+<div id="stations"></div>
+
+<div id="station-modal-overlay">
+  <div id="station-modal">
+    <div id="station-modal-title">—</div>
+    <div id="station-modal-stats"></div>
+    <div id="station-modal-empty" style="display:none;">Нет занятых клеток — сперва отметьте их на схеме кликом.</div>
+    <table id="station-modal-table"><thead><tr>
+      <th>Клетка</th><th>Модуль</th><th>Цена/масса</th>
+    </tr></thead><tbody></tbody></table>
+    <div id="station-modal-close">ЗАКРЫТЬ</div>
+  </div>
+</div>
 
 <div id="module-modal-overlay">
   <div id="module-modal">
@@ -181,11 +225,149 @@ const ROWS = 5, COLS = 7, CELLW = 34, CELLH = 17, SHIP_COUNT = 20, SECTOR_STEP_D
 // не считаем в «огневую мощь») — та же оценка и тот же источник
 // (archive/docs/TZFleet.md §4.1), что WEAPON_AVG_DAMAGE в client/planet.html.
 const WEAPON_AVG_DAMAGE = (80 + 180 + 150 + 220 + 200 + 400) / 6;
-// Ёмкость одного модуля «Аккумуляторы» — условная оценка (как и остальная
-// энергетика в этом файле, формулы в ТЗ нет): величина того же порядка, что
-// выработка реактора (40), чтобы батареи давали ощутимый, но не безграничный
-// резерв на бой.
-const BATTERY_CAPACITY = 60;
+// Ёмкость одного модуля «Аккумуляторы» — из ТЗ_Корабль.md §4.8. История:
+// было 60 (взято с потолка) → 10 000 → 1000 (пользователь пересмотрел вниз в
+// отдельной сессии) → **снова 10 000** (эта правка, прямое требование
+// пользователя): при квантованном сжигании топлива (server/ship.go,
+// «нельзя сжечь 0,3 водорода» — округлённая вверх единица сжигания отдаёт
+// излишек в аккумулятор) 1000 забивалось почти сразу же, и хранить энергию
+// про запас в водороде (просто не жечь лишнее) становилось выгоднее самого
+// модуля батареи — 10 000 возвращает батарее смысл.
+const BATTERY_CAPACITY = 10000;
+
+// ── тяга и ускорение (ТЗ.md §2.7.4) ─────────────────────────────────────────
+// Предел скорости и масштаб «экранов» — прямо из ТЗ, не подобраны:
+// 300 000 у.е. предел; на 200 000 у.е. корабль идёт 1 экран/5с, отсюда
+// SCREEN_UE = 200000×5 — сколько «у.е.·секунд» набегает на один экран.
+const SPEED_LIMIT_UE = 300000;
+const SCREEN_UE = 1000000;
+// Ускорение в «экран/с²» — правильная единица, но у реальных кораблей это
+// 0.00001–0.0001, длинные дроби неудобно читать (по прямому требованию
+// пользователя). УСК.ЕД. (условная единица ускорения) — то же самое
+// ускорение ×100000, чисто отображение (нигде в расчётах не участвует,
+// экран/с² как физическая единица остаётся исходной величиной).
+const ACCEL_DISPLAY_SCALE = 100000;
+// Средняя дистанция МЕЖЗВЁЗДНОГО перелёта (по прямому требованию
+// пользователя — карточка должна показывать реальный перелёт между 2
+// звёздами, не абстрактные «3 звёздные зоны») — ТО ЖЕ число, что
+// sectorCletToScreen в server/shipphysics.go: пустой участок (30 экранов) +
+// радиус системы с обеих сторон (35+35) = 100 экранов, подтверждено прямым
+// замером среднего расстояния до ближайшей звезды по сгенерированному
+// сектору (101 звезда, 7.35 секторных клети × ~13.6 экрана/клеть). Не
+// «средина диапазона», а тот же факт, что уже откалиброван и протестирован
+// на сервере (TestTwoInterstellarFlightsOnOneTank) — держим оба места в
+// одном числе, чтобы карточка не расходилась с реальным перелётом в игре.
+const INTERSTELLAR_DIST_SCREENS = 100;
+// Калибровка тяги двигателя — ТЗ.md §2.7.4, время разгона до 200 000 у.е.
+// БЕЗ гравитации, «Водородный» двигатель = 36 000 с (10 ч) → ускорение
+// = 200000/36000 у.е./с². Обычный «Двигатель» инструмента калибруется по
+// этой строке (единственный явный кандидат — «Ядерный» в ТЗ физически не
+// совпадает с «Атомным реактором» инструмента, тот в v2 чистый генератор
+// без тяги). Число ниже — само ускорение (у.е./с²), а «тяга» на модуль
+// (engineThrustConstants) домножает его на референсную массу — то есть
+// «тяга» в у.е.·у.м./с² на один модуль, не голое ускорение: делить на
+// РЕАЛЬНУЮ массу конкретного корабля нужно отдельно, не на референсную (та
+// нужна только чтобы откалибровать константу один раз).
+const HYDROGEN_ACCEL_UE_S2 = 200000 / 36000;
+// Ионный двигатель НЕ описан в ТЗ (введён в v2) — калибруется от обычного:
+// потребляет ×20 энергии (5→100 — см. shipModuleEnergyDefaults на сервере,
+// SHIP_MODULES ниже тянет живое значение при первой загрузке экономики), но
+// даёт на 20% МЕНЬШЕ ускорения на единицу энергии (уточнение пользователя:
+// было 30%, «многовато» — разница ионного и обычного должна быть ТОЛЬКО в
+// потреблении энергии плюс умеренный штраф к тяге на единицу энергии) —
+// тяга на МОДУЛЬ получается (powerActive ионного / powerActive обычного) ×
+// 0.8 от обычного (не независимый коэффициент, выведен из уже
+// зафиксированных powerActive и этого требования; см. тот же вывод в
+// server/shipphysics.go ionEfficiencyVsRegular).
+//
+// ⚠ ИСПРАВЛЕНО (баг этой карточки, найден прямой проверкой пользователя —
+// «ионный должен давать в разы больше ускорения, а на карточке разница
+// мизерная»): раньше это было ЗАХАРДКОЖЕНО как (20/5)×0.8 = 3.2 — «20» тут
+// была СТАРОЙ мощностью ионного (когда потребление было ×4, ещё до правки
+// «поднято с ×4 до ×20» выше по файлу), которую при апдейте powerActive
+// (5→100 на сервере) забыли синхронизировать в этой константе — она осталась
+// висеть отдельным числом, вместо того чтобы читаться из живого SHIP_MODULES,
+// как остальная энергетика на этой странице. Настоящее значение при
+// powerActive=100/5 — ×16, не ×3.2 (это и объясняло «ионный почти не
+// быстрее» на карточках). Теперь считается ДИНАМИЧЕСКИ от живых powerActive
+// (engineThrustConstants ниже) — уйти в рассинхрон снова с сервером
+// невозможно, т.к. оба берут одно и то же /api/economy.
+const ION_EFFICIENCY_VS_REGULAR = 0.8;
+// Газохранилище — курс сжигания топлива (ТЗ_Корабль.md §4.7): 10 энергии на
+// единицу водорода (дешёвое, обычные двигатели), 100 — на единицу гелия-3
+// (дорогое, ионные, по прямому указанию пользователя «его пожирает ионный
+// двигатель независимо обращаясь к газохранилищу»). Тяжёлый водород
+// (металлический) тоже топливо ионных по указанию пользователя, но курс для
+// него в ТЗ не задан — не смоделирован отдельной константой, гелий-3 взят
+// как представительное «дорогое» топливо для этого расчёта.
+const GAS_RATE_HYDROGEN = 10;
+const GAS_RATE_HELIUM3 = 100;
+
+// computeReferenceMass — «референсная масса», масса Крейсера/Баржи (по
+// прямому указанию пользователя), КАК ЕСЛИ БЫ все свободные слоты были
+// заняты модулями средней массы класса — то есть та же «Привед. масса»,
+// что уже считает renderClassAverages (табл. «Средние показатели по
+// классам»), просто вынесена в отдельную функцию, чтобы её мог использовать
+// и расчёт тяги ниже. Пересчитывается заново при каждом вызове (библиотека
+// небольшая, кешировать незачем — тот же принцип, что и в остальном файле).
+function computeReferenceMass(){
+  const label = 'Крейсер/Баржа';
+  let n = 0, massSum = 0, moduleMassSum = 0, moduleCount = 0, freeSlotsSum = 0;
+  shipStates.forEach(state => {
+    if(state.built.size === 0) return;
+    const cls = classFor(state.built.size);
+    if(cls.label !== label) return;
+    const totals = computeShipTotal(state);
+    let mCount = 0, mMassSum = 0;
+    state.built.forEach(key => {
+      (state.modules[key] || []).slice(0, cls.perDeck).forEach(modKey => {
+        if(!modKey) return;
+        mCount++;
+        const info = shipItemInfo(modKey);
+        if(info) mMassSum += info.totalMass;
+      });
+    });
+    const freeSlots = Math.max(0, state.built.size * cls.perDeck - mCount);
+    n++; massSum += totals.mass; moduleMassSum += mMassSum; moduleCount += mCount; freeSlotsSum += freeSlots;
+  });
+  if(n === 0) return null;
+  const avgMass = massSum / n, avgFreeSlots = freeSlotsSum / n;
+  const avgModuleMass = moduleCount > 0 ? moduleMassSum / moduleCount : 0;
+  return avgMass + avgFreeSlots * avgModuleMass;
+}
+
+// engineThrustConstants — тяга ОДНОГО модуля каждого типа двигателя, в
+// у.е.·у.м./с² (см. комментарий у HYDROGEN_ACCEL_UE_S2 выше). null, пока в
+// библиотеке нет ни одного Крейсера/Баржи для калибровки (referenceMass
+// неизвестна) — в этом случае ускорение показывать нечем, а не подставлять
+// произвольное число.
+function engineThrustConstants(){
+  const referenceMass = computeReferenceMass();
+  if(referenceMass === null) return null;
+  const thrustEngine = HYDROGEN_ACCEL_UE_S2 * referenceMass;
+  // Соотношение тяги ионного к обычному — ЖИВОЕ, от powerActive обеих
+  // записей SHIP_MODULES (те приходят с /api/economy, applyModuleEnergy
+  // FromEconomy), а не захардкоженное число — см. комментарий у
+  // ION_EFFICIENCY_VS_REGULAR выше про баг с зависшей константой.
+  const regActive = moduleDef('ship_engine').powerActive;
+  const ionActive = moduleDef('ship_engine_ion').powerActive;
+  const ionThrustRatio = regActive > 0 ? (ionActive / regActive) * ION_EFFICIENCY_VS_REGULAR : 0;
+  return { referenceMass, ship_engine: thrustEngine, ship_engine_ion: thrustEngine * ionThrustRatio };
+}
+
+// formatDuration — секунды → «Ч ч М мин»/«М мин С с»/«С.С с», без внешних
+// библиотек. Infinity (ускорение = 0, топлива/двигателей нет) — отдельный
+// текст, а не NaN/Infinity в интерфейсе.
+function formatDuration(seconds){
+  if(!Number.isFinite(seconds)) return '—';
+  if(seconds < 60) return seconds.toFixed(1) + ' с';
+  if(seconds < 3600){
+    const m = Math.floor(seconds / 60), s = Math.round(seconds - m * 60);
+    return m + ' мин ' + s + ' с';
+  }
+  const h = Math.floor(seconds / 3600), m = Math.round((seconds - h * 3600) / 60);
+  return h + ' ч ' + m + ' мин';
+}
 const gridW = COLS * CELLW, gridH = ROWS * CELLH;
 const radius = Math.sqrt((gridW/2)**2 + (gridH/2)**2);
 const outer = Math.ceil(radius * 2);
@@ -205,6 +387,17 @@ const SECTOR_NAMES = [
   'Левый борт (носовой)',
   'Центральная палуба (цитадель)',
 ];
+
+// Расшифровка ПП/ОМ/ЗП (метки сектора на схеме и легенда над ней) — по
+// прямому требованию пользователя: аббревиатуры сами по себе не читаются
+// интуитивно, добавлены иконки (🧱 прочность/🎯 орудия/🛡 щиты — разные
+// понятия при том что ПП и ЗП оба про «живучесть», иконки разведены явно) и
+// текстовая расшифровка в общей легенде (renderStatLegend, HTML ниже).
+const STAT_LEGEND = {
+  pp: { icon: '🧱', label: 'ПП — прочность палуб сектора (корпус+модули, без брони)' },
+  om: { icon: '🎯', label: 'ОМ — орудийных модулей в секторе' },
+  zp: { icon: '🛡', label: 'ЗП — модулей защитного поля в секторе' },
+};
 
 // Привязка «палуба → сектор» задана вручную, построчно (не формулой от угла —
 // прямое указание пользователя: «жёстко привязав»). Первый символ строки —
@@ -237,33 +430,52 @@ function deckSector(r, c){ return DECK_SECTOR_MAP[r + ':' + c]; }
 // Те же 19 модулей и тот же ключ каркаса, что в client/planet.html (раздел
 // ВЕРФЬ) и server/economy.go (shipItemCosts) — цена/масса берутся живыми из
 // /api/economy. durability — те же значения, что в SHIP_MODULES planet.html
-// (ТЗ_Корабль.md §2/§4: 1=хрупкий/2=крепкий). powerGen/powerUse/accelBonus/
-// combatBonus — НОВЫЕ, условные оценки: энергетика нигде не описана в ТЗ
-// (как и ускорение/огневая мощь в planet.html), нужны только чтобы дать
-// заполненную панель характеристик из п.10 запроса пользователя. powerUse —
-// базовое потребление (в любом режиме), accelBonus/combatBonus — доп. расход
-// только в режиме ускорения/боя (только у двигателя/оружия/щита).
+// (ТЗ_Корабль.md §2/§4: 1=хрупкий/2=крепкий). Тяга двигателей для расчёта
+// ускорения считается ОТДЕЛЬНО, engineThrustConstants() (см. выше, у
+// HYDROGEN_ACCEL_UE_S2) — не хардкод здесь на модуле, а живая калибровка от
+// текущих цен/масс (референсная масса Крейсер/Баржа меняется вместе с
+// экономикой), поэтому у ship_engine/ship_engine_ion нет своего поля тяги.
+// powerGen/powerActive/powerPassive (значения ниже — только НАЧАЛЬНЫЕ, до
+// первого ответа сервера) перенесены на сервер и редактируются
+// администратором (economy.go shipModuleEnergyDefaults, client/economy.html
+// вкладка «ЭНЕРГИЯ», GET/POST /api/economy(/ship-module)) —
+// applyModuleEnergyFromEconomy ниже перезаписывает их живыми значениями сразу
+// после первой загрузки /api/economy. По прямому требованию пользователя
+// потребление раздвоено на ПАССИВНОЕ (постоянный фон, пока модуль установлен
+// — СЖО/радар/вычислительный/дежурство щита) и АКТИВНОЕ, пиковое (только в
+// момент действия — двигатель при разгоне, оружие при выстреле, РЭБ и щит
+// при поглощении удара); computeShipTotal ниже считает базовую нагрузку
+// (energyUseFlight) из пассивной суммы, а «ускорение»/«бой» добавляют
+// активный пик ТОЛЬКО нужных модулей (двигатели / оружие+щит+РЭБ). Прежнее
+// поле combatBonus убрано целиком — оно было единственным источником для
+// energyUseCombat, теперь эту роль играет powerActive оружия/щита напрямую,
+// дублировать больше незачем. Числа — ТЗ_Корабль.md §4.20 (см. тот же
+// комментарий у shipModuleEnergyDefaults на сервере, там же — что именно
+// оценка, а что взято из ТЗ дословно): обычный двигатель 5/только разгон,
+// ионный — по требованию пользователя ×4 = 20 (даёт бо́льшую тягу на модуль,
+// но на единицу энергии менее эффективен, чем обычный — компромисс, а не
+// однозначно лучший вариант).
 const SHIP_MODULES = [
-  { key:'ship_life_support', name:'Система жизнеобеспечения', durability:1, powerGen:0,  powerUse:2 },
-  { key:'ship_colonist',     name:'Колониальный модуль',       durability:1, powerGen:0,  powerUse:2 },
-  { key:'ship_weapon_mount', name:'Оружейный модуль',          durability:2, powerGen:0,  powerUse:2, combatBonus:20 },
-  { key:'ship_solar_sail',   name:'Солнечный парус',           durability:1, powerGen:0,  powerUse:1 },
-  { key:'ship_engine',       name:'Двигатель',                 durability:2, powerGen:0,  powerUse:3, accelBonus:15 },
-  { key:'ship_engine_ion',   name:'Ионный двигатель',          durability:2, powerGen:0,  powerUse:3, accelBonus:15 },
-  { key:'ship_reactor',      name:'Атомный реактор',           durability:2, powerGen:40, powerUse:2 },
-  { key:'ship_gas_storage',  name:'Газохранилище',             durability:2, powerGen:0,  powerUse:1 },
-  { key:'ship_battery',      name:'Аккумуляторы',              durability:1, powerGen:0,  powerUse:0 },
-  { key:'ship_repair',       name:'Ремонтный модуль',          durability:1, powerGen:0,  powerUse:2 },
-  { key:'ship_solar_panel',  name:'Солнечная панель',          durability:1, powerGen:8,  powerUse:0 },
-  { key:'ship_teleport',     name:'Телепорт-модуль',           durability:1, powerGen:0,  powerUse:4 },
-  { key:'ship_miner',        name:'Шахтёр',                    durability:2, powerGen:0,  powerUse:3 },
-  { key:'ship_radar',        name:'Радар',                     durability:1, powerGen:0,  powerUse:2 },
-  { key:'ship_ecm',          name:'Модуль РЭБ',                durability:1, powerGen:0,  powerUse:3 },
-  { key:'ship_computer',     name:'Вычислительный модуль',     durability:1, powerGen:0,  powerUse:2 },
-  { key:'ship_shield',       name:'Защитное поле',             durability:1, powerGen:0,  powerUse:2, combatBonus:15 },
-  { key:'ship_dock',         name:'Стыковочный док',           durability:2, powerGen:0,  powerUse:1 },
-  { key:'ship_hangar',       name:'Ангар',                     durability:2, powerGen:0,  powerUse:1 },
-  { key:'ship_cargo',        name:'Грузовой отсек',            durability:2, powerGen:0,  powerUse:0 },
+  { key:'ship_life_support', name:'Система жизнеобеспечения', durability:1, powerGen:0,  powerActive:2,  powerPassive:2 },
+  { key:'ship_colonist',     name:'Колониальный модуль',       durability:1, powerGen:0,  powerActive:2,  powerPassive:2 },
+  { key:'ship_weapon_mount', name:'Оружейный модуль',          durability:2, powerGen:0,  powerActive:1,  powerPassive:0 },
+  { key:'ship_solar_sail',   name:'Солнечный парус',           durability:1, powerGen:0,  powerActive:0,  powerPassive:0 },
+  { key:'ship_engine',       name:'Двигатель',                 durability:2, powerGen:0,  powerActive:5,  powerPassive:0 },
+  { key:'ship_engine_ion',   name:'Ионный двигатель',          durability:2, powerGen:0,  powerActive:20, powerPassive:0 },
+  { key:'ship_reactor',      name:'Атомный реактор',           durability:2, powerGen:40, powerActive:0,  powerPassive:0 },
+  { key:'ship_gas_storage',  name:'Газохранилище',             durability:2, powerGen:10, powerActive:0,  powerPassive:0 },
+  { key:'ship_battery',      name:'Аккумуляторы',              durability:1, powerGen:0,  powerActive:0,  powerPassive:0 },
+  { key:'ship_repair',       name:'Ремонтный модуль',          durability:1, powerGen:0,  powerActive:2,  powerPassive:0 },
+  { key:'ship_solar_panel',  name:'Солнечная панель',          durability:1, powerGen:10, powerActive:0,  powerPassive:0 },
+  { key:'ship_teleport',     name:'Телепорт-модуль',           durability:1, powerGen:0,  powerActive:40, powerPassive:0 },
+  { key:'ship_miner',        name:'Шахтёр',                    durability:2, powerGen:0,  powerActive:3,  powerPassive:0 },
+  { key:'ship_radar',        name:'Радар',                     durability:1, powerGen:0,  powerActive:1,  powerPassive:1 },
+  { key:'ship_ecm',          name:'Модуль РЭБ',                durability:1, powerGen:0,  powerActive:3,  powerPassive:0 },
+  { key:'ship_computer',     name:'Вычислительный модуль',     durability:1, powerGen:0,  powerActive:5,  powerPassive:5 },
+  { key:'ship_shield',       name:'Защитное поле',             durability:1, powerGen:0,  powerActive:15, powerPassive:1 },
+  { key:'ship_dock',         name:'Стыковочный док',           durability:2, powerGen:0,  powerActive:0,  powerPassive:0 },
+  { key:'ship_hangar',       name:'Ангар',                     durability:2, powerGen:0,  powerActive:0,  powerPassive:0 },
+  { key:'ship_cargo',        name:'Грузовой отсек',            durability:2, powerGen:0,  powerActive:0,  powerPassive:0 },
 ];
 function moduleDef(key){ return SHIP_MODULES.find(m => m.key === key); }
 // Оба типа двигателя (обычный и ионный, ТЗ_Корабль.md §4.5) равноправны для
@@ -300,6 +512,19 @@ function classFor(builtCount){
   return SHIP_CLASS_TABLE.find(c => c.decks >= builtCount) || SHIP_CLASS_TABLE[SHIP_CLASS_TABLE.length - 1];
 }
 
+// applyModuleEnergyFromEconomy — powerGen/powerActive/powerPassive SHIP_MODULES
+// теперь живут на сервере (economy.go shipModuleEnergyDefaults + оверрайды
+// администратора, client/economy.html вкладка «ЭНЕРГИЯ»), а не хардкодом
+// здесь — после каждой загрузки /api/economy подтягиваем актуальные значения
+// поверх локального массива, чтобы правки в админ-панели сразу отражались в
+// конструкторе.
+function applyModuleEnergyFromEconomy(data){
+  (data.shipModuleEnergy || []).forEach(e => {
+    const def = moduleDef(e.key);
+    if(def){ def.powerGen = e.powerGen; def.powerActive = e.powerActive; def.powerPassive = e.powerPassive; }
+  });
+}
+
 let economyData = null; // кэш GET /api/economy — грузится один раз, лениво
 let economyPromise = null;
 async function ensureEconomy(){
@@ -308,7 +533,7 @@ async function ensureEconomy(){
     economyPromise = fetch('/api/economy').then(r => {
       if(!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
-    }).then(data => { economyData = data; return data; }).catch(err => {
+    }).then(data => { economyData = data; applyModuleEnergyFromEconomy(data); return data; }).catch(err => {
       economyData = { shipComponents: { items: [] } };
       return economyData;
     });
@@ -319,6 +544,9 @@ function shipItemInfo(key){
   if(!economyData || !economyData.shipComponents) return null;
   return economyData.shipComponents.items.find(i => i.key === key) || null;
 }
+
+document.getElementById('stat-legend').innerHTML = Object.values(STAT_LEGEND)
+  .map(s => `<div class="legend-item"><b>${s.icon}</b>${s.label}</div>`).join('');
 
 document.getElementById('sector-legend').innerHTML = SECTOR_NAMES
   .map((name, i) => `<div class="legend-item${i === CITADEL_SECTOR ? ' citadel' : ''}"><b>${i}</b>${name}</div>`).join('');
@@ -582,12 +810,15 @@ ensureEconomy().then(() => {
 // state.modules[key] — МАССИВ модулей на палубе (не одно значение): число
 // слотов на палубу зависит от класса (см. SHIP_CLASS_TABLE/classFor выше).
 //
-// Энергетика (energyGen/energyUse*) — условные оценки поверх реальных
-// цены/массы/прочности (см. комментарий у SHIP_MODULES): выработка = сумма
-// powerGen (реактор/панель), потребление в полёте = сумма powerUse всех
-// стоящих модулей, в ускорении/бою — то же + accelBonus двигателей или
-// combatBonus оружия/щитов (п.10 запроса — «выработка/потребление в режиме
-// ускорения, свободного полёта и огня всех орудий и боевых систем»).
+// Энергетика (energyGen/energyUse*) — поверх реальных цены/массы/прочности
+// (см. комментарий у SHIP_MODULES): выработка = сумма powerGen
+// (реактор/газохранилище/панель); потребление в полёте (energyUseFlight) =
+// сумма powerPassive ВСЕХ стоящих модулей (постоянный фон); в ускорении —
+// то же + powerActive ТОЛЬКО двигателей (accelExtra); в бою — то же +
+// powerActive ТОЛЬКО оружия/щита/РЭБ (combatExtra). Остальные модули (доки,
+// шахтёр, ремонтный и т.п.) активны в других сценариях, которых здесь три
+// шаблона не покрывают — их powerActive просто не суммируется ни в один из
+// двух «пиковых» сценариев ниже, только пассив идёт в базовый фон.
 function computeShipTotal(state){
   const cls = classFor(state.built.size);
   const frame = shipItemInfo('ship_frame');
@@ -617,9 +848,9 @@ function computeShipTotal(state){
       if(def){
         durability += def.durability || 0;
         energyGen += def.powerGen || 0;
-        energyUseFlight += def.powerUse || 0;
-        accelExtra += def.accelBonus || 0;
-        combatExtra += def.combatBonus || 0;
+        energyUseFlight += def.powerPassive || 0;
+        if(isEngineKey(modKey)) accelExtra += def.powerActive || 0;
+        if(modKey === 'ship_weapon_mount' || modKey === 'ship_shield' || modKey === 'ship_ecm') combatExtra += def.powerActive || 0;
       }
     });
   });
@@ -671,7 +902,9 @@ function renderSectorLabels(block, state){
   block.querySelectorAll('.sector-label').forEach(el => {
     const s = Number(el.dataset.sector);
     el.innerHTML = `<span class="sl-name">${SECTOR_NAMES[s].split(' ')[0]}</span>`
-      + `<span>ПП${stats[s].pp}</span><span>ОМ${stats[s].om}</span><span>ЗП${stats[s].zp}</span>`;
+      + `<span title="${STAT_LEGEND.pp.label}">${STAT_LEGEND.pp.icon}${stats[s].pp}</span>`
+      + `<span title="${STAT_LEGEND.om.label}">${STAT_LEGEND.om.icon}${stats[s].om}</span>`
+      + `<span title="${STAT_LEGEND.zp.label}">${STAT_LEGEND.zp.icon}${stats[s].zp}</span>`;
     const rad = s * SECTOR_STEP_DEG * Math.PI / 180;
     let x = center + labelRadius * Math.cos(rad);
     let y = center + labelRadius * Math.sin(rad);
@@ -687,28 +920,89 @@ function renderSectorLabels(block, state){
 // орудия/урон, плюс перечень прочих модулей. «Палуб» = все построенные
 // палубы (в игре нет отдельной механики брони палубы сверх этого — так что
 // это то же число, что пользователь назвал «бронированных палуб»).
-// Ускорение/урон помечены «*» — условные оценки, формулы 1:1 с planet.html
-// (accelBonus/WEAPON_AVG_DAMAGE), в ТЗ формул для них нет.
+// Ускорение/время помечены «*» — калиброваны по ТЗ.md §2.7.4 (см. константы
+// у HYDROGEN_ACCEL_UE_S2 выше), но referenceMass и сам факт двух типов
+// двигателя — решения этого инструмента, не буквальный текст ТЗ. Урон
+// (WEAPON_AVG_DAMAGE) — условная оценка, формул для него в ТЗ нет.
+// client/planet.html пока считает ускорение старой плоской формулой (не
+// синхронизирована с этой правкой) — там нет ни топливной сети, ни вкладки
+// «ЭНЕРГИЯ», расхождение осознанное, не забытое.
 function renderShipSummary(block, state){
   const cls = classFor(state.built.size);
   const totals = computeShipTotal(state);
-  let moduleCount = 0, engineCount = 0, weaponCount = 0, batteryCount = 0;
+  let moduleCount = 0, engineCount = 0, regularEngineCount = 0, ionEngineCount = 0,
+      weaponCount = 0, batteryCount = 0, gasCount = 0, reactorCount = 0;
   const otherCounts = {};
   state.built.forEach(key => {
     (state.modules[key] || []).slice(0, cls.perDeck).forEach(modKey => {
       if(!modKey) return;
       moduleCount++;
       if(modKey === 'ship_battery') batteryCount++;
-      if(isEngineKey(modKey)){ engineCount++; return; }
+      if(modKey === 'ship_gas_storage') gasCount++;
+      if(modKey === 'ship_reactor') reactorCount++;
+      if(isEngineKey(modKey)){
+        engineCount++;
+        if(modKey === 'ship_engine_ion') ionEngineCount++; else regularEngineCount++;
+        return;
+      }
       if(modKey === 'ship_weapon_mount'){ weaponCount++; return; }
       const def = moduleDef(modKey);
       const name = def ? def.name : modKey;
       otherCounts[name] = (otherCounts[name] || 0) + 1;
     });
   });
-  const acceleration = totals.mass > 0 ? +(engineCount * 50000 / totals.mass).toFixed(2) : 0;
   const damage = Math.round(weaponCount * WEAPON_AVG_DAMAGE);
   const energyReserve = batteryCount * BATTERY_CAPACITY;
+
+  // ── тяга/ускорение/время (ТЗ.md §2.7.4) — см. константы выше. Двигатели
+  // топятся Газохранилищем И реактором (server/shipphysics.go accelFor —
+  // эта правка: реактор ГАЗОНЕЗАВИСИМО добавляется к «трубе», прямая жалоба
+  // пользователя «ты как-то не учёл, что у ионного скоростного шаттла
+  // атомный реактор» — карточка раньше игнорировала реактор полностью и
+  // показывала «нехватку топлива» у кораблей, которые в реальном полёте
+  // прекрасно летают на одних реакторах). Если суммарной подачи всё равно не
+  // хватает на полную мощность всех стоящих двигателей, тяга снижается
+  // пропорционально (fuelRatio), «неполная подача энергии кратно снижает
+  // ускорение» по прямому требованию пользователя. Ионные двигатели
+  // предполагаются на дорогом гелии-3 (если хоть один установлен — весь
+  // запас газохранилищ корабля считается гелием-3, иначе водородом).
+  const thrust = engineThrustConstants();
+  let accelUE = 0, fuelRatio = 1, fuelDemand = 0, fuelSupply = 0;
+  if(thrust && totals.mass > 0){
+    const thrustSum = regularEngineCount * thrust.ship_engine + ionEngineCount * thrust.ship_engine_ion;
+    fuelDemand = regularEngineCount * moduleDef('ship_engine').powerActive + ionEngineCount * moduleDef('ship_engine_ion').powerActive;
+    const fuelRate = ionEngineCount > 0 ? GAS_RATE_HELIUM3 : GAS_RATE_HYDROGEN;
+    const reactorGen = reactorCount * (moduleDef('ship_reactor').powerGen || 0);
+    fuelSupply = gasCount * fuelRate + reactorGen;
+    fuelRatio = fuelDemand > 0 ? Math.min(1, fuelSupply / fuelDemand) : 1;
+    accelUE = (thrustSum * fuelRatio) / totals.mass;
+  }
+  const accelScreen = accelUE / SCREEN_UE;
+  // ── межзвёздный перелёт — настоящий разгон/крейсер/торможение (та же
+  // трапеция, что server/ship.go newFlightProfile: разгон и торможение
+  // симметричны, accel=decel=accelUE, старт с места), не «sqrt(2s/a)»
+  // равноускоренного движения БЕЗ предела скорости, как было раньше —
+  // прежняя формула улетала за SPEED_LIMIT_UE на любом мощном корабле и
+  // давала нереалистично короткое время. peakUE — пик профиля: либо
+  // геометрический sqrt(a·s) (a=разгон=торможение, треугольный профиль),
+  // либо потолок SPEED_LIMIT_UE, если геометрия просит больше (тогда
+  // добавляется участок по инерции cruiseSec).
+  const interstellarDistUE = INTERSTELLAR_DIST_SCREENS * SCREEN_UE;
+  let flightTime = Infinity, peakSpeedUE = 0;
+  if(accelUE > 0){
+    peakSpeedUE = Math.min(SPEED_LIMIT_UE, Math.sqrt(accelUE * interstellarDistUE));
+    const accelSec = peakSpeedUE / accelUE;
+    const decelSec = accelSec; // симметричный профиль — то же ускорение на торможение
+    const cruiseDistUE = interstellarDistUE - (peakSpeedUE * peakSpeedUE) / accelUE; // accel-путь + decel-путь = peak²/a
+    const cruiseSec = peakSpeedUE >= SPEED_LIMIT_UE && cruiseDistUE > 0 ? cruiseDistUE / peakSpeedUE : 0;
+    flightTime = accelSec + cruiseSec + decelSec;
+  }
+  // Заметка — только когда реально не хватает (fuelDemand>fuelSupply):
+  // достаточное топливо не комментируем, чтобы не плодить лишний текст на
+  // каждой карточке.
+  const fuelNote = engineCount > 0 && fuelDemand > fuelSupply
+    ? `⚠ топлива хватает на ${Math.round(fuelRatio * 100)}% тяги (нужно ${fuelDemand}, есть ${fuelSupply} из газохранилищ)`
+    : '';
 
   const grid = block.querySelector('.ship-sum-grid');
   grid.innerHTML = `
@@ -717,7 +1011,9 @@ function renderShipSummary(block, state){
     <div>Палуб: <b>${state.built.size}</b></div>
     <div>Прочность: <b>${totals.durability}</b></div>
     <div>Двигателей: <b>${engineCount}</b></div>
-    <div>Ускорение*: <b>${acceleration}</b></div>
+    <div title="1 уск.ед. = 0.00001 экран/с²">Ускорение*: <b>${thrust ? (accelScreen * ACCEL_DISPLAY_SCALE).toFixed(2) : '—'} уск.ед.</b></div>
+    <div>Межзвёздный перелёт (${INTERSTELLAR_DIST_SCREENS} экр.)*: <b>${formatDuration(flightTime)}</b></div>
+    <div>Разгонится до*: <b>${thrust && accelUE > 0 ? (peakSpeedUE / SCREEN_UE).toFixed(3) : '—'} экран/с</b></div>
     <div>Орудий: <b>${weaponCount}</b></div>
     <div>Урон*: <b>${damage}</b></div>
     <div>Выработка энергии*: <b>${totals.energyGen}</b></div>
@@ -729,7 +1025,7 @@ function renderShipSummary(block, state){
   const otherEntries = Object.entries(otherCounts).sort((a, b) => b[1] - a[1]);
   otherEl.innerHTML = 'Прочее: ' + (otherEntries.length
     ? otherEntries.map(([name, n]) => `<b>${name}</b>×${n}`).join(', ')
-    : '—');
+    : '—') + (fuelNote ? `<div class="ship-sum-fuel">${fuelNote}</div>` : '');
 }
 
 // Средние показатели библиотеки по классам — по прямому указанию
@@ -907,6 +1203,380 @@ function renderModuleModal(){
 }
 document.getElementById('module-modal-close').onclick = () =>
   document.getElementById('module-modal-overlay').classList.remove('show');
+
+// ════════════════════════════════════════════════════════════════════════════
+// СТАНЦИИ — прямое требование пользователя: «добавь возможность добавлять
+// сюда станцию». Сетка 6×12 (72 клетки, все кликабельны).
+//
+// ⚠ УПРОЩЕНО (вторая правка поверх первой версии): первая версия ограничивала
+// застройку 32 клетками фиксированного силуэта и вводила отдельное «ядро»
+// (супер-отсек 3×5) со своим состоянием — бронирование/разбиение/слияние,
+// плюс отдельная модалка выбора уникальной постройки. Пользователь отверг
+// это целиком: «я добавил станцию и ты сделал всё не верно. Всё должно
+// работать точно по аналогии с кораблями. Просто можно установить отсек 3 на
+// 5, а ты сделал что-то вообще не юзабельное». Теперь:
+//   - ВСЯ сетка 6×12 — обычные клетки, клик строит/сносит РОВНО как палубу
+//     корабля (redrawStationCell/toggle, тот же приём, что у buildShipBlock).
+//   - «ОТСЕК 3×5» (STATION_STAMP_ROWS×STATION_STAMP_COLS) — НЕ отдельная
+//     сущность с собственным состоянием, а ИНСТРУМЕНТ: кнопка включает режим
+//     «штамп» (armStampMode), следующий клик по клетке строит блок 3×5
+//     клеток ОДНИМ действием (якорь — верхний левый угол, зажимается в
+//     границы сетки, если блок вылезает за край). После постройки эти 15
+//     клеток — самые обычные built-клетки, ничем не отличаются от построенных
+//     по одной: та же запись в state.built/modules, та же строка в модалке
+//     «НАСТРОИТЬ МОДУЛИ».
+//
+// Одна клетка = один модуль (не массив слотов по классу, как у корабля,
+// ТЗ_Корабль.md §1 к станции не относится — отдельная, фиксированная по
+// размеру сущность) — упрощение инструмента, чтобы не тянуть classFor/
+// deckSector/canPlaceEngine (жёстко завязаны на сетку 5×7 корабля). Секторов
+// обстрела у станции нет (не запрошено).
+const STATION_ROWS = 6, STATION_COLS = 12;
+const STATION_STAMP_ROWS = 3, STATION_STAMP_COLS = 5; // «отсек 3×5» — размер штампа
+
+const STATION_CELLW = CELLW, STATION_CELLH = CELLH * 2; // повыше обычной клетки — станция приземистая, не квадратная
+const stationGridW = STATION_COLS * STATION_CELLW, stationGridH = STATION_ROWS * STATION_CELLH;
+
+const stationStates = [];
+// stampRows/stampCols — ОРИЕНТАЦИЯ штампа (3×5 или 5×3, переключается кнопкой
+// «⟳ ПОВЕРНУТЬ ОТСЕК» — прямое требование пользователя: «поворот всю
+// станцию поворачивает, а не блок 3 на 5» — крутить нужно САМ ОТСЕК, не вид
+// станции целиком; прежний поворот всей сетки убран).
+function newStationState(){
+  return { built: new Set(), modules: {}, stampRows: STATION_STAMP_ROWS, stampCols: STATION_STAMP_COLS };
+}
+function stationCellCount(state){ return state.built.size; }
+
+// computeStationTotal — масса/цена/прочность, тот же приём, что
+// computeShipTotal (ship_frame на каждую занятую клетку + база прочности
+// 3/клетка, ТЗ_Корабль.md §2), но без слотов-по-классу — одна клетка = один
+// модуль.
+function computeStationTotal(state){
+  const frame = shipItemInfo('ship_frame');
+  const frameMass = frame ? frame.totalMass : 0, frameValue = frame ? frame.totalValue : 0;
+  let mass = frameMass * state.built.size, value = frameValue * state.built.size, durability = 3 * state.built.size;
+  const moduleCounts = {};
+  state.built.forEach(key => {
+    const modKey = state.modules[key];
+    if(!modKey) return;
+    const info = shipItemInfo(modKey);
+    if(info){ mass += info.totalMass; value += info.totalValue; }
+    const def = moduleDef(modKey);
+    if(def) durability += def.durability;
+    moduleCounts[modKey] = (moduleCounts[modKey] || 0) + 1;
+  });
+  return { mass, value, durability, moduleCounts };
+}
+
+function redrawStationCell(cell, state){
+  const key = cell.dataset.row + ':' + cell.dataset.col;
+  cell.classList.toggle('built', state.built.has(key));
+}
+function stationDeckCountText(state){
+  return stationCellCount(state) + ' клеток занято из ' + (STATION_ROWS * STATION_COLS);
+}
+function renderStationSummary(block, state){
+  const totals = computeStationTotal(state);
+  const grid = block.querySelector('.ship-sum-grid');
+  grid.innerHTML = `
+    <div>Клеток занято: <b>${stationCellCount(state)}</b> из ${STATION_ROWS * STATION_COLS}</div>
+    <div>Масса: <b>${Math.round(totals.mass)}</b></div>
+    <div>Прочность: <b>${totals.durability}</b></div>
+    <div>Цена: <b>${Math.round(totals.value)}</b></div>
+  `;
+  const other = block.querySelector('.ship-sum-other');
+  const names = Object.entries(totals.moduleCounts).map(([k, n]) => (moduleDef(k) || {}).name ? moduleDef(k).name + '×' + n : k + '×' + n);
+  other.innerHTML = names.length ? ('Модули: ' + names.join(', ')) : 'Модули: пусто';
+  block.querySelector('.deck-count').textContent = stationDeckCountText(state);
+}
+
+// stampAnchor — верхний левый угол блока (stampRows×stampCols) под курсором
+// в точке (r,c), зажатый в границы сетки, если блок вылезает за край (тот
+// же принцип, что у любого инструмента-штампа — не отказывает, а сдвигает
+// блок так, чтобы влез целиком).
+function stampAnchor(state, r, c){
+  let r0 = Math.min(r, STATION_ROWS - state.stampRows);
+  let c0 = Math.min(c, STATION_COLS - state.stampCols);
+  if(r0 < 0) r0 = 0;
+  if(c0 < 0) c0 = 0;
+  return [r0, c0];
+}
+function stampCellKeys(state, r0, c0){
+  const out = [];
+  for(let dr = 0; dr < state.stampRows; dr++)
+    for(let dc = 0; dc < state.stampCols; dc++)
+      out.push((r0 + dr) + ':' + (c0 + dc));
+  return out;
+}
+
+// buildStationCell — одна клетка, клик строит/сносит её (обычный режим) ИЛИ
+// ставит блок (режим штампа, state.stampArmed) — тот же смысл, что клик по
+// палубе корабля, просто с опциональным «толстым карандашом». Пока штамп
+// включён, НАВЕДЕНИЕ мышью показывает ПРЕВЬЮ блока (где он встанет) —
+// прямое требование пользователя: «нет возможности этот блок подвинуть» —
+// подвинуть теперь можно ДО клика, просто поводив мышью, а клик лишь
+// фиксирует уже видимую позицию.
+function buildStationCell(block, state, deckGrid, r, c){
+  const cell = document.createElement('div');
+  cell.className = 'station-cell';
+  cell.dataset.row = r; cell.dataset.col = c;
+  cell.style.gridRow = (r + 1) + ' / ' + (r + 2);
+  cell.style.gridColumn = (c + 1) + ' / ' + (c + 2);
+  cell.title = 'Клик — занять/освободить клетку.';
+  cell.onmouseenter = () => {
+    if(!state.stampArmed) return;
+    const [r0, c0] = stampAnchor(state, r, c);
+    deckGrid.querySelectorAll('.station-cell.stamp-preview').forEach(cc => cc.classList.remove('stamp-preview'));
+    stampCellKeys(state, r0, c0).forEach(key => {
+      const [pr, pc] = key.split(':');
+      const pcell = deckGrid.querySelector(`.station-cell[data-row="${pr}"][data-col="${pc}"]`);
+      if(pcell) pcell.classList.add('stamp-preview');
+    });
+  };
+  cell.onclick = () => {
+    if(state.stampArmed){
+      const [r0, c0] = stampAnchor(state, r, c);
+      stampCellKeys(state, r0, c0).forEach(key => state.built.add(key));
+      deckGrid.querySelectorAll('.station-cell').forEach(cc => { redrawStationCell(cc, state); cc.classList.remove('stamp-preview'); });
+    } else {
+      const key = r + ':' + c;
+      if(state.built.has(key)){ state.built.delete(key); delete state.modules[key]; }
+      else state.built.add(key);
+      redrawStationCell(cell, state);
+    }
+    renderStationSummary(block, state);
+    saveStationsToStorage();
+  };
+  deckGrid.appendChild(cell);
+  return cell;
+}
+
+function buildStationBlock(index){
+  const block = document.createElement('div');
+  block.className = 'station-block';
+  const state = newStationState();
+  stationStates.push(state);
+
+  const nameRow = document.createElement('div');
+  nameRow.className = 'ship-name-row';
+  const idx = document.createElement('div');
+  idx.className = 'ship-index';
+  idx.textContent = 'С#' + (index + 1);
+  const nameInput = document.createElement('input');
+  nameInput.className = 'ship-name';
+  nameInput.placeholder = 'Название станции ' + (index + 1);
+  nameInput.oninput = () => saveStationsToStorage();
+  nameRow.append(idx, nameInput);
+
+  const deckGrid = document.createElement('div');
+  deckGrid.className = 'station-grid';
+  deckGrid.style.width = stationGridW + 'px';
+  deckGrid.style.height = stationGridH + 'px';
+  deckGrid.style.gridTemplateColumns = `repeat(${STATION_COLS}, 1fr)`;
+  deckGrid.style.gridTemplateRows = `repeat(${STATION_ROWS}, 1fr)`;
+  // Мышь ушла с сетки целиком (не просто на соседнюю клетку) — превью штампа
+  // снять, иначе он «застревает» на последней наведённой позиции.
+  deckGrid.onmouseleave = () => {
+    deckGrid.querySelectorAll('.station-cell.stamp-preview').forEach(cc => cc.classList.remove('stamp-preview'));
+  };
+  for(let r = 0; r < STATION_ROWS; r++)
+    for(let c = 0; c < STATION_COLS; c++)
+      buildStationCell(block, state, deckGrid, r, c);
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'station-toolbar';
+  const clearBtn = document.createElement('div');
+  clearBtn.className = 'block-btn';
+  clearBtn.textContent = 'ОЧИСТИТЬ';
+  clearBtn.onclick = () => {
+    state.built.clear(); state.modules = {};
+    deckGrid.querySelectorAll('.station-cell').forEach(cell => redrawStationCell(cell, state));
+    renderStationSummary(block, state);
+    saveStationsToStorage();
+  };
+  const fillBtn = document.createElement('div');
+  fillBtn.className = 'block-btn';
+  fillBtn.textContent = 'ЗАЛИТЬ ВСЁ';
+  fillBtn.onclick = () => {
+    for(let r = 0; r < STATION_ROWS; r++) for(let c = 0; c < STATION_COLS; c++) state.built.add(r + ':' + c);
+    deckGrid.querySelectorAll('.station-cell').forEach(cell => redrawStationCell(cell, state));
+    renderStationSummary(block, state);
+    saveStationsToStorage();
+  };
+  const stampBtn = document.createElement('div');
+  stampBtn.className = 'block-btn';
+  const updateStampLabel = () => {
+    stampBtn.textContent = 'ОТСЕК ' + state.stampRows + '×' + state.stampCols;
+  };
+  updateStampLabel();
+  stampBtn.title = 'Включить режим штампа: наведи мышь — увидишь, куда встанет блок, клик — ставит его сразу.';
+  stampBtn.onclick = () => {
+    state.stampArmed = !state.stampArmed;
+    stampBtn.classList.toggle('stamp-armed', state.stampArmed);
+    if(!state.stampArmed) deckGrid.querySelectorAll('.station-cell.stamp-preview').forEach(cc => cc.classList.remove('stamp-preview'));
+  };
+  // Поворот ОТСЕКА (не всей станции — прямое требование пользователя: «у
+  // тебя поворот всю станцию поворачивает, а не блок 3 на 5»): переключает
+  // ориентацию штампа 3×5 ↔ 5×3, чтобы влезал и вдоль, и поперёк сетки.
+  const rotateBtn = document.createElement('div');
+  rotateBtn.className = 'block-btn';
+  rotateBtn.textContent = '⟳ ПОВЕРНУТЬ ОТСЕК';
+  rotateBtn.title = 'Поменять ориентацию отсека-штампа (3×5 ↔ 5×3) — саму сетку станции не трогает.';
+  rotateBtn.onclick = () => {
+    [state.stampRows, state.stampCols] = [state.stampCols, state.stampRows];
+    updateStampLabel();
+    deckGrid.querySelectorAll('.station-cell.stamp-preview').forEach(cc => cc.classList.remove('stamp-preview'));
+  };
+  toolbar.append(clearBtn, fillBtn, stampBtn, rotateBtn);
+
+  const deckCount = document.createElement('div');
+  deckCount.className = 'deck-count';
+  deckCount.textContent = stationDeckCountText(state);
+
+  const shipSummaryEl = document.createElement('div');
+  shipSummaryEl.className = 'ship-summary';
+  const shipSumGrid = document.createElement('div');
+  shipSumGrid.className = 'ship-sum-grid';
+  const shipSumOther = document.createElement('div');
+  shipSumOther.className = 'ship-sum-other';
+  shipSummaryEl.append(shipSumGrid, shipSumOther);
+
+  const configureBtn = document.createElement('div');
+  configureBtn.className = 'configure-btn';
+  configureBtn.textContent = '⚙ НАСТРОИТЬ МОДУЛИ';
+  configureBtn.onclick = () => openStationModal(index);
+
+  const gridWrap = document.createElement('div');
+  gridWrap.className = 'station-grid-wrap';
+  gridWrap.appendChild(deckGrid);
+
+  block.append(nameRow, gridWrap, toolbar, deckCount, shipSummaryEl, configureBtn);
+  renderStationSummary(block, state);
+  return block;
+}
+
+const stationsEl = document.getElementById('stations');
+const stationBlocks = [];
+function addStation(){
+  const index = stationBlocks.length;
+  const b = buildStationBlock(index);
+  stationsEl.appendChild(b);
+  stationBlocks.push(b);
+  return b;
+}
+document.getElementById('add-station-btn').onclick = () => {
+  addStation();
+  saveStationsToStorage();
+};
+
+let saveStationsDebounce;
+function buildStationDefaultsPayload(){
+  return stationBlocks.map((b, i) => {
+    const name = b.querySelector('.ship-name').value.trim() || ('Станция ' + (i + 1));
+    const state = stationStates[i];
+    const decks = [...state.built].sort().map(key => {
+      const [row, col] = key.split(':').map(Number);
+      return { row, col, modules: state.modules[key] ? [state.modules[key]] : [] };
+    });
+    return { name, decks };
+  });
+}
+function saveStationsToStorage(){
+  clearTimeout(saveStationsDebounce);
+  saveStationsDebounce = setTimeout(() => {
+    const status = document.getElementById('storage-status');
+    fetch('/api/station-defaults', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildStationDefaultsPayload()),
+    }).then(r => {
+      if(status) status.textContent = (r.ok ? 'Станции сохранены на сервере ' : 'Ошибка сохранения станций ') + new Date().toLocaleTimeString();
+    }).catch(() => {
+      if(status) status.textContent = 'Нет связи с сервером — станции НЕ сохранены!';
+    });
+  }, 400);
+}
+async function loadStationsFromStorage(){
+  let data;
+  try{
+    const res = await fetch('/api/station-defaults', { cache: 'no-store' });
+    data = await res.json();
+  }catch(e){ return; }
+  while(stationBlocks.length < data.length) addStation();
+  data.forEach((saved, i) => {
+    if(!stationBlocks[i] || !saved) return;
+    const block = stationBlocks[i];
+    const state = stationStates[i];
+    block.querySelector('.ship-name').value = saved.name || '';
+    state.built = new Set();
+    state.modules = {};
+    (saved.decks || []).forEach(d => {
+      const key = d.row + ':' + d.col;
+      state.built.add(key);
+      if(d.modules && d.modules.length) state.modules[key] = d.modules[0];
+    });
+    const deckGrid = block.querySelector('.station-grid');
+    deckGrid.querySelectorAll('.station-cell').forEach(cell => redrawStationCell(cell, state));
+    renderStationSummary(block, state);
+  });
+}
+loadStationsFromStorage().then(() => ensureEconomy().then(() => {
+  stationBlocks.forEach((b, i) => renderStationSummary(b, stationStates[i]));
+}));
+
+// ── модалка «Настроить модули» станции — та же таблица «клетка → 1 модуль»,
+// что у корабля (renderModuleModal), но БЕЗ classFor/deckSector/canPlaceEngine
+// (не применимы к станции) и без citadel-логики — одна клетка = один модуль.
+let stationModalIndex = null;
+function openStationModal(index){
+  stationModalIndex = index;
+  ensureEconomy().then(renderStationModal);
+  document.getElementById('station-modal-overlay').classList.add('show');
+}
+function renderStationModal(){
+  const index = stationModalIndex;
+  const block = stationBlocks[index];
+  const state = stationStates[index];
+  const name = block.querySelector('.ship-name').value.trim() || ('Станция ' + (index + 1));
+  document.getElementById('station-modal-title').textContent = 'Модули: ' + name;
+
+  const keys = [...state.built].sort();
+  document.getElementById('station-modal-empty').style.display = keys.length ? 'none' : 'block';
+  document.getElementById('station-modal-table').style.display = keys.length ? 'table' : 'none';
+
+  const tbody = document.querySelector('#station-modal-table tbody');
+  tbody.innerHTML = keys.map(key => {
+    const [r, c] = key.split(':').map(Number);
+    const current = state.modules[key] || '';
+    const info = current ? shipItemInfo(current) : null;
+    const options = ['<option value="">— пусто —</option>'].concat(SHIP_MODULES.map(m =>
+      `<option value="${m.key}"${m.key === current ? ' selected' : ''}>${m.name}</option>`));
+    const price = info ? info.totalValue.toFixed(0) + ' кред.<br>' + info.totalMass.toFixed(0) + ' у.м.' : '—';
+    return `<tr data-key="${key}">
+      <td>${r},${c}</td>
+      <td><select>${options.join('')}</select></td>
+      <td class="mm-price">${price}</td>
+    </tr>`;
+  }).join('');
+
+  tbody.querySelectorAll('tr').forEach(row => {
+    const key = row.dataset.key;
+    row.querySelector('select').onchange = (e) => {
+      state.modules[key] = e.target.value || null;
+      saveStationsToStorage();
+      renderStationSummary(block, state);
+      renderStationModal();
+    };
+  });
+
+  const totals = computeStationTotal(state);
+  document.getElementById('station-modal-stats').innerHTML = `
+    <div>Масса: <b>${totals.mass.toFixed(0)} у.м.</b></div>
+    <div>Прочность: <b>${totals.durability}</b></div>
+    <div>Клеток занято: <b>${stationCellCount(state)}</b> из ${STATION_ROWS * STATION_COLS}</div>
+  `;
+}
+document.getElementById('station-modal-close').onclick = () =>
+  document.getElementById('station-modal-overlay').classList.remove('show');
 
 document.getElementById('export-btn').onclick = async () => {
   await ensureEconomy();

@@ -58,6 +58,10 @@
   .obj-selected{stroke:#fff !important;stroke-width:1.4 !important;}
   .orbit-ring{fill:none;stroke:var(--border);stroke-width:0.4;}
   .ship-marker{fill:var(--accent2);stroke:#fff;stroke-width:0.5;filter:drop-shadow(0 0 3px var(--accent2));}
+  /* Траектория активного перелёта (ТЗ_UI.md §4, по прямой жалобе пользователя:
+     «не понятно куда корабль летит») — пунктир от корабля до цели, тот же
+     приём, что уже есть в HUD корабля (ship.html .w-trajectory-route). */
+  .ship-trajectory{stroke:var(--accent2);stroke-width:0.6;stroke-dasharray:2.4 1.6;opacity:.7;pointer-events:none;}
 
   #bottom-bar{flex-shrink:0;display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 8px;
     border-top:1px solid var(--border);background:var(--panel-bg);z-index:10;
@@ -441,6 +445,10 @@ function renderSystem(){
     return { group, visual, hit };
   });
 
+  // Траектория — ПЕРЕД маркером корабля (append-порядок = z-order), чтобы
+  // сам значок корабля рисовался поверх линии, не под ней.
+  trajNode = el('path', {class:'ship-trajectory', fill:'none'});
+  objLayer.appendChild(trajNode);
   shipNode = el('polygon', {class:'ship-marker', points:'0,-5 4,4 0,1.5 -4,4'});
   objLayer.appendChild(shipNode);
 
@@ -525,17 +533,63 @@ function applyPlanetPositions(){
 const SHIP_MARKER_PX = 8;    // половина высоты значка на экране, px
 const SHIP_MARKER_UNITS = 5; // половина высоты полигона в его собственных единицах
 let shipNode = null;
+let trajNode = null;
 function shipMarkerScale(){
   const w = svg.getBoundingClientRect().width;
   if(!w) return 1;
   const pxPerUnit = w / vb.w;
   return SHIP_MARKER_PX / (SHIP_MARKER_UNITS * pxPerUnit);
 }
+// Поворот значка по курсу (по прямой жалобе пользователя: «не понятно куда
+// корабль летит»). World.shipHeadingDeg() — 0°=+X мира, рост ПРОТИВ часовой
+// (математическая конвенция); экран рисует Y мира ВНИЗ ЭКРАНА в минус
+// (shipLocalToScreen: y = 150 − sy·scale), поэтому мировой поворот на угол θ
+// превращается на экране в поворот на −θ (Y перевёрнут). Сам полигон
+// значка в состоянии покоя «смотрит носом вверх» (точка 0,-5) — экранный
+// угол носа в конвенции SVG rotate() (0°=вправо, по часовой) это −90°.
+// Итоговый rotate = 90 − heading: подставив heading=0 (мир «восток», +X),
+// получаем rotate(90) → нос уходит с −90° на 0° = вправо на экране, что и
+// требуется (мир +X — это экранное «вправо», ось X не переворачивается).
+function shipRotationDeg(){
+  return 90 - World.shipHeadingDeg();
+}
+
+// transitRemainingPath — ОСТАВШИЙСЯ маршрут от ТЕКУЩЕЙ позиции корабля до
+// цели, в локальных координатах системы. Маршрут может огибать светило
+// (Transit.HasMid — server/ship.go avoidStarWaypoint, ТЗ.md §2.7.1): пока
+// корабль не миновал путевую точку, остаток — «через неё», после — прямая
+// до цели напрямую (первый участок уже позади, довторно рисовать нечего).
+function transitRemainingPath(t){
+  if(t.hasMid){
+    const l1 = Math.hypot(t.midX - t.fromX, t.midY - t.fromY);
+    const l2 = Math.hypot(t.toX - t.midX, t.toY - t.midY);
+    const midFrac = l1 > 0 ? l1 / (l1 + l2) : 0;
+    if(World.transitState(t).frac < midFrac){
+      return [{x: t.midX, y: t.midY}, {x: t.toX, y: t.toY}];
+    }
+  }
+  return [{x: t.toX, y: t.toY}];
+}
+
 function applyShipPosition(){
   if(!shipNode || !shipView) return;
   const loc = World.shipPos();
   const p = shipLocalToScreen(loc.x, loc.y);
-  shipNode.setAttribute('transform', `translate(${p.x},${p.y}) scale(${shipMarkerScale()})`);
+  shipNode.setAttribute('transform',
+    `translate(${p.x},${p.y}) rotate(${shipRotationDeg()}) scale(${shipMarkerScale()})`);
+
+  // Траектория — только для перелёта ВНУТРИ текущей системы (Transit.Mode
+  // "system"): межзвёздный показывает отдельный полноэкранный оверлей
+  // (updateOverlays), карты этой системы на экране уже нет.
+  if(!trajNode) return;
+  const t = shipView.transit;
+  if(t && t.mode === 'system'){
+    const pts = transitRemainingPath(t).map(pt => shipLocalToScreen(pt.x, pt.y));
+    const d = 'M ' + p.x + ' ' + p.y + ' ' + pts.map(q => `L ${q.x} ${q.y}`).join(' ');
+    trajNode.setAttribute('d', d);
+  } else {
+    trajNode.setAttribute('d', '');
+  }
 }
 
 function applySelectionVisual(){
