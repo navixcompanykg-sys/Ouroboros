@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#04060c">
+<title>Уроборос · Система</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div id="hud" class="glass">
+  <canvas id="minigal" title="Положение звезды в галактике — открыть карту"></canvas>
+  <div>
+    <div class="t"><span id="h-dot"></span><span id="h-star"></span> <span id="h-seed"></span></div>
+    <div class="s" id="h-class"></div>
+    <div class="s" id="h-gal"></div>
+    <div class="s" id="h-planets"></div>
+    <div class="s bhline" id="h-bh" hidden></div>
+  </div>
+</div>
+
+<div id="tools">
+  <button id="b-follow" class="on" title="Камера следует за кораблём">Корабль</button>
+  <button id="b-fit" title="Показать всю систему">Система</button>
+  <button id="b-grid" class="on" title="Масштабная сетка">Сетка</button>
+  <button id="b-galaxy" title="Карта галактики">Галактика</button>
+</div>
+
+<div id="h-scale" class="glass above-status"></div>
+<div id="status" class="glass"><span id="h-ship"></span><span id="h-speed"></span></div>
+
+<div id="card" class="glass" hidden>
+  <div class="c-head">
+    <div id="c-swatch"></div>
+    <div><div id="c-name"></div><div id="c-type"></div></div>
+    <button id="c-close" aria-label="Закрыть">✕</button>
+  </div>
+  <div id="c-facts"></div>
+  <div id="c-desc"></div>
+  <div class="actions">
+    <button id="b-fly" class="primary">Лететь</button>
+    <button id="b-land" class="primary" hidden>Посадка</button>
+    <button id="b-surface" class="primary" hidden>Поверхность</button>
+    <button id="b-takeoff" hidden>Взлёт</button>
+    <button id="b-scan" hidden>Сканирование</button>
+  </div>
+  <div id="c-res" hidden></div>
+</div>
+
+<div id="hint">Щелчок — лететь в точку или к планете · колесо — масштаб · перетаскивание — обзор</div>
+
+<script src="js/data.js"></script>
+<script src="js/gen.js"></script>
+<script src="js/galaxy-gen.js"></script>
+<script src="js/surface.js"></script>
+<script src="js/viewport.js"></script>
+<script src="js/world.js"></script>
+<script src="js/system.js"></script>
+<script>setTimeout(() => { const h = document.getElementById('hint'); if (h) h.style.opacity = 0; }, 8000);</script>
+</body>
+</html>
