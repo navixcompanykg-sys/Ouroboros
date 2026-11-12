@@ -577,7 +577,15 @@
       }
       s.thrust = s.th > s.accel * 0.05;
       // Нос корабля — по направлению тяги (при торможении разворачивается).
-      if (s.th > s.accel * 0.02) turnTo(Math.atan2(s.thy, s.thx), dt);
+      // Нос — по маршруту (по скорости): при разгоне, полёте по инерции и довороте курса; при торможении
+      // (тяга в основном против движения) — разворот кормой вперёд (пользователь: «летел боком»).
+      {
+        const v = Math.hypot(s.vx, s.vy), th = Math.hypot(s.thx || 0, s.thy || 0);
+        const braking = s.th > s.accel * 0.02 && v > 1e-3 && (s.thx * s.vx + s.thy * s.vy) < -0.5 * th * v;
+        if (braking) turnTo(Math.atan2(s.thy, s.thx), dt);
+        else if (v > 1e-3) turnTo(Math.atan2(s.vy, s.vx), dt);
+        else if (s.th > s.accel * 0.02) turnTo(Math.atan2(s.thy, s.thx), dt);
+      }
       if (ev === 'arrived') {
         if (s.planet) enterOrbit(s.planet);
         else { s.vx = s.vy = 0; s.state = 'idle'; s.target = null; renderCard(); }
