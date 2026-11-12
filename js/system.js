@@ -262,7 +262,7 @@
     const rv = Math.hypot(f.vx - tvx, f.vy - tvy);
     if (rv > f.maxSpeed) { f.vx = tvx + (f.vx - tvx) * f.maxSpeed / rv; f.vy = tvy + (f.vy - tvy) * f.maxSpeed / rv; }
     f.th = Math.min(th, aMax); f.thx = thx; f.thy = thy;
-    f.fuelUsed = (f.fuelUsed || 0) + f.th * dt;
+    f.fuelUsed = (f.fuelUsed || 0) + f.th * dt * f.accel / aMax; // по времени тяги: секунда стоит a₀
     f.x += f.vx * dt; f.y += f.vy * dt;
     // Не пускаем корабль внутрь запретного радиуса звезды.
     const sd = Math.hypot(f.x, f.y), ex = sys.star.excl;
@@ -423,17 +423,18 @@
   // перестраивают курс на ходу). Расстояние торможения со скорости света — десятки тысяч а. е., поэтому
   // корабль приходит из глубокого космоса, а камера, следящая за ним, может уйти за край системы.
   const WARP_STAR_STOP = 3 * AU; // без выбранной планеты — остановка в 3 а. е. от звезды, со стороны подлёта
-  function startWarp(id, dest) {
+  function startWarp(id, dest, mode = 'fast') {
     const to = World.galaxy().stars[id], from = sys.gstar;
     if (!to || to.id === from.id) return;
     if (['landed', 'landing', 'takeoff'].includes(ship.state)) { say('Сначала взлетите с планеты'); return; }
     if (!(ship.accel > 0)) { say('У корабля нет двигателей — лететь нечем'); return; }
-    if (isFinite(ship.fuelMax) && ship.fuel < 2 * SHIP_LIGHT) { say(`Не хватит топлива: нужно ${fmtDv(2 * SHIP_LIGHT)}, есть ${fmtDv(ship.fuel)}`); return; }
+    const est = warpEstimate(ship.stats, WARP_MODES[mode] ? mode : 'fast');
+    if (isFinite(ship.fuelMax) && ship.fuel < est.fuel * ship.fuelMax) { say(`Не хватит топлива: нужно ${fuelPct(est.fuel * ship.fuelMax)} бака, есть ${fuelPct(ship.fuel)}`); return; }
     let dx = to.x - from.x, dy = to.y - from.y; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
     ship.eco = null;
     if (ship.state === 'orbit') World.setShip(null);
     ship.state = 'warpout'; ship.planet = null; ship.target = null; ship.capturing = false;
-    ship.warp = { id, dest, dx, dy, name: to.name };
+    ship.warp = { id, dest, dx, dy, name: to.name, p: est.p, fuelK: est.fuelK };
     setFollow(true);
     renderCard(true);
   }
@@ -445,7 +446,7 @@
       from: from.id, to: w.id, dest: w.dest ?? null, dx: w.dx, dy: w.dy, name: w.name,
       D: Math.hypot(to.x - from.x, to.y - from.y) * UNITS_PER_KPC,   // путь, мировые ед.
       along: s.x * w.dx + s.y * w.dy,                                  // пройдено от звезды
-      v: Math.max(0, s.vx * w.dx + s.vy * w.dy), phase: 'accel',
+      v: Math.max(0, s.vx * w.dx + s.vy * w.dy), phase: 'accel', p: w.p, fuelK: w.fuelK,
     });
     s.state = 'jumping'; World.setShip(null);
     screenFade(1, 400);
@@ -487,11 +488,11 @@
       // Разгон к звезде назначения: полная тяга по направлению на неё, до скорости света — скачок.
       const w = s.warp;
       turnTo(Math.atan2(w.dy, w.dx), dt);
-      const aw = accelAt(s.accel, Math.hypot(s.vx, s.vy));
+      const aw = accelAt(s.accel * w.p, Math.hypot(s.vx, s.vy)); // экономно — половина мощности
       s.vx += w.dx * aw * dt; s.vy += w.dy * aw * dt;
       const v = Math.hypot(s.vx, s.vy);
       if (v > s.maxSpeed) { s.vx *= s.maxSpeed / v; s.vy *= s.maxSpeed / v; }
-      useFuel(aw * dt);
+      useFuel(s.accel * w.p * w.fuelK * dt); // по времени тяги
       s.x += s.vx * dt; s.y += s.vy * dt;
       s.thrust = true;
       if (Math.hypot(s.x, s.y) > sys.radius) leaveSystem();
@@ -513,7 +514,7 @@
           s.vx -= s.vx / v0 * used; s.vy -= s.vy / v0 * used;
           s.heading = Math.atan2(-s.vy, -s.vx); // развернулся: нос против движения, струя — вперёд
         } else used = 0;
-        if (used > 0) { useFuel(used); s.thrust = true; }
+        if (used > 0) { useFuel(used * s.accel / accelAt(s.accel, v0)); s.thrust = true; } // по времени тяги
       }
       propagate(s, dt, MU_SUN * sys.star.mass);
     }
@@ -1175,7 +1176,7 @@
     if (e && e.phase === 'wait') return `Ждём окна: старт к ${en} через ${Math.max(0, Math.ceil(e.legs[0].ta - simT))} с`;
     switch (s.state) {
       case 'flying': return s.jumpIn ? (s.planet ? `После скачка — торможение к ${pn}` : 'После скачка — торможение к звезде · выберите планету') : s.planet ? `Курс на ${pn}` : 'Полёт к точке';
-      case 'warpout': return `Разгон к звезде ${s.warp.name}: ${Math.round(Math.hypot(s.vx, s.vy) / SHIP_LIGHT * 100)}% скорости света`;
+      case 'warpout': return `Разгон к звезде ${s.warp.name}${s.warp.p < 1 ? ' (экономно)' : ''}: ${Math.round(Math.hypot(s.vx, s.vy) / SHIP_LIGHT * 100)}% скорости света`;
       case 'jumping': return 'Скачок…';
       case 'coast': return `По дуге к ${en}${fly} · прибытие через ${Math.max(0, Math.ceil(e.legs[e.legs.length - 1].tb - simT))} с`;
       case 'adrift': return s.fuel > 0 ? (throttle > 0 ? 'Ручной полёт · газ' : throttle < 0 ? 'Ручной полёт · тормоз' : 'Ручной полёт · по инерции') : 'Нет топлива — полёт по инерции';
@@ -1339,11 +1340,11 @@
   }
   // Межзвёздный перелёт: ?warp=ID[&dest=N] — разгон отсюда; ?jumpin=1 — выход из скачка здесь.
   {
-    const q = new URLSearchParams(location.search), warp = q.get('warp'), dest = q.get('dest');
+    const q = new URLSearchParams(location.search), warp = q.get('warp'), dest = q.get('dest'), wmode = q.get('wmode') || 'fast';
     if (warp !== null || q.has('jumpin')) {
-      q.delete('warp'); q.delete('dest'); q.delete('jumpin');
+      q.delete('warp'); q.delete('dest'); q.delete('jumpin'); q.delete('wmode');
       history.replaceState(null, '', location.pathname + '?' + q); // перезагрузка не повторяет
-      if (warp !== null) startWarp(+warp, dest !== null ? +dest : null);
+      if (warp !== null) startWarp(+warp, dest !== null ? +dest : null, wmode);
       else { const a = World.takeArrival(); if (a) { screenFade(1, 0); screenFade(0, 600); jumpIn(a); } }
     }
   }

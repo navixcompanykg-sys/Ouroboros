@@ -137,3 +137,6 @@ button:disabled { opacity: .55; cursor: default; }
 #gauges b { font-weight: 600; font-variant-numeric: tabular-nums; }
 #gauges i { font-style: normal; color: #ffd9a0; font-size: 12px; }
 @media (max-width: 760px) { #gauges { top: calc(104px + env(safe-area-inset-top)); left: 10px; transform: none; } }
+
+/* Строка карточки на всю ширину (прикидки режимов перелёта). */
+#c-facts .wide { grid-column: 1 / -1; }

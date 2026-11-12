@@ -22,7 +22,7 @@
   const myShip = shipStats(findDesign(World.design()));
   const travelPos = () => { const f = gal.stars[travel.from], k = travel.along / UNITS_PER_KPC; return { x: f.x + travel.dx * k, y: f.y + travel.dy * k }; };
   function stepTravel(dt) {
-    const T = travel, a = myShip.accel, c = SHIP_LIGHT;
+    const T = travel, a = myShip.accel * (T.p || 1), c = SHIP_LIGHT;
     if (T.jumpAnim != null && (T.jumpAnim += dt) > 1.2) T.jumpAnim = null;
     let dv;
     if (T.phase === 'accel') {
@@ -38,7 +38,7 @@
       if (T.D - T.along <= SYSTEM_RADIUS || T.v <= 0) return arriveTravel();
     }
     // Топливо — по тяге (доля бака); сохраняем не каждый кадр.
-    if (isFinite(myShip.dv) && myShip.dv > 0) fuelBurn += dv / myShip.dv;
+    if (isFinite(myShip.dv) && myShip.dv > 0) fuelBurn += myShip.accel * (T.p || 1) * (T.fuelK ?? 1) * (T.phase === 'accel' ? 1 : 0.85) * dt / myShip.dv; // по времени тяги
     if ((travelSave += dt) > 0.5) {
       travelSave = 0;
       if (fuelBurn) { World.setFuel(World.fuel() - fuelBurn); fuelBurn = 0; }
@@ -57,11 +57,11 @@
   }
   const fmtTT = s => s < 120 ? Math.round(s) + ' с' : Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0');
   function travelText() {
-    const T = travel, a = myShip.accel, c = SHIP_LIGHT, ly = (T.D - T.along) / AU / AU_PER_LY;
+    const T = travel, a = myShip.accel * (T.p || 1), c = SHIP_LIGHT, ly = (T.D - T.along) / AU / AU_PER_LY;
     const left = ly > 1 ? Math.round(ly).toLocaleString('ru-RU') + ' св. лет' : Math.round((T.D - T.along) / AU).toLocaleString('ru-RU') + ' а. е.';
     return T.phase === 'accel'
-      ? `Перелёт к ${T.name}: разгон · скачок через ${fmtTT(Math.max(0, timeToSpeed(a, 0.98 * c) - timeToSpeed(a, T.v)))} · до цели ${left}`
-      : `Перелёт к ${T.name}: торможение · до системы ${fmtTT(timeToSpeed(0.85 * a, T.v))} · до цели ${left}`;
+      ? `Перелёт к ${T.name} (${T.p < 1 ? 'экономно' : 'быстро'}): разгон · скачок через ${fmtTT(Math.max(0, timeToSpeed(a, 0.98 * c) - timeToSpeed(a, T.v)))} · до цели ${left}`
+      : `Перелёт к ${T.name} (${T.p < 1 ? 'экономно' : 'быстро'}): торможение · до системы ${fmtTT(timeToSpeed(0.85 * a, T.v))} · до цели ${left}`;
   }
   // Панель скорости и топлива — всегда видна (как в системе).
   function renderGauges() {
@@ -523,7 +523,7 @@
       $('c-type').textContent = 'Зона абсолютного хаоса';
       $('c-facts').innerHTML = `<div><span>Радиус</span>${fmt(GALAXY.chaosR)} кпк</div><div><span>Доступ</span>закрыт</div>`;
       $('c-desc').innerHTML = '<div class="bhwarn">Сверхплотное скопление звёзд, чёрных дыр и раскалённого газа. Гравитация и излучение рвут любой корабль — залететь сюда нельзя.</div>';
-      $('b-jump').hidden = true; $('c-dest-wrap').hidden = true;
+      $('b-jump').hidden = true; $('b-warp-eco').hidden = true; $('c-dest-wrap').hidden = true;
       $('c-list').hidden = true;
       return;
     }
@@ -542,14 +542,20 @@
         `<div><span>Сектор</span>${s.sectorKey}</div>` +
         `<div><span>От центра</span>${fmt(s.r)} кпк</div>` +
         `<div><span>От корабля</span>${here ? 'здесь' : fmt(distKpc(s, cur)) + ' кпк'}</div>` +
-        (here ? '' : (() => { const a = shipStats(findDesign(World.design())).accel, t = timeToSpeed(a, SHIP_LIGHT);
+        (here ? '' : (() => {
+          const st = shipStats(findDesign(World.design()));
+          if (!(st.accel > 0)) return '<div><span>Перелёт</span>нет двигателей</div>';
           const m = x => x < 120 ? Math.round(x) + ' с' : (x / 60).toFixed(1).replace('.', ',') + ' мин';
-          return a > 0 ? `<div><span>Перелёт</span>разгон ${m(t)} · скачок · торможение ${m(timeToSpeed(0.85 * a, SHIP_LIGHT))}</div>` : '<div><span>Перелёт</span>нет двигателей</div>'; })());
+          const f = x => !isFinite(st.dv) || x === 0 ? 'не тратится (реактор)' : (x * 100 < 1 ? (x * 100).toFixed(2) : (x * 100).toFixed(1)).replace('.', ',') + '%';
+          return ['fast', 'eco'].map(k => { const e = warpEstimate(st, k);
+            return `<div class="wide"><span>${WARP_MODES[k].name}</span>разгон ${m(e.accel)} · скачок · торможение ${m(e.brake)} · топливо ${f(e.fuel)}</div>`; }).join('');
+        })());
       $('c-desc').innerHTML = `Планет: ${sys.planets.length} — ` +
         Object.entries(counts).map(([k, n]) => `${PLANET_TYPES[k].name.toLowerCase()} ${n}`).join(', ') +
         (s.bh ? `<div class="bhwarn">Чёрная дыра ${gal.stars[s.bh.id].name} вытягивает вещество звезды. Индекс влияния ${fmt(s.bh.index)} — мир нестабилен: жизни нет, больше антиматерии, изотопов и трития, меньше водорода и силикатов.</div>` : '');
       $('b-jump').hidden = false;
-      $('b-jump').textContent = here ? 'Открыть систему' : 'Лететь';
+      $('b-jump').textContent = here ? 'Открыть систему' : 'Быстро';
+      $('b-warp-eco').hidden = here || !!travel;
       // Цель внутри системы назначения: планета из списка — после скачка автопилот сразу ведёт к ней;
       // «к звезде» — корабль тормозит к звезде, планету игрок укажет на месте.
       $('c-dest-wrap').hidden = here || !!travel;
@@ -566,7 +572,7 @@
       $('c-facts').innerHTML = STAR_TYPES.filter(t => byType[t.key])
         .map(t => `<div><span>${t.name}</span>${byType[t.key]}</div>`).join('');
       $('c-desc').textContent = `Звёзд в секторе: ${sec.stars.length}`;
-      $('b-jump').hidden = true; $('c-dest-wrap').hidden = true;
+      $('b-jump').hidden = true; $('b-warp-eco').hidden = true; $('c-dest-wrap').hidden = true;
       // Список звёзд сектора — нажатие выбирает звезду.
       const list = $('c-list');
       list.hidden = false;
@@ -583,15 +589,17 @@
     renderCard();
   });
   $('c-close').onclick = () => { selected = null; selSector = null; renderCard(); };
-  $('b-jump').onclick = () => {
+  const startWarpTo = mode => {
     if (!selected) return;
     const cur = World.currentStarId();
     if (selected.id === cur) { location.href = World.systemUrl(cur); return; }
     // Межзвёздный перелёт (system.js startWarp): в своей системе корабль разгоняется к выбранной звезде
     // до скорости света, уходит в скачок и сразу оказывается в её системе, на подлёте — тормозит.
     const dest = $('c-dest').value;
-    location.href = World.systemUrl(cur) + '&warp=' + selected.id + (dest !== '' ? '&dest=' + dest : '');
+    location.href = World.systemUrl(cur) + '&warp=' + selected.id + (dest !== '' ? '&dest=' + dest : '') + '&wmode=' + mode;
   };
+  $('b-jump').onclick = () => startWarpTo('fast');
+  $('b-warp-eco').onclick = () => startWarpTo('eco');
   // «Корабль» — камера ныряет к звезде корабля (приближение + затемнение) и открывается его система;
   // там пролёт продолжается до самого корабля (system.html?arrive=1).
   $('b-ship').onclick = () => {

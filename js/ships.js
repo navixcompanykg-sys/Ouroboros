@@ -181,6 +181,25 @@ function fuelTable() {
   });
 }
 
+// Межзвёздный перелёт: «быстро» — двигатели на полной мощности, «экономно» — на половине (пользователь
+// просил выбор; по физике Δv перелёта одинаков при любой тяге, поэтому экономия — через энергетику
+// корабля: двигателям нужно вдвое меньше энергии, бо́льшую долю покрывает реактор — бесплатно).
+// fuelK — во сколько раз меньше топлива на единицу Δv, чем на полной мощности (0 — всё кормит реактор).
+const WARP_MODES = { fast: { name: 'Быстро', p: 1 }, eco: { name: 'Экономно', p: 0.5 } };
+function warpFuelK(st, p) {
+  const full = Math.max(0, Math.min(st.energyDemand, st.supply) - st.reactor);
+  const part = Math.max(0, Math.min(st.energyDemand * p, st.supply) - st.reactor);
+  return full > 0 ? part / p / full : 0;
+}
+// Прикидка межзвёздного перелёта: время разгона до c, торможения и доля бака. Топливо идёт по ВРЕМЕНИ
+// работы двигателя (запас st.dv = время горения × a₀): секунда тяги на мощности p стоит a₀·p·fuelK.
+function warpEstimate(st, mode) {
+  const p = WARP_MODES[mode].p, a = st.accel * p, fk = warpFuelK(st, p);
+  const ta = timeToSpeed(a, SHIP_LIGHT), tb = timeToSpeed(0.85 * a, SHIP_LIGHT);
+  return { accel: ta, brake: tb, fuelK: fk, p,
+    fuel: isFinite(st.dv) && st.dv > 0 ? st.accel * p * fk * (ta + 0.85 * tb) / st.dv : 0 };
+}
+
 // Время перелёта «с места до места» по прямой (разгон до середины — торможение; на скорости света —
 // участок по инерции), с ускорением, растущим со скоростью. accel — базовое a₀ корабля.
 function travelTime(accel, dist) {
