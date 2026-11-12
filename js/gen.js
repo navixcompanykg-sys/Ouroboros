@@ -66,7 +66,7 @@ function generateSystem(gstar) {
     const prev = planets[planets.length - 1];
     if (prev) {
       const beltRoom = (type === 'asteroid' || prev.type === 'asteroid') ? 2 * Math.max(6, a * 0.06) : 0;
-      const need = prev.orbitR + (size * 2 + 8) + 10 + beltRoom;
+      const need = prev.clearR + (size * 2 + 8) + 10 + beltRoom;
       if (a - prev.a < need) a = prev.a + need;
     }
 
@@ -91,13 +91,18 @@ function generateSystem(gstar) {
       index: i,
       name: star.name + ' ' + letters[i],
       type, a, d, r: size, diameter, hexRadius,
+      ...planetPhysics(type, diameter), // настоящие радиус, масса, μ — без бросков rng
       phase: rand(0, Math.PI * 2),
       omega: (Math.PI * 2) / period,
       period,
       tempK: Math.round(278 * Math.pow(star.lum, 0.25) / Math.sqrt(a / AU)),
       habitable, life,
       composition: composition(type, sc, zone, life, gstar.bh ? gstar.bh.index : 0),
-      orbitR: size * 2 + 8, // радиус парковочной орбиты корабля
+      // clearR — «зона» планеты для зазоров между орбитами и поясом (прежний радиус парковки;
+      // не менять — от него зависят орбиты, а значит и весь мир). orbitR — низкая орбита парковки
+      // корабля, ~1,3–1,4 радиуса нарисованной планеты (пользователь: «высоту орбиты снизить»).
+      clearR: size * 2 + 8,
+      orbitR: size * 1.2 + 1.5,
     });
 
     a = a * rand(1.45, 1.9) + 15;
@@ -111,14 +116,98 @@ function generateSystem(gstar) {
     let room = belt.a * 0.09;
     for (const p of planets) {
       if (p === belt) continue;
-      const gap = Math.abs(p.a - belt.a) - p.r - p.orbitR - belt.orbitR;
+      const gap = Math.abs(p.a - belt.a) - p.r - p.clearR - belt.clearR;
       room = Math.min(room, gap * 0.8);
     }
     belt.beltHalfWidth = Math.max(1, room);
   }
 
-  const outer = planets[planets.length - 1].a;
-  return { seed: gstar.seed, gstar, star, planets, galR, galAngle, zone, outer };
+  const outer = planets[planets.length - 1].a; // последняя орбита; граница системы — SYSTEM_RADIUS у всех
+  const { comets, streams } = generateSmallBodies(gstar, star);
+  return { seed: gstar.seed, gstar, star, planets, galR, galAngle, zone, outer, radius: SYSTEM_RADIUS, comets, streams };
+}
+
+// Кометы и метеорные потоки системы. Детерминированы от seed звезды (а значит — от seed галактики)
+// СВОИМ rng: броски планет не сдвигаются, мир прежний. Число малых тел — SMALL_BODIES.min…max:
+// чем ближе звезда к центру галактики, тем больше (у края ~min, у шара хаоса ~max, ±SMALL_BODIES.jitter).
+// Орбиты — кеплеровы эллипсы вокруг звезды (μ = MU_SUN × масса): a — большая полуось, e —
+// эксцентриситет, w — угол перицентра, m0 — средняя аномалия при t = 0, dir — +1 против часовой, −1 по ней.
+// Кометы: перицентр у звезды, афелий — не дальше края системы (пользователь). Время малых тел
+// ускорено в SMALL_BODIES.timeK раз — иначе они почти стоят (на них корабль и планеты не завязаны).
+function generateSmallBodies(gstar, star) {
+  const rng = mulberry32(hashSeed(gstar.seed) ^ 0xc0e75);
+  const rand = (x, y) => x + (y - x) * rng();
+  const SB = SMALL_BODIES, R = SYSTEM_RADIUS;
+  const t = Math.max(0, Math.min(1, 1 - (gstar.r - GALAXY.chaosR) / (GALAXY_RADIUS_KPC - GALAXY.chaosR)));
+  const n = Math.max(SB.min, Math.min(SB.max, Math.round(SB.min + (SB.max - SB.min) * t + rand(-SB.jitter, SB.jitter))));
+  const mu = MU_SUN * star.mass;
+  const orbit = (q, Q, retro) => {
+    const A = (q + Q) / 2, e = (Q - q) / (Q + q);
+    return { a: A, e, w: rand(0, 2 * Math.PI), m0: rand(0, 2 * Math.PI), dir: rng() < retro ? -1 : 1,
+      n: Math.sqrt(mu / (A * A * A)) * SB.timeK }; // средняя угловая скорость, рад/с (× ускорение времени малых тел)
+  };
+  const comets = [], streams = [];
+  let nC = 0;
+  for (let i = 0; i < n; i++) if (rng() < SB.cometShare) nC++;
+  for (let i = 0; i < nC; i++) {
+    const q = AU * rand(0.3, 6) * Math.sqrt(star.lum) + star.radius * 3; // перицентр — у звезды
+    // Афелий — не дальше края системы, чаще короткие орбиты (как кометы семейства Юпитера):
+    // 15…250 а. е., квадрат броска сдвигает к малым (пользователь: «короче орбиты»).
+    const o = orbit(q, Math.max(q * 1.5, AU * (15 + 235 * rng() ** 2)), 0.3); // кометы бывают обратными
+    comets.push({ ...o, name: 'Комета ' + gstar.name.slice(0, 3).toUpperCase() + '-' + (i + 1), nucleus: rand(1.6, 2.8) });
+  }
+  // Метеорные потоки — ленты вдоль орбиты, как в жизни (пользователь выбрал все 4 пункта):
+  //  1) частицы — по дуге орбиты длиной arc (доля оборота), лента изгибается по эллипсу;
+  //  2) у «головы» (место кометы-родителя / средняя аномалия m0) гуще; молодые — узкие, 2–4 нитки
+  //     (каждая — от своего прохода кометы), старые — длинные широкие, вплоть до кольца;
+  //  3) часть потоков лежит на орбите кометы системы (parent) и тянется за ней, остальные — «сироты»;
+  //  4) частицы медленно текут вдоль ленты (system.js).
+  // age 0 — молодой, 1 — старый; width — полуширина ленты, мировые ед. Частицы строит экран системы
+  // из seed (их тысячи, а генератор проходит всю галактику).
+  const free = comets.map((c, i) => i);
+  for (let i = nC; i < n; i++) {
+    let o, parent = null;
+    if (free.length && rng() < SB.parentShare) {
+      parent = free.splice(Math.floor(rng() * free.length), 1)[0];
+      const c = comets[parent];
+      o = { a: c.a, e: c.e, w: c.w, m0: c.m0, dir: c.dir, n: c.n };
+    } else {
+      const q = AU * rand(0.4, 30);
+      o = orbit(q, Math.min(R, q + AU * rand(2, 60)), 0.15);
+    }
+    const age = rng();
+    streams.push({
+      ...o, parent, age,
+      arc: age < 0.5 ? rand(0.02, 0.08) : rand(0.25, 1),          // доля оборота
+      width: (age < 0.5 ? rand(20, 60) : rand(60, 200)),            // полуширина, мировые ед.
+      strands: age < 0.5 ? 2 + Math.floor(rng() * 3) : 1,
+      seed: Math.floor(rng() * 4294967296),
+    });
+  }
+  return { comets, streams };
+}
+
+// Положение тела на кеплеровой орбите в момент t: уравнение Кеплера E − e·sinE = M методом Ньютона.
+function keplerPos(o, t) {
+  const M = o.m0 + o.dir * o.n * t;
+  let E = o.e > 0.8 ? Math.PI : M;
+  for (let k = 0; k < 12; k++) E -= (E - o.e * Math.sin(E) - M) / (1 - o.e * Math.cos(E));
+  const x = o.a * (Math.cos(E) - o.e), y = o.a * Math.sqrt(1 - o.e * o.e) * Math.sin(E);
+  const c = Math.cos(o.w), sn = Math.sin(o.w);
+  return { x: x * c - y * sn, y: x * sn + y * c };
+}
+
+// Настоящие числа планеты (PLANET_REAL): радиус, км; масса, M⊕; поверхностная g, м/с²;
+// μ и радиус в мировых единицах — для гравитации корабля. Нарисована планета крупнее (p.r).
+function planetPhysics(type, diameter) {
+  const R = PLANET_REAL[type], d = PLANET_DIAMETER[type];
+  const t = Math.max(0, Math.min(1, (diameter - d[0]) / (d[1] - d[0])));
+  const km = R.km[0] + (R.km[1] - R.km[0]) * t;
+  const massE = R.massE ? R.massE[0] + (R.massE[1] - R.massE[0]) * t : (km / 6371) ** 3 * R.rho / 5.51;
+  return {
+    radiusKm: Math.round(km), massE, gSurf: 9.81 * massE / (km / 6371) ** 2,
+    mu: MU_SUN * massE / EARTHS_PER_SUN, rReal: km / KM_PER_UNIT,
+  };
 }
 
 // Состав планеты, единиц массы на 100 единиц массы планеты. Каждый ресурс считается

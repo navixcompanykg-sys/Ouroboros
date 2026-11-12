@@ -19,8 +19,9 @@
 
   const cam = createViewport(cvs, {
     onTap: handleTap,
-    minZoom: () => fitZoom() * 0.6,
+    minZoom: () => fitZoom(), // дальше «всё в экран» не отдаляем
     maxZoom: () => fitZoom() * 6,
+    panLimit: () => S * 1.5 * (surf.radius + 1), // центр обзора — над картой
   });
   const fitZoom = () => Math.min(cam.W, cam.H) * 0.36 / (S * 1.5 * (surf.radius + 0.8));
   cam.zoom = fitZoom();

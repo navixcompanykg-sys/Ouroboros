@@ -22,14 +22,17 @@
 </div>
 
 <div id="tools">
+  <a class="btn" href="menu.html" title="Меню игры">Меню</a>
   <button id="b-follow" class="on" title="Камера следует за кораблём">Корабль</button>
   <button id="b-fit" title="Показать всю систему">Система</button>
   <button id="b-grid" class="on" title="Масштабная сетка">Сетка</button>
   <button id="b-galaxy" title="Карта галактики">Галактика</button>
+  <button id="b-mode" title="Как лететь по щелчку: быстро (тяга всё время, скачок) или экономно (по дуге)">Режим</button>
 </div>
 
 <div id="h-scale" class="glass above-status"></div>
 <div id="status" class="glass"><span id="h-ship"></span><span id="h-speed"></span></div>
+<div id="thr"><button id="b-brake" title="Тормоз: пока зажато — двигатель тянет против скорости, до остановки (клавиша S)">Тормоз (S)</button><button id="b-gas" title="Газ: пока зажато — двигатель тянет по носу корабля (клавиша W)">Газ (W)</button></div>
 
 <div id="card" class="glass" hidden>
   <div class="c-head">
@@ -39,8 +42,10 @@
   </div>
   <div id="c-facts"></div>
   <div id="c-desc"></div>
+  <div id="c-est" hidden></div>
   <div class="actions">
-    <button id="b-fly" class="primary">Лететь</button>
+    <button id="b-eco" class="primary" title="По дуге под притяжением звезды: дольше, топлива — крохи">Экономно</button>
+    <button id="b-fly" title="Тяга всё время, на дальних — скачок: быстро, но дорого">Быстро</button>
     <button id="b-land" class="primary" hidden>Посадка</button>
     <button id="b-surface" class="primary" hidden>Поверхность</button>
     <button id="b-takeoff" hidden>Взлёт</button>
@@ -49,7 +54,7 @@
   <div id="c-res" hidden></div>
 </div>
 
-<div id="hint">Щелчок — лететь в точку или к планете · колесо — масштаб · перетаскивание — обзор</div>
+<div id="hint">Щелчок по планете — выбрать (лететь — кнопками в карточке) · по пустому месту — лететь в точку · W/S или «Газ»/«Тормоз» — ручная тяга · колесо — масштаб · перетаскивание — обзор</div>
 
 <script src="js/data.js"></script>
 <script src="js/gen.js"></script>
@@ -57,6 +62,8 @@
 <script src="js/surface.js"></script>
 <script src="js/viewport.js"></script>
 <script src="js/world.js"></script>
+<script src="js/orbit.js"></script>
+<script src="js/ships.js"></script>
 <script src="js/system.js"></script>
 <script>setTimeout(() => { const h = document.getElementById('hint'); if (h) h.style.opacity = 0; }, 8000);</script>
 </body>

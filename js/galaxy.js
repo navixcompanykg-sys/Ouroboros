@@ -14,8 +14,9 @@
   const cam = createViewport(cvs, {
     onTap: handleTap,
     onHover: (x, y) => { hovered = starAt(x, y); },
-    minZoom: () => fitZoom() * 0.6,
+    minZoom: () => fitZoom(), // дальше «всё в экран» не отдаляем
     maxZoom: () => fitZoom() * 60,
+    panLimit: () => RW, // центр обзора — внутри галактики
     onResize: () => {},
   });
   const fitZoom = () => (Math.min(cam.W, cam.H) * 0.48) / (RW * 1.04);
@@ -445,7 +446,7 @@
       $('c-type').textContent = 'Зона абсолютного хаоса';
       $('c-facts').innerHTML = `<div><span>Радиус</span>${fmt(GALAXY.chaosR)} кпк</div><div><span>Доступ</span>закрыт</div>`;
       $('c-desc').innerHTML = '<div class="bhwarn">Сверхплотное скопление звёзд, чёрных дыр и раскалённого газа. Гравитация и излучение рвут любой корабль — залететь сюда нельзя.</div>';
-      $('b-jump').hidden = true;
+      $('b-jump').hidden = true; $('c-dest-wrap').hidden = true;
       $('c-list').hidden = true;
       return;
     }
@@ -463,12 +464,20 @@
         `<div><span>Зона</span>${GALAXY_ZONES[s.zone - 1].name}</div>` +
         `<div><span>Сектор</span>${s.sectorKey}</div>` +
         `<div><span>От центра</span>${fmt(s.r)} кпк</div>` +
-        `<div><span>От корабля</span>${here ? 'здесь' : fmt(distKpc(s, cur)) + ' кпк'}</div>`;
+        `<div><span>От корабля</span>${here ? 'здесь' : fmt(distKpc(s, cur)) + ' кпк'}</div>` +
+        (here ? '' : (() => { const a = shipStats(findDesign(World.design())).accel, t = SHIP_LIGHT / a;
+          const m = x => x < 120 ? Math.round(x) + ' с' : (x / 60).toFixed(1).replace('.', ',') + ' мин';
+          return a > 0 ? `<div><span>Перелёт</span>разгон ${m(t)} · скачок · торможение ${m(t / 0.85)}</div>` : '<div><span>Перелёт</span>нет двигателей</div>'; })());
       $('c-desc').innerHTML = `Планет: ${sys.planets.length} — ` +
         Object.entries(counts).map(([k, n]) => `${PLANET_TYPES[k].name.toLowerCase()} ${n}`).join(', ') +
         (s.bh ? `<div class="bhwarn">Чёрная дыра ${gal.stars[s.bh.id].name} вытягивает вещество звезды. Индекс влияния ${fmt(s.bh.index)} — мир нестабилен: жизни нет, больше антиматерии, изотопов и трития, меньше водорода и силикатов.</div>` : '');
       $('b-jump').hidden = false;
-      $('b-jump').textContent = here ? 'Открыть систему' : 'Прыжок';
+      $('b-jump').textContent = here ? 'Открыть систему' : 'Лететь';
+      // Цель внутри системы назначения: планета из списка — после скачка автопилот сразу ведёт к ней;
+      // «к звезде» — корабль тормозит к звезде, планету игрок укажет на месте.
+      $('c-dest-wrap').hidden = here;
+      if (!here) $('c-dest').innerHTML = '<option value="">К звезде — планету выберу на месте</option>' +
+        sys.planets.map(p => `<option value="${p.index}">${p.name} — ${PLANET_TYPES[p.type].name.toLowerCase()}${PLANET_TYPES[p.type].landable ? '' : ' (без посадки)'}</option>`).join('');
       $('c-list').hidden = true;
     } else {
       const sec = selSector, byType = {};
@@ -479,7 +488,7 @@
       $('c-facts').innerHTML = STAR_TYPES.filter(t => byType[t.key])
         .map(t => `<div><span>${t.name}</span>${byType[t.key]}</div>`).join('');
       $('c-desc').textContent = `Звёзд в секторе: ${sec.stars.length}`;
-      $('b-jump').hidden = true;
+      $('b-jump').hidden = true; $('c-dest-wrap').hidden = true;
       // Список звёзд сектора — нажатие выбирает звезду.
       const list = $('c-list');
       list.hidden = false;
@@ -498,14 +507,25 @@
   $('c-close').onclick = () => { selected = null; selSector = null; renderCard(); };
   $('b-jump').onclick = () => {
     if (!selected) return;
-    // Межзвёздный перелёт пока мгновенный: корабль переносится к звезде и открывается система.
-    World.setCurrent(selected.id);
-    location.href = World.systemUrl(selected.id);
+    const cur = World.currentStarId();
+    if (selected.id === cur) { location.href = World.systemUrl(cur); return; }
+    // Межзвёздный перелёт (system.js startWarp): в своей системе корабль разгоняется к выбранной звезде
+    // до скорости света, уходит в скачок и сразу оказывается в её системе, на подлёте — тормозит.
+    const dest = $('c-dest').value;
+    location.href = World.systemUrl(cur) + '&warp=' + selected.id + (dest !== '' ? '&dest=' + dest : '');
   };
+  // «Корабль» — камера ныряет к звезде корабля (приближение + затемнение) и открывается его система;
+  // там пролёт продолжается до самого корабля (system.html?arrive=1).
   $('b-ship').onclick = () => {
-    const s = World.currentStar(); cam.x = s.x * K; cam.y = s.y * K;
-    cam.zoomGoal = Math.max(cam.zoom, fitZoom() * 6);
+    if (cam.fly) return;
+    const s = World.currentStar(), p = { x: s.x * K, y: s.y * K };
+    const DUR = 1.8;
+    cam.flyTo(() => p, Math.max(cam.zoom, fitZoom() * 120), DUR,
+      () => { location.href = World.systemUrl(s.id) + '&arrive=1'; });
+    setTimeout(() => screenFade(1, 600), DUR * 1000 - 600);
   };
+  // Возврат назад из истории браузера (bfcache) — снять затемнение.
+  window.addEventListener('pageshow', e => { if (e.persisted) { cam.fly = null; screenFade(0, 0); } });
   $('b-fit').onclick = fit;
   $('b-grid').onclick = () => { showGrid = !showGrid; $('b-grid').classList.toggle('on', showGrid); $('h-scale').hidden = !showGrid; };
   $('b-newgal').onclick = () => {
@@ -518,6 +538,7 @@
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now; t += dt;
     cam.step(dt);
+    cam.flyStep(dt);
     draw();
     requestAnimationFrame(frame);
   }

@@ -31,9 +31,19 @@ const World = (() => {
   function setCurrent(id) { if (state.star !== id) state.ship = null; state.star = id; save(); }
   // Где корабль внутри системы текущей звезды: номер планеты и сел ли он на неё.
   function setShip(planet, landed) { state.ship = planet == null ? null : { planet, landed: !!landed }; save(); }
+  // Корабль игрока — имя дизайна из конструктора (ships.js); топливо — доля полного бака (0…1).
+  // Новый мир или другой корабль — полный бак.
+  const design = () => state.design || null;
+  function setDesign(name) { state.design = name; state.fuel = 1; save(); }
+  const fuel = () => (typeof state.fuel === 'number' ? state.fuel : 1);
+  // Межзвёздный скачок: откуда шёл корабль (единичный вектор по карте галактики) — система
+  // назначения ставит его на подлёте с этой стороны. Читается один раз.
+  function setArrival(a) { state.arrival = a; save(); }
+  function takeArrival() { const a = state.arrival || null; delete state.arrival; save(); return a; }
+  function setFuel(f) { state.fuel = Math.max(0, Math.min(1, Math.round(f * 1e6) / 1e6)); save(); }
 
   return {
-    seed, galaxy, setCurrent, setShip,
+    seed, galaxy, setCurrent, setShip, design, setDesign, fuel, setFuel, setArrival, takeArrival,
     ship: () => state.ship || null,
     currentStarId,
     currentStar: () => galaxy().stars[currentStarId()],

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#04060c">
+<title>Уроборос · Справочник</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/shipyard.css">
+<style>
+  .ref { max-width: 980px; margin: 0 auto; display: grid; gap: 12px; }
+  .ref table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .ref th, .ref td { padding: 5px 6px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  .ref th { color: var(--muted); font-weight: 500; }
+  .ref td:first-child, .ref th:first-child { text-align: left; }
+  .ref .scroll { overflow-x: auto; }
+  .ref p, .ref li { font-size: 13px; color: #c6d2e8; }
+  .ref code { color: #ffd9a0; }
+</style>
+</head>
+<body class="page">
+<header class="bar">
+  <a class="btn" href="menu.html">← Меню</a>
+  <h1>Справочник</h1>
+  <a class="btn" href="shipyard.html">Конструктор</a>
+</header>
+
+<main class="ref">
+  <section class="glass panel">
+    <h2>Топливо и скорость: средний корабль</h2>
+    <p id="avg"></p>
+    <div class="scroll"><table id="t-fuel"></table></div>
+    <p>Как считается:</p>
+    <ul>
+      <li>Ускорение корабля = (сумма тяги двигателей × доля энергии) / масса. Доля энергии — сколько спроса двигателей покрывают реакторы и газохранилища (не хватает — тяга падает кратно).</li>
+      <li>Тяга двигателя = <code>K × топливо × тип двигателя</code>. Топливо: водород 0,1 · тритий 1 · антиматерия 10 (отношение 1 : 10 : 100 — по ТЗ v2: разгон 10 ч / 1 ч / 6 мин). Тип: двигатель 1 · ионный 2 · парус 0,01 без топлива.</li>
+      <li><code>K</code> подобран так, что средний корабль на тритии пересекает систему (500 а. е.) за 1 минуту вместе с разгоном и торможением.</li>
+      <li>Скорость света — настоящая: 299 792 км/с ≈ 263 а. е./с. Расстояния в игре настоящие, время сжато: 1 с игры ≈ 1,52 суток (год Земли — 4 минуты). Ускорения в м/с² — в настоящих единицах.</li>
+      <li>Перелёт «с места до места»: разгон до середины пути, торможение — со второй; при скорости света — участок по инерции. Дальше скорости света — сверхсветовой скачок.</li>
+    </ul>
+  </section>
+
+  <section class="glass panel">
+    <h2>Топливо</h2>
+    <div class="scroll"><table id="t-tank"></table></div>
+    <p>Газохранилище за цикл (60 с) сжигает не больше 1 единицы топлива и даёт энергию на двигатели. Реактор кормит двигатели первым и бесплатно — если его хватает, топливо не тратится.</p>
+  </section>
+
+  <section class="glass panel">
+    <h2>Модули</h2>
+    <div class="scroll"><table id="t-mod"></table></div>
+    <p>Массы — по умолчанию (допущение), цен нет: экономика v3 другая. Прочность: 1 — хрупкий, 2 — крепкий; голая палуба — 3.</p>
+  </section>
+
+  <section class="glass panel">
+    <h2>Классы кораблей</h2>
+    <div class="scroll"><table id="t-cls"></table></div>
+    <p>Класс задаётся числом палуб (сетка 5 × 7): чем больше палуб, тем меньше модулей на каждой. Каркас палубы — <span id="frame"></span> т.</p>
+  </section>
+</main>
+
+<script src="js/data.js"></script>
+<script src="js/ships.js"></script>
+<script>
+// Справочник собирается из тех же функций, что считают корабли в игре (ships.js), — числа не расходятся.
+(() => {
+  const $ = id => document.getElementById(id);
+  const f = (x, k = 0) => x.toLocaleString('ru-RU', { minimumFractionDigits: k, maximumFractionDigits: k });
+  const T = t => !isFinite(t) ? '—' : t < 120 ? `${f(t)} с` : t < 7200 ? `${f(t / 60, 1)} мин` : `${f(t / 3600, 1)} ч`;
+  const A = avgShip();
+  $('avg').textContent = `Средний корабль библиотеки (${A.n} дизайнов с двигателями): масса ${f(A.mass)} т, ` +
+    `${f(A.engines, 1)} двигателя (в единицах обычного).`;
+  $('t-fuel').innerHTML = '<tr><th>Топливо</th><th>Класс</th><th>Тяга двигателя, МН</th><th>Ускорение</th><th>До скорости света</th><th>Пересечь систему (500 а. е.)</th><th>Между планетами (9 а. е.)</th></tr>' +
+    fuelTable().map(r => `<tr><td>${r.name}</td><td>${r.tier}</td>` +
+      `<td>${f(r.thrustPerEngine * MS2_PER_UNIT / 1000, 2)}</td>` +   // т × м/с² = кН → МН
+      `<td>${f(r.ms2, 2)} м/с² (${f(r.ms2 / 9.81, 2)} g)</td><td>${T(r.toLight)}</td><td>${T(r.cross)}</td><td>${T(r.hop)}</td></tr>`).join('');
+  $('t-tank').innerHTML = '<tr><th>Топливо</th><th>Энергии за единицу</th><th>Единиц в газохранилище</th><th>Энергии в газохранилище</th></tr>' +
+    FUEL_KEYS.map(k => { const F = FUEL[k]; return `<tr><td>${F.name}</td><td>${f(F.yield)}</td><td>${f(F.tank)}</td><td>${f(F.yield * F.tank)}</td></tr>`; }).join('');
+  $('t-mod').innerHTML = '<tr><th>Модуль</th><th>Масса, т</th><th>Прочность</th><th>Выработка</th><th>При действии</th><th>Постоянно</th></tr>' +
+    SHIP_MODULES.map(m => `<tr><td>${m.name}</td><td>${m.mass}</td><td>${m.dur}</td><td>${m.gen || '—'}</td><td>${m.active || '—'}</td><td>${m.passive || '—'}</td></tr>`).join('');
+  $('t-cls').innerHTML = '<tr><th>Класс</th><th>Палуб до</th><th>Модулей на палубу</th><th>Слотов всего</th></tr>' +
+    SHIP_CLASSES.map(c => `<tr><td>${c.name}</td><td>${c.decks}</td><td>${c.perDeck}</td><td>${c.decks * c.perDeck}</td></tr>`).join('');
+  $('frame').textContent = SHIP_FRAME_MASS;
+})();
+</script>
+</body>
+</html>

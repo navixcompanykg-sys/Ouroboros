@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#04060c">
+<title>Уроборос</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/shipyard.css">
+</head>
+<body class="page">
+<div class="menu">
+  <h1>УРОБОРОС</h1>
+  <div class="sub">галактика · системы · планеты</div>
+  <a class="btn primary" href="index.html">Играть</a>
+  <a class="btn" href="shipyard.html">Конструктор кораблей</a>
+  <a class="btn" href="reference.html">Справочник</a>
+  <button id="b-newgal">Новый мир</button>
+  <div class="glass ship" id="ship"></div>
+</div>
+<script src="js/data.js"></script>
+<script src="js/gen.js"></script>
+<script src="js/galaxy-gen.js"></script>
+<script src="js/world.js"></script>
+<script src="js/ships.js"></script>
+<script>
+// Меню: вход в игру, конструктор, новый мир; внизу — корабль игрока коротко.
+(() => {
+  const d = findDesign(World.design()), st = shipStats(d);
+  const t = travelTime(st.accel, 2 * SYSTEM_RADIUS);
+  const fuel = st.burnPerCycle > 0 ? `топливо ${Math.round(World.fuel() * 100)}%` : 'реактор — топливо не нужно';
+  document.getElementById('ship').innerHTML =
+    `<b>Ваш корабль: ${d.name}</b><div class="muted small-text">${st.cls.name} · ${st.mass} т · систему проходит за ` +
+    `${t < 120 ? Math.round(t) + ' с' : (t / 60).toFixed(1).replace('.', ',') + ' мин'} · ${fuel}</div>`;
+  document.getElementById('b-newgal').onclick = () => {
+    if (!confirm('Сгенерировать новую галактику? Корабль окажется у стартовой звезды нового мира.')) return;
+    location.href = `index.html?g=${(Math.random() * 2 ** 31) >>> 0}`;
+  };
+})();
+</script>
+</body>
+</html>

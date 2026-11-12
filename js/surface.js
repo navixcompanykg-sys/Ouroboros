@@ -114,36 +114,41 @@ function largestRemainderAllocate(total, weights) {
   return out;
 }
 
-// Как раскладывается каждый ресурс. 'biome' — весь запас по весу типа гекса (+шум ±15%);
-// 'deposits' — фон (доля bg) + n месторождений, mtn — месторождения втрое чаще на горах/холмах.
-// Правила — перенос v2 по смыслу: силикаты/вода/биомасса — биом; металлы — 20% фон + 4 месторождения;
-// радиоактивные — 15% + 3; самое ценное (платиноиды v2) — 2% + 2; гелий-3 v2 → тритий.
+// Как раскладывается каждый ресурс — ТОЧНО по правилам v2 (server/planets.go distributeHexResources),
+// каждому нашему ресурсу — правило его аналога в v2 (требование пользователя «как в версии 2»):
+//   силикаты → силикаты (биом), кремний → металлическое железо (биом, тяготеет к горам),
+//   редкоземельные и ниобий → металлы (20% фон + 4 месторождения, к горам),
+//   сверхплотные → тугоплавкие металлы (5% + 4, к горам; на голом ядре — ровно, без месторождений),
+//   изотопы → радиоактивные (15% + 3, к горам), водород → водород (топливо: 65% + 2, без гор),
+//   тритий → гелий-3 (с атмосферой 45% + 3 без гор; без атмосферы — реголит: 8% + 2, к горам),
+//   антиматерия → платиноиды (2% + 2, к горам), флора → дикая биомасса, микробиота → фосфаты,
+//   битумы → битумы (все три — биом).
+// 'biome' — весь запас по весу типа гекса (+шум ±15%); 'deposits' — фон (доля bg, шум 0,65–1,35)
+// + n месторождений (экспоненциальный разброс), mtn — месторождения втрое чаще на горах/холмах.
 const HEX_RULES = {
   silicates:  { kind: 'biome' },
   rareEarth:  { kind: 'deposits', bg: 0.20, n: 4, mtn: true },
-  superdense: { kind: 'deposits', bg: 0.05, n: 3, mtn: true },
+  superdense: { kind: 'deposits', bg: 0.05, n: 4, mtn: true },
   silicon:    { kind: 'biome' },
   niobium:    { kind: 'deposits', bg: 0.20, n: 4, mtn: true },
   isotopes:   { kind: 'deposits', bg: 0.15, n: 3, mtn: true },
-  hydrogen:   { kind: 'biome' },
-  tritium:    { kind: 'deposits', bg: 0.45, n: 3, mtn: false }, // в атмосфере рассеян; без неё — см. ниже
+  hydrogen:   { kind: 'deposits', bg: 0.65, n: 2, mtn: false },
+  tritium:    { kind: 'deposits', bg: 0.45, n: 3, mtn: false }, // без атмосферы — см. distributeHexResources
   antimatter: { kind: 'deposits', bg: 0.02, n: 2, mtn: true },
   microbiota: { kind: 'biome' },
   flora:      { kind: 'biome' },
   bitumen:    { kind: 'biome' },
 };
 
-// Во сколько раз гекс данного типа богаче среднего (v2 hexBioWeight; кремний, водород,
-// микробиота, флора — новые по той же логике).
+// Во сколько раз гекс данного типа богаче среднего — v2 hexBioWeight для аналога.
 function hexWeight(key, h) {
   const T = h.type;
   switch (key) {
-    case 'silicates': return { mountains: 2.5, hills: 1.6, water: 0.3, icecap: 0.5 }[T] ?? 1;
-    case 'silicon':   return { desert: 2.2, wasteland: 1.3, mountains: 1.3, hills: 1.2, water: 0.3, icecap: 0.3 }[T] ?? 0.8;
-    case 'hydrogen':  return T === 'icecap' ? 3 : T === 'water' ? 2.5 : h.fresh ? 0.8 : 0.2; // водород — из воды и льда
-    case 'microbiota': return { jungle: 2.5, forest: 2, steppe: 1.2, water: 1.2 }[T] ?? 0.05;
-    case 'flora':     return { jungle: 2.5, forest: 2, steppe: 1 }[T] ?? 0.02;
-    case 'bitumen':   return { wasteland: 1.2, water: 0.8, mountains: 0.5 }[T] ?? 0.2;
+    case 'silicates':  return { mountains: 2.5, hills: 1.6, water: 0.3, icecap: 0.5 }[T] ?? 1; // v2 силикаты
+    case 'silicon':    return { mountains: 2.0, hills: 1.3 }[T] ?? 1;                             // v2 железо
+    case 'flora':      return { jungle: 2.5, forest: 2.0, steppe: 1.2, water: 0.5 }[T] ?? 0.05;   // v2 биомасса
+    case 'microbiota': return { water: 1.8, jungle: 1.0, steppe: 0.8 }[T] ?? 0.1;                 // v2 фосфаты
+    case 'bitumen':    return { wasteland: 1.2, water: 0.8, mountains: 0.5 }[T] ?? 0.2;           // v2 битумы
   }
   return 1;
 }

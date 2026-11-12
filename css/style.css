@@ -28,6 +28,9 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 button { font: inherit; color: var(--text); background: rgba(30, 44, 74, 0.9); border: 1px solid var(--line);
   border-radius: 9px; padding: 8px 12px; cursor: pointer; min-height: 38px; }
 button:hover { border-color: var(--accent); }
+#tools .btn { display: inline-flex; align-items: center; min-height: 38px; padding: 8px 12px; border-radius: 9px; border: 1px solid var(--line);
+  background: rgba(30, 44, 74, 0.9); color: var(--text); text-decoration: none; }
+#tools .btn:hover { border-color: var(--accent); }
 button.on { background: var(--accent-2); border-color: var(--accent); }
 button.primary { background: var(--accent-2); border-color: var(--accent); font-weight: 600; }
 button:disabled { opacity: .55; cursor: default; }
@@ -47,6 +50,8 @@ button:disabled { opacity: .55; cursor: default; }
 #c-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin: 10px 0 8px; font-size: 13px; }
 #c-facts span { display: block; color: var(--muted); font-size: 11px; }
 #c-desc { color: #b4c1d9; font-size: 13px; margin-bottom: 10px; }
+#c-est { font-size: 12px; color: #cfd9ec; margin-bottom: 10px; display: grid; gap: 3px; }
+#c-est b { color: #ffd9a0; font-weight: 600; }
 .actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .actions button { flex: 1 1 auto; }
 #c-res { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
@@ -109,3 +114,17 @@ button:disabled { opacity: .55; cursor: default; }
   #layers { top: calc(92px + env(safe-area-inset-top)); left: 10px; right: 10px; max-width: none; flex-wrap: nowrap; overflow-x: auto; }
   .chip { flex: none; }
 }
+
+/* Подгазовка — крупная кнопка внизу справа, удобная для пальца. */
+/* Внизу по центру — не наезжает на карточку справа и строку состояния слева. */
+#thr { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 1; display: flex; gap: 6px; }
+#thr button { min-width: 96px; min-height: 52px; font-weight: 600; touch-action: none; }
+#b-gas.on { background: #c8641e; border-color: #ffb070; }
+#b-brake.on { background: #1e6fc8; border-color: #8fc3ff; }
+@media (max-width: 760px) { #thr { bottom: calc(100px + env(safe-area-inset-bottom)); } }
+
+/* Карточка звезды: выбор цели в системе назначения. */
+#c-dest-wrap { display: block; margin: 0 0 10px; font-size: 12px; color: var(--muted); }
+#c-dest-wrap[hidden] { display: none; }
+#c-dest-wrap select { display: block; width: 100%; margin-top: 4px; font: inherit; font-size: 13px; color: var(--text);
+  background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; }

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#04060c">
+<title>Уроборос · Конструктор кораблей</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/shipyard.css">
+</head>
+<body class="page">
+<header class="bar">
+  <a class="btn" href="menu.html">← Меню</a>
+  <h1>Конструктор кораблей</h1>
+  <a class="btn" href="reference.html">Справочник</a>
+  <a class="btn" href="index.html">Галактика</a>
+</header>
+
+<main class="yard">
+  <!-- Библиотека дизайнов -->
+  <section class="glass panel lib">
+    <h2>Библиотека</h2>
+    <div class="row">
+      <button id="b-new">Новый</button>
+      <button id="b-copy">Копия</button>
+      <button id="b-del">Удалить</button>
+    </div>
+    <div id="lib-list"></div>
+    <button id="b-reset" class="small">Вернуть исходную библиотеку</button>
+  </section>
+
+  <!-- Схема палуб -->
+  <section class="glass panel editor">
+    <div class="row">
+      <input id="d-name" maxlength="40" placeholder="Название корабля">
+      <select id="d-fuel" title="Топливо — класс скорости корабля"></select>
+    </div>
+    <div id="d-class" class="muted"></div>
+    <div class="grid-wrap">
+      <div id="deck-grid"></div>
+      <div class="bow">нос ▶</div>
+    </div>
+    <div class="muted small-text">Пустая клетка — построить палубу. Построенная — выбрать её и настроить модули. Цифра — сектор обстрела, «Ц» — цитадель (жизнеобеспечение и радар там всегда).</div>
+    <div class="row">
+      <button id="b-clear">Очистить</button>
+      <button id="b-fill">Залить всё</button>
+    </div>
+    <div id="deck-edit"></div>
+  </section>
+
+  <!-- Характеристики -->
+  <section class="glass panel stats">
+    <h2>Характеристики</h2>
+    <div id="st-main"></div>
+    <h3>Секторы обстрела</h3>
+    <div id="st-sectors"></div>
+    <button id="b-mine" class="primary">Сделать моим кораблём</button>
+    <div id="st-mine" class="muted small-text"></div>
+  </section>
+</main>
+
+<script src="js/data.js"></script>
+<script src="js/gen.js"></script>
+<script src="js/galaxy-gen.js"></script>
+<script src="js/world.js"></script>
+<script src="js/ships.js"></script>
+<script src="js/shipyard.js"></script>
+</body>
+</html>

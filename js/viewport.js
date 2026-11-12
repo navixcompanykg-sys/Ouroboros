@@ -11,14 +11,44 @@ function createViewport(cvs, opts) {
     const before = vp.toWorld(sx, sy);
     vp.zoom = Math.min(opts.maxZoom(), Math.max(opts.minZoom(), vp.zoom * factor));
     const after = vp.toWorld(sx, sy);
-    if (!vp.follow) { vp.x += before.x - after.x; vp.y += before.y - after.y; }
+    if (!vp.follow) { vp.x += before.x - after.x; vp.y += before.y - after.y; vp.clampPan(); }
   };
 
   // Плавный автозум к vp.zoomGoal — вызывать каждый кадр.
+  // Пределы масштаба (opts.minZoom — «всё в экран», задаётся экраном) держатся и для автозума;
+  // во время пролёта (vp.fly) не мешаем — это переход между экранами.
+  // Камера не уходит туда, где нечего смотреть (пользователь): центр обзора — не дальше
+  // opts.panLimit() от начала координат (край системы / галактики / карты планеты).
+  vp.clampPan = () => {
+    if (!opts.panLimit || vp.fly) return;
+    const R = opts.panLimit(), d = Math.hypot(vp.x, vp.y);
+    if (d > R) { vp.x *= R / d; vp.y *= R / d; }
+  };
+
   vp.step = dt => {
-    if (!vp.zoomGoal) return;
-    vp.zoom *= Math.pow(vp.zoomGoal / vp.zoom, Math.min(1, dt * 2));
-    if (Math.abs(Math.log(vp.zoomGoal / vp.zoom)) < 0.01) vp.zoomGoal = 0;
+    if (vp.zoomGoal) {
+      vp.zoom *= Math.pow(vp.zoomGoal / vp.zoom, Math.min(1, dt * 2));
+      if (Math.abs(Math.log(vp.zoomGoal / vp.zoom)) < 0.01) vp.zoomGoal = 0;
+    }
+    if (!vp.fly) vp.zoom = Math.min(opts.maxZoom(), Math.max(opts.minZoom(), vp.zoom));
+    vp.clampPan();
+  };
+
+  // Пролёт камеры к точке target() = {x, y} (может двигаться) с масштабом z0 → z1 за dur секунд.
+  // Экранное смещение точки сводится к нулю плавно, а масштаб меняется по экспоненте — точка
+  // не «убегает» с экрана при сильном приближении. vp.flyStep(dt) — каждый кадр; по окончании onEnd.
+  vp.flyTo = (target, z1, dur, onEnd) => {
+    const p = target();
+    vp.fly = { t: 0, dur, target, z0: vp.zoom, z1, ox: (p.x - vp.x) * vp.zoom, oy: (p.y - vp.y) * vp.zoom, onEnd };
+    vp.zoomGoal = 0;
+  };
+  vp.flyStep = dt => {
+    const f = vp.fly; if (!f) return;
+    f.t += dt;
+    const u = Math.min(1, f.t / f.dur), e = u * u * (3 - 2 * u), p = f.target();
+    vp.zoom = f.z0 * Math.pow(f.z1 / f.z0, e);
+    vp.x = p.x - f.ox * (1 - e) / vp.zoom; vp.y = p.y - f.oy * (1 - e) / vp.zoom;
+    if (u >= 1) { vp.fly = null; if (f.onEnd) f.onEnd(); }
   };
 
   function resize() {
@@ -63,6 +93,7 @@ function createViewport(cvs, opts) {
       if (drag.moved) {
         vp.x -= (e.clientX - prev.x) / vp.zoom;
         vp.y -= (e.clientY - prev.y) / vp.zoom;
+        vp.clampPan();
       }
     }
   });
@@ -84,6 +115,19 @@ function createViewport(cvs, opts) {
 }
 
 // Звёздный фон экрана (не мировые координаты): лёгкий параллакс от камеры.
+// Затемнение всего экрана (переход между экранами): screenFade(1, мс) — в чёрное, screenFade(0, мс) — из чёрного.
+function screenFade(to, ms) {
+  let el = document.getElementById('fade');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'fade';
+    el.style.cssText = 'position:fixed;inset:0;background:#000;pointer-events:none;z-index:1000;opacity:' + (1 - to);
+    document.body.appendChild(el);
+    el.getBoundingClientRect(); // зафиксировать начальную прозрачность до перехода
+  }
+  el.style.transition = `opacity ${ms}ms ease-in-out`;
+  el.style.opacity = to;
+}
+
 function drawBackdrop(ctx, vp, stars) {
   ctx.fillStyle = '#04060c';
   ctx.fillRect(0, 0, vp.W, vp.H);

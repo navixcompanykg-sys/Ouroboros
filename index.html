@@ -19,7 +19,8 @@
 </div>
 
 <div id="tools">
-  <button id="b-ship" title="Показать корабль">Корабль</button>
+  <a class="btn" href="menu.html" title="Меню игры">Меню</a>
+  <button id="b-ship" title="Перейти в систему корабля">Корабль</button>
   <button id="b-fit" title="Вся галактика">Галактика</button>
   <button id="b-grid" class="on" title="Сетка зон и секторов">Сетка</button>
   <button id="b-newgal" title="Сгенерировать новую галактику">Новый мир</button>
@@ -33,15 +34,16 @@
   </div>
   <div id="c-facts"></div>
   <div id="c-desc"></div>
+  <label id="c-dest-wrap" hidden><span>Цель в системе</span><select id="c-dest"></select></label>
   <div class="actions">
-    <button id="b-jump" class="primary" hidden>Прыжок</button>
+    <button id="b-jump" class="primary" hidden>Лететь</button>
   </div>
   <div id="c-list" hidden></div>
 </div>
 
 <div id="h-scale" class="glass"></div>
 
-<div id="hint">Щелчок по звезде — карточка и прыжок · по пустому месту — сектор · колесо/щипок — масштаб</div>
+<div id="hint">Щелчок по звезде — карточка и перелёт · по пустому месту — сектор · колесо/щипок — масштаб</div>
 
 <script src="js/data.js"></script>
 <script src="js/gen.js"></script>
@@ -49,6 +51,7 @@
 <script src="js/surface.js"></script>
 <script src="js/viewport.js"></script>
 <script src="js/world.js"></script>
+<script src="js/ships.js"></script>
 <script src="js/galaxy.js"></script>
 <script>setTimeout(() => { const h = document.getElementById('hint'); if (h) h.style.opacity = 0; }, 8000);</script>
 </body>
