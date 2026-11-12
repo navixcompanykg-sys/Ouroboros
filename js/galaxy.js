@@ -11,6 +11,67 @@
   const RW = GALAXY_RADIUS_KPC * K;     // радиус галактики в мировых единицах
   let selected = null, selSector = null, hovered = null, showGrid = true, t = 0;
 
+  // ---------- Межзвёздный перелёт (межзвёздное пространство) ----------
+  // Корабль покинул свою систему (system.js leaveSystem) — дальше перелёт идёт здесь, на карте:
+  // разгон до скорости света → скачок (корабль проносится по линии маршрута) → торможение → у края
+  // системы назначения — переход в неё (system.js jumpIn). Состояние — World.travel (переживает
+  // перезагрузку). Скорость и путь — в мировых ед. (как в системе), на карту — через UNITS_PER_KPC.
+  // Масштаб настоящий: разгон до c — ~50 тыс. а. е., это доли процента пути до соседней звезды, поэтому
+  // до скачка корабль на карте почти не сдвигается — видно по панели скорости и линии маршрута.
+  let travel = World.travel(), travelSave = 0, fuelBurn = 0;
+  const myShip = shipStats(findDesign(World.design()));
+  const travelPos = () => { const f = gal.stars[travel.from], k = travel.along / UNITS_PER_KPC; return { x: f.x + travel.dx * k, y: f.y + travel.dy * k }; };
+  function stepTravel(dt) {
+    const T = travel, a = myShip.accel, c = SHIP_LIGHT;
+    if (T.jumpAnim != null && (T.jumpAnim += dt) > 1.2) T.jumpAnim = null;
+    let dv;
+    if (T.phase === 'accel') {
+      dv = Math.min(a * dt, c - T.v); T.v += dv; T.along += T.v * dt;
+      if (T.v >= 0.98 * c) {
+        // Скачок: сразу на расстояние торможения от звезды назначения.
+        T.jumpFrom = T.along;
+        T.along = Math.max(T.along, T.D - T.v * T.v / (2 * a * 0.85));
+        T.phase = 'brake'; T.jumpAnim = 0;
+      }
+    } else {
+      dv = Math.min(T.v, 0.85 * a * dt); T.v -= dv; T.along += T.v * dt;
+      if (T.D - T.along <= SYSTEM_RADIUS || T.v <= 0) return arriveTravel();
+    }
+    // Топливо — по тяге (доля бака); сохраняем не каждый кадр.
+    if (isFinite(myShip.dv) && myShip.dv > 0) fuelBurn += dv / myShip.dv;
+    if ((travelSave += dt) > 0.5) {
+      travelSave = 0;
+      if (fuelBurn) { World.setFuel(World.fuel() - fuelBurn); fuelBurn = 0; }
+      World.setTravel(T);
+    }
+  }
+  function arriveTravel() {
+    const T = travel;
+    if (fuelBurn) { World.setFuel(World.fuel() - fuelBurn); fuelBurn = 0; }
+    World.setArrival({ dx: T.dx, dy: T.dy, dest: T.dest, v: T.v, dist: Math.max(1, T.D - T.along), from: T.from });
+    World.setCurrent(T.to);
+    World.setTravel(null);
+    travel = null;
+    screenFade(1, 400);
+    setTimeout(() => { location.href = World.systemUrl(T.to) + '&jumpin=1'; }, 450);
+  }
+  const fmtTT = s => s < 120 ? Math.round(s) + ' с' : Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0');
+  function travelText() {
+    const T = travel, a = myShip.accel, c = SHIP_LIGHT, ly = (T.D - T.along) / AU / AU_PER_LY;
+    const left = ly > 1 ? Math.round(ly).toLocaleString('ru-RU') + ' св. лет' : Math.round((T.D - T.along) / AU).toLocaleString('ru-RU') + ' а. е.';
+    return T.phase === 'accel'
+      ? `Перелёт к ${T.name}: разгон · скачок через ${fmtTT(Math.max(0, (0.98 * c - T.v) / a))} · до цели ${left}`
+      : `Перелёт к ${T.name}: торможение · до системы ${fmtTT(T.v / (0.85 * a))} · до цели ${left}`;
+  }
+  // Панель скорости и топлива — всегда видна (как в системе).
+  function renderGauges() {
+    const v = travel ? travel.v : 0, pc = v / SHIP_LIGHT * 100;
+    document.getElementById('g-speed').innerHTML = `<span>Скорость</span><b>${Math.round(v * KMS_PER_UNIT).toLocaleString('ru-RU')} км/с</b>` +
+      `<i>${!v ? 'у звезды' : pc >= 0.1 ? pc.toFixed(pc < 10 ? 1 : 0).replace('.', ',') + '% c' : '&lt;0,1% c'}</i>`;
+    const f = World.fuel() - fuelBurn;
+    document.getElementById('g-fuel').innerHTML = `<span>Топливо</span><b>${isFinite(myShip.dv) ? (f * 100).toFixed(f < 0.1 ? 2 : 1).replace('.', ',') + '%' : 'реактор'}</b>`;
+  }
+
   const cam = createViewport(cvs, {
     onTap: handleTap,
     onHover: (x, y) => { hovered = starAt(x, y); },
@@ -185,7 +246,8 @@
     drawStreamParticles();
 
     // Корабль — пульсирующее кольцо у текущей звезды.
-    const cur = gal.stars[World.currentStarId()], cp = starPos(cur);
+    const cur = gal.stars[World.currentStarId()];
+    const cp = travel ? (q => cam.toScreen(q.x * K, q.y * K))(travelPos()) : starPos(cur);
     const pulse = 8 + Math.sin(t * 3) * 2;
 
     // Перекрестие через корабль на весь экран — чтобы быстро найти его на карте.
@@ -214,8 +276,23 @@
         ctx.fillText(s.name, p.x, p.y - 16);
       }
     }
+    // Перелёт: линия маршрута к звезде назначения и росчерк скачка.
+    if (travel) {
+      const p = starPos(gal.stars[travel.to]);
+      ctx.setLineDash([6, 6]); ctx.strokeStyle = 'rgba(255,210,140,0.75)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(cp.x, cp.y); ctx.lineTo(p.x, p.y); ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle = 'rgba(255,210,140,0.9)'; ctx.beginPath(); ctx.arc(p.x, p.y, 12, 0, Math.PI * 2); ctx.stroke();
+      if (travel.jumpAnim != null) {
+        const f = gal.stars[travel.from], k0 = travel.jumpFrom / UNITS_PER_KPC, u = travel.jumpAnim / 1.2;
+        const a0 = cam.toScreen((f.x + travel.dx * k0) * K, (f.y + travel.dy * k0) * K);
+        const g = ctx.createLinearGradient(a0.x, a0.y, cp.x, cp.y);
+        g.addColorStop(0, 'rgba(160,210,255,0)'); g.addColorStop(1, 'rgba(220,240,255,' + (1 - u) + ')');
+        ctx.strokeStyle = g; ctx.lineWidth = 3 * (1 - u) + 1;
+        ctx.beginPath(); ctx.moveTo(a0.x, a0.y); ctx.lineTo(cp.x, cp.y); ctx.stroke();
+      }
+    }
     // Линия прыжка от корабля к выбранной звезде.
-    if (selected && selected !== cur) {
+    if (!travel && selected && selected !== cur) {
       const p = starPos(selected);
       ctx.setLineDash([4, 5]); ctx.strokeStyle = 'rgba(111,255,176,0.5)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(cp.x, cp.y); ctx.lineTo(p.x, p.y); ctx.stroke(); ctx.setLineDash([]);
@@ -432,7 +509,7 @@
     $('h-star').textContent = 'Галактика';
     $('h-seed').textContent = '#' + gal.seed;
     $('h-class').textContent = `Звёзд: ${gal.stars.length} · секторов: ${Object.keys(gal.sectors).length}`;
-    $('h-gal').textContent = `Корабль у звезды ${cur.name} (сектор ${cur.sectorKey})`;
+    $('h-gal').textContent = travel ? travelText() : `Корабль у звезды ${cur.name} (сектор ${cur.sectorKey})`;
   }
 
   function renderCard() {
@@ -475,7 +552,8 @@
       $('b-jump').textContent = here ? 'Открыть систему' : 'Лететь';
       // Цель внутри системы назначения: планета из списка — после скачка автопилот сразу ведёт к ней;
       // «к звезде» — корабль тормозит к звезде, планету игрок укажет на месте.
-      $('c-dest-wrap').hidden = here;
+      $('c-dest-wrap').hidden = here || !!travel;
+      if (travel) $('b-jump').hidden = true; // в перелёте — новый не начать
       if (!here) $('c-dest').innerHTML = '<option value="">К звезде — планету выберу на месте</option>' +
         sys.planets.map(p => `<option value="${p.index}">${p.name} — ${PLANET_TYPES[p.type].name.toLowerCase()}${PLANET_TYPES[p.type].landable ? '' : ' (без посадки)'}</option>`).join('');
       $('c-list').hidden = true;
@@ -518,6 +596,7 @@
   // там пролёт продолжается до самого корабля (system.html?arrive=1).
   $('b-ship').onclick = () => {
     if (cam.fly) return;
+    if (travel) { const q = travelPos(); cam.x = q.x * K; cam.y = q.y * K; cam.zoomGoal = fitZoom() * 60; return; }
     const s = World.currentStar(), p = { x: s.x * K, y: s.y * K };
     const DUR = 1.8;
     cam.flyTo(() => p, Math.max(cam.zoom, fitZoom() * 120), DUR,
@@ -535,18 +614,32 @@
 
   // ---------- Цикл ----------
   let last = performance.now();
+  let hudT = 1;
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now; t += dt;
+    if (travel) {
+      stepTravel(dt);
+      if (travel) {
+        // Камера держит корабль в кадре (без постоянного сдвига — слой карты не перерисовывается зря).
+        const q = travelPos(), sp = cam.toScreen(q.x * K, q.y * K);
+        if (Math.abs(sp.x - cam.W / 2) > cam.W * 0.3 || Math.abs(sp.y - cam.H / 2) > cam.H * 0.3) { cam.x = q.x * K; cam.y = q.y * K; }
+      }
+    }
+    if ((hudT += dt) > 0.2) { hudT = 0; renderGauges(); if (travel) renderHud(); }
     cam.step(dt);
     cam.flyStep(dt);
     draw();
     requestAnimationFrame(frame);
   }
 
-  window.__dbg = () => ({ gal, cam, selected, selSector, screenOf: id => starPos(gal.stars[id]) });
+  // __dbg().run(с) — прокрутить межзвёздный перелёт (проверка без ожидания).
+  window.__dbg = () => ({ gal, cam, selected, selSector, travel, screenOf: id => starPos(gal.stars[id]),
+    run: sec => { for (let x = 0; x < sec && travel; x += 0.05) stepTravel(0.05); return travel && { phase: travel.phase, v: travel.v / SHIP_LIGHT }; } });
 
   history.replaceState(null, '', World.galaxyUrl());
+  // В перелёте — камера на корабле, крупно.
   fit();
+  if (travel) { const q = travelPos(); cam.zoom = fitZoom() * 60; cam.x = q.x * K; cam.y = q.y * K; screenFade(1, 0); screenFade(0, 500); }
   renderHud();
   requestAnimationFrame(frame);
 })();

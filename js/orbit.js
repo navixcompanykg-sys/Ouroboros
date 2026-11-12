@@ -133,7 +133,9 @@ function geomRange(a, b, n) { const out = []; for (let i = 0; i < n; i++) out.pu
 // Прокладка экономного курса.
 // w = {mu, excl, planets, pos(p, t), vel(p, t)}; start = {planet} | {x, y, vx, vy, moving};
 // target = {planet} | {x, y}; t — сейчас. Возвращает план или null.
-function planEco(w, start, target, t) {
+// opts.keep — сохранить текущую скорость (после газа): импульс старта ×8 дороже — выбирается дуга,
+// на которой скорость корабля почти не меняется (набранное не гасится, прилёт раньше).
+function planEco(w, start, target, t, opts = {}) {
   const t0 = performance.now();
   const sp = start.planet, tp = target.planet;
   const waits = start.moving ? [0] : ECO.waits;
@@ -144,7 +146,7 @@ function planEco(w, start, target, t) {
   const depDv = (v1, s) => sp ? oberthDv(Math.hypot(v1.x - s.v.x, v1.y - s.v.y), sp) : Math.hypot(v1.x - s.v.x, v1.y - s.v.y);
   const arrDv = (v2, e) => tp ? oberthDv(Math.hypot(v2.x - e.v.x, v2.y - e.v.y), tp) : Math.hypot(v2.x, v2.y);
   let best = null, tries = 0;
-  const consider = c => { c.cost = c.dv + ECO.timeWeight * (c.wait + c.tof); if (!best || c.cost < best.cost) best = c; };
+  const consider = c => { c.cost = c.dv + (opts.keep ? 7 * c.dvDep : 0) + ECO.timeWeight * (c.wait + c.tof); if (!best || c.cost < best.cost) best = c; };
 
   // Напрямую.
   const direct = (wait, tof) => {

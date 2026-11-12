@@ -40,10 +40,13 @@ const World = (() => {
   // назначения ставит его на подлёте с этой стороны. Читается один раз.
   function setArrival(a) { state.arrival = a; save(); }
   function takeArrival() { const a = state.arrival || null; delete state.arrival; save(); return a; }
+  // Межзвёздный перелёт в межзвёздном пространстве (карта галактики): откуда, куда, где и с какой скоростью.
+  const travel = () => state.travel || null;
+  function setTravel(t) { if (t) state.travel = t; else delete state.travel; save(); }
   function setFuel(f) { state.fuel = Math.max(0, Math.min(1, Math.round(f * 1e6) / 1e6)); save(); }
 
   return {
-    seed, galaxy, setCurrent, setShip, design, setDesign, fuel, setFuel, setArrival, takeArrival,
+    seed, galaxy, setCurrent, setShip, design, setDesign, fuel, setFuel, setArrival, takeArrival, travel, setTravel,
     ship: () => state.ship || null,
     currentStarId,
     currentStar: () => galaxy().stars[currentStarId()],

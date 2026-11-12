@@ -128,3 +128,12 @@ button:disabled { opacity: .55; cursor: default; }
 #c-dest-wrap[hidden] { display: none; }
 #c-dest-wrap select { display: block; width: 100%; margin-top: 4px; font: inherit; font-size: 13px; color: var(--text);
   background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; }
+
+/* Всегда видимая панель: скорость и топливо — вверху по центру. */
+#gauges { position: fixed; top: calc(62px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 3;
+  display: flex; gap: 14px; padding: 6px 12px; font-size: 13px; pointer-events: none; white-space: nowrap; }
+#gauges > div { display: flex; align-items: baseline; gap: 6px; }
+#gauges span { color: var(--muted); font-size: 11px; }
+#gauges b { font-weight: 600; font-variant-numeric: tabular-nums; }
+#gauges i { font-style: normal; color: #ffd9a0; font-size: 12px; }
+@media (max-width: 760px) { #gauges { top: calc(104px + env(safe-area-inset-top)); left: 10px; transform: none; } }

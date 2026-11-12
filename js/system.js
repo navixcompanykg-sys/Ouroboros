@@ -126,14 +126,14 @@
   const ecoStart = () => ship.state === 'orbit' ? { planet: ship.planet }
     : { x: ship.x, y: ship.y, vx: ship.vx, vy: ship.vy, moving: ship.state !== 'idle' };
 
-  function orderFlyTo(target, mode = flightMode) {
+  function orderFlyTo(target, mode = flightMode, opts = {}) {
     ship.jumpIn = false;
     // target: {planet} или {x, y}
     if (ship.state === 'landed') { ship.pending = { target, mode }; startTakeoff(); return; }
     if (ship.state === 'landing' || ship.state === 'takeoff') { ship.pending = { target, mode }; return; }
     if (target.planet && ship.state === 'orbit' && ship.planet === target.planet) return;
     if (mode === 'eco') {
-      const plan = planEco(orbitWorld(), ecoStart(), target, simT);
+      const plan = planEco(orbitWorld(), ecoStart(), target, simT, opts);
       if (!plan) { say('Дугу к цели не найти — попробуйте быстрый режим'); return; }
       if (plan.dv > ship.fuel) { say(`Не хватит топлива: нужно ${fmtDv(plan.dv)}, есть ${fmtDv(ship.fuel)}`); return; }
       plan.target = target; plan.leg = 0; plan.phase = 'wait'; plan.nextFix = 0;
@@ -385,8 +385,8 @@
   // Кнопка «Газ» на экране и клавиша W: пока зажаты, двигатель тянет по носу корабля (жжёт топливо),
   // автопилот на это время уступает. Отпустили — автопилот НЕ выключен (пользователь): он пересчитывает
   // курс к той же цели от нового места и скорости, в том же режиме (дуга не нашлась — быстрым).
-  // Цель: планета/точка полёта, а если корабль стоял на орбите — эта же планета (вернуться на орбиту).
-  // Цели не было (дрейф) — летит дальше по инерции.
+  // Цель — планета/точка активного полёта. Маршрута не было (орбита, дрейф) — корабль после отпускания
+  // летит дальше по инерции с набранной скоростью (пользователь: «отпустил — сбрасывает скорость»).
   // throttle: 0 — двигатель молчит, 1 — газ (W) по носу, −1 — тормоз (S) против скорости (до остановки).
   let throttle = 0, resume = null;
   function setThrottle(mode) {
@@ -399,8 +399,7 @@
     if (mode && !was) {
       resume = ship.eco ? { target: ship.eco.target, mode: 'eco' }
         : st === 'flying' ? { target: ship.planet ? { planet: ship.planet } : { ...ship.target }, mode: 'fast' }
-        : st === 'orbit' ? { target: { planet: ship.planet }, mode: flightMode }
-        : null;
+        : null; // не было маршрута (орбита, дрейф) — после отпускания летит дальше с набранной скоростью
       ship.eco = null;
       if (st === 'orbit') World.setShip(null);
       ship.state = 'adrift'; ship.planet = null; ship.target = null; ship.capturing = false;
@@ -409,7 +408,7 @@
       renderCard(true);
     } else if (!mode && resume && ship.state === 'adrift') {
       const r = resume; resume = null;
-      orderFlyTo(r.target, r.mode);
+      orderFlyTo(r.target, r.mode, { keep: true }); // дуга — с набранной скоростью, не гасить её
       if (ship.state === 'adrift' && r.mode === 'eco') orderFlyTo(r.target, 'fast'); // дуги нет — быстрым
     }
   }
@@ -436,25 +435,31 @@
     setFollow(true);
     renderCard(true);
   }
-  function jumpOut() {
-    const s = ship, w = s.warp;
-    flashes.push({ x: s.x, y: s.y, t: 0, out: true, h: Math.atan2(w.dy, w.dx) });
-    s.hidden = 1e9; s.state = 'jumping';
-    World.setArrival({ dx: w.dx, dy: w.dy, dest: w.dest ?? null, from: sys.gstar.id });
-    World.setCurrent(w.id);
-    screenFade(1, 500);
-    setTimeout(() => { location.href = World.systemUrl(w.id) + '&jumpin=1'; }, 600);
+  // Корабль пересёк край системы — дальше межзвёздное пространство: перелёт продолжается на карте
+  // галактики (galaxy.js stepTravel: разгон до c → скачок → торможение → вход в систему назначения).
+  function leaveSystem() {
+    const s = ship, w = s.warp, from = sys.gstar, to = World.galaxy().stars[w.id];
+    World.setTravel({
+      from: from.id, to: w.id, dest: w.dest ?? null, dx: w.dx, dy: w.dy, name: w.name,
+      D: Math.hypot(to.x - from.x, to.y - from.y) * UNITS_PER_KPC,   // путь, мировые ед.
+      along: s.x * w.dx + s.y * w.dy,                                  // пройдено от звезды
+      v: Math.max(0, s.vx * w.dx + s.vy * w.dy), phase: 'accel',
+    });
+    s.state = 'jumping'; World.setShip(null);
+    screenFade(1, 400);
+    setTimeout(() => { location.href = World.galaxyUrl(); }, 450);
   }
   // Выход из скачка в этой системе (по ?jumpin=1 и World.takeArrival()).
   function jumpIn(a) {
     const s = ship, c = SHIP_LIGHT, dx = a.dx, dy = a.dy;
     const dest = a.dest != null && sys.planets[a.dest] ? sys.planets[a.dest] : null;
-    const brake = c * c / (2 * s.accel * 0.85);                  // тот же запас, что у автопилота
+    const v0 = a.v ?? c, brake = a.dist ?? c * c / (2 * s.accel * 0.85); // с межзвёздного участка — у края системы
     let tx, ty, tvx = 0, tvy = 0, stop;
     if (dest) { const pp = planetPos(dest, simT), pv = planetVel(dest, simT); tx = pp.x; ty = pp.y; tvx = pv.x; tvy = pv.y; stop = dest.orbitR; }
     else { tx = -dx * WARP_STAR_STOP; ty = -dy * WARP_STAR_STOP; stop = 0; }
-    s.x = tx - dx * (stop + brake); s.y = ty - dy * (stop + brake);
-    s.vx = tvx + dx * c; s.vy = tvy + dy * c; s.heading = Math.atan2(dy, dx);
+    const R = a.dist != null ? a.dist : stop + brake;             // от центра звезды / до цели
+    if (a.dist != null) { s.x = -dx * R; s.y = -dy * R; } else { s.x = tx - dx * R; s.y = ty - dy * R; }
+    s.vx = tvx + dx * v0; s.vy = tvy + dy * v0; s.heading = Math.atan2(dy, dx);
     s.eco = null; s.capturing = false; s.trail = [];
     s.state = 'flying'; s.planet = dest; s.target = dest ? null : { x: tx, y: ty };
     s.jumpIn = true;
@@ -486,7 +491,7 @@
       useFuel(s.accel * dt);
       s.x += s.vx * dt; s.y += s.vy * dt;
       s.thrust = true;
-      if (v >= s.maxSpeed * 0.98) jumpOut();
+      if (Math.hypot(s.x, s.y) > sys.radius) leaveSystem();
     }
     else if (s.state === 'coast') updateCoast(dt);
     else if (s.state === 'adrift') {
@@ -1191,6 +1196,14 @@
     return { fast: f, eco: e };
   }
 
+  // Всегда видимая панель вверху: скорость (относительно звезды) и топливо (пользователь).
+  function renderGauges() {
+    const v = Math.hypot(ship.vx, ship.vy), kms = v * KMS_PER_UNIT, pc = v / SHIP_LIGHT * 100;
+    $('g-speed').innerHTML = `<span>Скорость</span><b>${Math.round(kms).toLocaleString('ru-RU')} км/с</b>` +
+      `<i>${pc >= 0.1 ? pc.toFixed(pc < 10 ? 1 : 0).replace('.', ',') + '% c' : '&lt;0,1% c'}</i>`;
+    $('g-fuel').innerHTML = `<span>Топливо</span><b>${isFinite(ship.fuelMax) ? fuelPct(ship.fuel) : 'реактор'}</b>`;
+  }
+
   let lastCardKey = '';
   function renderCard(force) {
     const key = [selected && selected.index, ship.state, ship.planet && ship.planet.index, showScan].join('|');
@@ -1293,10 +1306,9 @@
     if ((hudTimer += dt) > 0.2) {
       hudTimer = 0;
       $('h-ship').textContent = shipStatus();
+      renderGauges();
       const v = Math.hypot(ship.vx, ship.vy);
-      $('h-speed').textContent = (ship.state === 'flying' || ship.state === 'coast' || ship.state === 'adrift'
-        ? `${(v / AU * 60).toFixed(1)} а.е./мин · ${(v * KMS_PER_UNIT).toFixed(0)} км/с · ${Math.min(1, v / ship.maxSpeed).toFixed(2).replace('.', ',')} c · ` : '') +
-        (isFinite(ship.fuelMax) ? `топливо ${fuelPct(ship.fuel)}` : 'реактор');
+      $('h-speed').textContent = '';
       renderCard();
     }
     requestAnimationFrame(frame);
