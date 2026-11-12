@@ -133,7 +133,7 @@
     if (ship.state === 'landing' || ship.state === 'takeoff') { ship.pending = { target, mode }; return; }
     if (target.planet && ship.state === 'orbit' && ship.planet === target.planet) return;
     if (mode === 'eco') {
-      const plan = planEco(orbitWorld(), ecoStart(), target, simT, opts);
+      const plan = planEco(orbitWorld(), ecoStart(), target, simT);
       if (!plan) { say('Дугу к цели не найти — попробуйте быстрый режим'); return; }
       if (plan.dv > ship.fuel) { say(`Не хватит топлива: нужно ${fmtDv(plan.dv)}, есть ${fmtDv(ship.fuel)}`); return; }
       plan.target = target; plan.leg = 0; plan.phase = 'wait'; plan.nextFix = 0;
@@ -252,12 +252,29 @@
     const a0 = Math.max(f.accel * 0.12, f.accel - gPull / 0.85);
     const vWant = Math.min(f.maxSpeed, f.cruise ?? Infinity, brakeSpeed(remain, a0)); // cruise — после газа
     const aMax = accelAt(f.accel, Math.hypot(f.vx - tvx, f.vy - tvy)); // тяга сейчас
-    const dvx = tvx + ux * vWant - f.vx, dvy = tvy + uy * vWant - f.vy;
-    // Тяга — то, что нужно для желаемой скорости, за вычетом того, что даёт гравитация; не больше f.accel.
-    let thx = dvx / dt - g.x, thy = dvy / dt - g.y;
-    const th = Math.hypot(thx, thy);
-    if (th > aMax) { thx *= aMax / th; thy *= aMax / th; }
-    f.vx += (thx + g.x) * dt; f.vy += (thy + g.y) * dt;
+    let thx, thy, th;
+    if (f.cruise != null) {
+      // Крейсерский маршрут (разгон → по инерции → торможение; после газа): вектор скорости ДОВОРАЧИВАЕТСЯ
+      // к цели без потери величины, как у тяжёлого корабля (инерция: радиус поворота v²/a); величина
+      // идёт к vWant (крейсер или «пора тормозить»). Цель за спиной — сбрасываем ход, пока не развернёмся.
+      const rvx = f.vx - tvx, rvy = f.vy - tvy, rv0 = Math.hypot(rvx, rvy);
+      const cur = rv0 > 1e-6 ? Math.atan2(rvy, rvx) : Math.atan2(uy, ux), want = Math.atan2(uy, ux);
+      const dA = Math.atan2(Math.sin(want - cur), Math.cos(want - cur));
+      const turn = Math.max(-1, Math.min(1, dA / Math.max(1e-6, aMax * dt / Math.max(rv0, 1)))) * aMax * dt / Math.max(rv0, 1);
+      const target = vWant * Math.max(0.15, Math.cos(Math.min(Math.abs(dA), Math.PI / 2)));
+      const nm = Math.max(0, rv0 + Math.max(-aMax * dt, Math.min(aMax * dt, target - rv0)));
+      const na = cur + turn;
+      const nvx = tvx + Math.cos(na) * nm, nvy = tvy + Math.sin(na) * nm;
+      thx = (nvx - f.vx) / dt; thy = (nvy - f.vy) / dt; th = Math.min(aMax, Math.hypot(thx, thy));
+      f.vx = nvx; f.vy = nvy;
+    } else {
+      const dvx = tvx + ux * vWant - f.vx, dvy = tvy + uy * vWant - f.vy;
+      // Тяга — то, что нужно для желаемой скорости, за вычетом того, что даёт гравитация; не больше f.accel.
+      thx = dvx / dt - g.x; thy = dvy / dt - g.y;
+      th = Math.hypot(thx, thy);
+      if (th > aMax) { thx *= aMax / th; thy *= aMax / th; }
+      f.vx += (thx + g.x) * dt; f.vy += (thy + g.y) * dt;
+    }
     // Скорость света — предел (относительно цели).
     const rv = Math.hypot(f.vx - tvx, f.vy - tvy);
     if (rv > f.maxSpeed) { f.vx = tvx + (f.vx - tvx) * f.maxSpeed / rv; f.vy = tvy + (f.vy - tvy) * f.maxSpeed / rv; }
@@ -383,45 +400,75 @@
     }
   }
 
-  // ---------- Подгазовка (ручная тяга) ----------
-  // Кнопка «Газ» на экране и клавиша W: пока зажаты, двигатель тянет по носу корабля (жжёт топливо),
-  // автопилот на это время уступает. Отпустили — автопилот НЕ выключен (пользователь): он пересчитывает
-  // курс к той же цели от нового места и скорости, в том же режиме (дуга не нашлась — быстрым).
-  // Цель — планета/точка активного полёта. Маршрута не было (орбита, дрейф) — корабль после отпускания
-  // летит дальше по инерции с набранной скоростью (пользователь: «отпустил — сбрасывает скорость»).
-  // throttle: 0 — двигатель молчит, 1 — газ (W) по носу, −1 — тормоз (S) против скорости (до остановки).
-  let throttle = 0, resume = null, thrPower = 0;
-  // Мощность ручной тяги нарастает: короткое нажатие — 10% (тонкая подстройка), полная — за THR_RAMP с.
-  // (Секунда полной тяги — полтора дня игры при ~0,6 g, это +80 км/с: на дуге со скоростью ~20 км/с
-  // мгновенная полная тяга выглядела рывком — пользователь: «ускорение быстрее, чем следует».)
+  // ---------- Ручная тяга: «Газ» (W) и «Тормоз» (S) ----------
+  // Маршрут к цели — разгон, полёт по инерции, торможение (пользователь). «Газ» — включить двигатель
+  // вдоль движения и набрать бо́льшую скорость, «Тормоз» — сбросить. Отпустили — маршрут пересчитан:
+  // корабль летит к той же цели по инерции с новой скоростью (крейсерский полёт: flightStep с cruise —
+  // доворачивает курс без потери скорости и тормозит, когда пора). Газ блокируется, когда пора тормозить
+  // (скорость к цели — та, с которой едва успеть остановиться). Экономная дуга после газа переходит в
+  // крейсерский маршрут (пересчитать дугу с набранной скоростью обычно нельзя — изогнутая дуга уводит
+  // разогнанный корабль с курса). Без маршрута (орбита, дрейф) — ручной полёт по инерции. В быстром режиме
+  // двигатель и так на полной тяге — газ не нужен.
+  // Мощность нарастает: короткое нажатие — 10%, полная — за THR_RAMP с (секунда полной тяги — полтора
+  // дня игры при ~0,6 g, +80 км/с: мгновенная полная тяга выглядела рывком).
+  let throttle = 0, thrPower = 0, gasBlocked = false;
   const THR_RAMP = 2, THR_MIN = 0.1;
+  // Скорость к цели крейсерского маршрута и та, с которой ещё успеть остановиться.
+  function routeSpeeds(s) {
+    const tp = s.planet ? planetPos(s.planet, simT) : s.target, tv = s.planet ? planetVel(s.planet, simT) : { x: 0, y: 0 };
+    const d = Math.max(0, Math.hypot(tp.x - s.x, tp.y - s.y) - (s.planet ? s.planet.orbitR : 0));
+    return { v: Math.hypot(s.vx - tv.x, s.vy - tv.y), safe: brakeSpeed(d, s.accel) };
+  }
+  // Ручная тяга за кадр: газ — вдоль скорости (стоит — по носу), тормоз — против (до остановки).
+  // Ускорение растёт со скоростью; топливо — по времени тяги × мощность.
+  function manualThrust(s, dt) {
+    if (!(s.fuel > 0 && s.accel > 0)) return;
+    const v0 = Math.hypot(s.vx, s.vy);
+    if (throttle > 0 && s.state === 'flying') {
+      const r = routeSpeeds(s);
+      if (r.v >= r.safe * 0.9) { if (!gasBlocked) { gasBlocked = true; say('Пора тормозить — газ недоступен'); } return; }
+    }
+    thrPower = Math.min(1, thrPower + dt / THR_RAMP);
+    const pw = THR_MIN + (1 - THR_MIN) * smooth(thrPower);
+    let used = accelAt(s.accel, v0) * pw * dt;
+    if (throttle > 0) {
+      if (v0 > 1e-3) s.heading = Math.atan2(s.vy, s.vx);
+      s.vx += Math.cos(s.heading) * used; s.vy += Math.sin(s.heading) * used;
+      const v = Math.hypot(s.vx, s.vy);
+      if (v > s.maxSpeed) { s.vx *= s.maxSpeed / v; s.vy *= s.maxSpeed / v; }
+    } else if (v0 > 0) {
+      used = Math.min(used, v0);
+      s.vx -= s.vx / v0 * used; s.vy -= s.vy / v0 * used;
+      s.heading = Math.atan2(-s.vy, -s.vx); // развернулся: нос против движения, струя — вперёд
+    } else used = 0;
+    if (used > 0) { useFuel(used * s.accel / accelAt(s.accel, v0)); s.thrust = true; }
+    if (s.state === 'flying' && s.cruise != null) s.cruise = Math.max(1, routeSpeeds(s).v); // маршрут — с новой скоростью
+  }
   function setThrottle(mode) {
     if (mode === throttle) return;
-    const st = ship.state, was = throttle;
-    if (mode && (st === 'landed' || st === 'landing' || st === 'takeoff')) return;
-    throttle = mode; thrPower = 0;
+    const st = ship.state;
+    if (mode && (st === 'landed' || st === 'landing' || st === 'takeoff' || st === 'warpout' || st === 'jumping')) return;
+    if (mode > 0 && st === 'flying' && ship.cruise == null) { say('Быстрый режим: двигатель и так на полной тяге'); return; }
+    throttle = mode; thrPower = 0; gasBlocked = false;
     $('b-gas').classList.toggle('on', mode === 1);
     $('b-brake').classList.toggle('on', mode === -1);
-    if (mode && !was) {
-      resume = ship.eco ? { target: ship.eco.target, mode: 'eco' }
-        : st === 'flying' ? { target: ship.planet ? { planet: ship.planet } : { ...ship.target }, mode: 'fast' }
-        : null; // не было маршрута (орбита, дрейф) — после отпускания летит дальше с набранной скоростью
-      ship.eco = null;
+    if (!mode) return;
+    if (st === 'coast' || (st === 'orbit' && ship.eco)) {
+      // Маршрут по дуге (или ожидание её старта) → крейсерский маршрут к той же цели.
+      const tg = ship.eco.target;
+      if (st === 'orbit') World.setShip(null);
+      ship.eco = null; ship.capturing = false;
+      ship.state = 'flying'; ship.planet = tg.planet || null; ship.target = tg.planet ? null : { x: tg.x, y: tg.y };
+      ship.cruise = Math.max(1, routeSpeeds(ship).v);
+      setFollow(true); renderCard(true);
+    } else if (st === 'flying') {
+      if (ship.cruise == null) ship.cruise = Math.max(1, routeSpeeds(ship).v); // тормоз в быстром режиме
+    } else if (st !== 'adrift') {
+      // Без маршрута (орбита, дрейф у точки) — ручной полёт по инерции.
       if (st === 'orbit') World.setShip(null);
       ship.state = 'adrift'; ship.planet = null; ship.target = null; ship.capturing = false;
       if (Math.hypot(ship.vx, ship.vy) > 1e-3) ship.heading = Math.atan2(ship.vy, ship.vx);
-      setFollow(true);
-      renderCard(true);
-    } else if (!mode && resume && ship.state === 'adrift') {
-      const r = resume; resume = null;
-      if (r.mode === 'eco') {
-        // После газа на экономной дуге: к цели с набранной скоростью как с крейсерской — автопилот
-        // доворачивает курс и тормозит только у цели, сверх набранного не разгоняется (пользователь:
-        // «после ускорения корабль замедляется»). Новая дуга с такой скоростью обычно не сходится.
-        const v = Math.hypot(ship.vx, ship.vy);
-        orderFlyTo(r.target, 'fast');
-        if (ship.state === 'flying') ship.cruise = Math.max(v, 1);
-      } else orderFlyTo(r.target, r.mode);
+      setFollow(true); renderCard(true);
     }
   }
 
@@ -509,33 +556,15 @@
     }
     else if (s.state === 'coast') updateCoast(dt);
     else if (s.state === 'adrift') {
-      // Ручной полёт: по инерции под притяжением звезды; пока зажат «Газ» (кнопка / W) — тяга по носу.
-      if (throttle && s.fuel > 0 && s.accel > 0) {
-        const v0 = Math.hypot(s.vx, s.vy);
-        thrPower = Math.min(1, thrPower + dt / THR_RAMP);
-        const pw = THR_MIN + (1 - THR_MIN) * smooth(thrPower);
-        let used = accelAt(s.accel, v0) * pw * dt; // ускорение растёт со скоростью; мощность нарастает
-        if (throttle > 0) {
-          // Газ: есть цель (маршрут, прерванный газом) — тяга на цель, чтобы набранная скорость сразу
-          // была направлена куда надо (иначе автопилот потом разворачивает вектор и скорость проседает);
-          // цели нет — вдоль скорости (стоит — по носу).
-          const tg = resume && resume.target && (resume.target.planet ? planetPos(resume.target.planet, simT) : resume.target);
-          if (tg && Math.hypot(tg.x - s.x, tg.y - s.y) > 1) s.heading = Math.atan2(tg.y - s.y, tg.x - s.x);
-          else if (v0 > 1e-3) s.heading = Math.atan2(s.vy, s.vx);
-          s.vx += Math.cos(s.heading) * used; s.vy += Math.sin(s.heading) * used;
-          const v = Math.hypot(s.vx, s.vy);
-          if (v > s.maxSpeed) { s.vx *= s.maxSpeed / v; s.vy *= s.maxSpeed / v; }
-        } else if (v0 > 0) {
-          used = Math.min(used, v0);                    // тормоз: против скорости, до остановки
-          s.vx -= s.vx / v0 * used; s.vy -= s.vy / v0 * used;
-          s.heading = Math.atan2(-s.vy, -s.vx); // развернулся: нос против движения, струя — вперёд
-        } else used = 0;
-        if (used > 0) { useFuel(used * s.accel / accelAt(s.accel, v0)); s.thrust = true; } // по времени тяги
-      }
+      // Ручной полёт без маршрута: по инерции под притяжением звезды; газ/тормоз — manualThrust.
+      if (throttle) manualThrust(s, dt);
       propagate(s, dt, MU_SUN * sys.star.mass);
     }
     else if (s.state === 'flying') {
       if (s.fuel <= 0) { s.state = 'adrift'; say('Топливо кончилось — корабль летит по инерции'); renderCard(true); return; }
+      if (throttle) { // ручная тяга на маршруте; автопилот продолжит с новой крейсерской скоростью
+        manualThrust(s, dt); s.x += s.vx * dt; s.y += s.vy * dt; return;
+      }
       const before = s.fuelUsed || 0;
       const ev = flightStep(s, simT, dt);
       useFuel((s.fuelUsed || 0) - before);
