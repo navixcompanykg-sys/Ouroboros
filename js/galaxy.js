@@ -26,15 +26,15 @@
     if (T.jumpAnim != null && (T.jumpAnim += dt) > 1.2) T.jumpAnim = null;
     let dv;
     if (T.phase === 'accel') {
-      dv = Math.min(a * dt, c - T.v); T.v += dv; T.along += T.v * dt;
+      dv = Math.min(accelAt(a, T.v) * dt, c - T.v); T.v += dv; T.along += T.v * dt;
       if (T.v >= 0.98 * c) {
         // Скачок: сразу на расстояние торможения от звезды назначения.
         T.jumpFrom = T.along;
-        T.along = Math.max(T.along, T.D - T.v * T.v / (2 * a * 0.85));
+        T.along = Math.max(T.along, T.D - stopDistance(T.v, a));
         T.phase = 'brake'; T.jumpAnim = 0;
       }
     } else {
-      dv = Math.min(T.v, 0.85 * a * dt); T.v -= dv; T.along += T.v * dt;
+      dv = Math.min(T.v, 0.85 * accelAt(a, T.v) * dt); T.v -= dv; T.along += T.v * dt;
       if (T.D - T.along <= SYSTEM_RADIUS || T.v <= 0) return arriveTravel();
     }
     // Топливо — по тяге (доля бака); сохраняем не каждый кадр.
@@ -60,8 +60,8 @@
     const T = travel, a = myShip.accel, c = SHIP_LIGHT, ly = (T.D - T.along) / AU / AU_PER_LY;
     const left = ly > 1 ? Math.round(ly).toLocaleString('ru-RU') + ' св. лет' : Math.round((T.D - T.along) / AU).toLocaleString('ru-RU') + ' а. е.';
     return T.phase === 'accel'
-      ? `Перелёт к ${T.name}: разгон · скачок через ${fmtTT(Math.max(0, (0.98 * c - T.v) / a))} · до цели ${left}`
-      : `Перелёт к ${T.name}: торможение · до системы ${fmtTT(T.v / (0.85 * a))} · до цели ${left}`;
+      ? `Перелёт к ${T.name}: разгон · скачок через ${fmtTT(Math.max(0, timeToSpeed(a, 0.98 * c) - timeToSpeed(a, T.v)))} · до цели ${left}`
+      : `Перелёт к ${T.name}: торможение · до системы ${fmtTT(timeToSpeed(0.85 * a, T.v))} · до цели ${left}`;
   }
   // Панель скорости и топлива — всегда видна (как в системе).
   function renderGauges() {
@@ -542,9 +542,9 @@
         `<div><span>Сектор</span>${s.sectorKey}</div>` +
         `<div><span>От центра</span>${fmt(s.r)} кпк</div>` +
         `<div><span>От корабля</span>${here ? 'здесь' : fmt(distKpc(s, cur)) + ' кпк'}</div>` +
-        (here ? '' : (() => { const a = shipStats(findDesign(World.design())).accel, t = SHIP_LIGHT / a;
+        (here ? '' : (() => { const a = shipStats(findDesign(World.design())).accel, t = timeToSpeed(a, SHIP_LIGHT);
           const m = x => x < 120 ? Math.round(x) + ' с' : (x / 60).toFixed(1).replace('.', ',') + ' мин';
-          return a > 0 ? `<div><span>Перелёт</span>разгон ${m(t)} · скачок · торможение ${m(t / 0.85)}</div>` : '<div><span>Перелёт</span>нет двигателей</div>'; })());
+          return a > 0 ? `<div><span>Перелёт</span>разгон ${m(t)} · скачок · торможение ${m(timeToSpeed(0.85 * a, SHIP_LIGHT))}</div>` : '<div><span>Перелёт</span>нет двигателей</div>'; })());
       $('c-desc').innerHTML = `Планет: ${sys.planets.length} — ` +
         Object.entries(counts).map(([k, n]) => `${PLANET_TYPES[k].name.toLowerCase()} ${n}`).join(', ') +
         (s.bh ? `<div class="bhwarn">Чёрная дыра ${gal.stars[s.bh.id].name} вытягивает вещество звезды. Индекс влияния ${fmt(s.bh.index)} — мир нестабилен: жизни нет, больше антиматерии, изотопов и трития, меньше водорода и силикатов.</div>` : '');

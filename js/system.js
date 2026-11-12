@@ -229,7 +229,7 @@
     // дальше, чем путь торможения со световой, — он исчезает и сразу появляется на расстоянии
     // торможения от цели (со стороны, откуда летел; при обходе звезды — со стороны путевой
     // точки) с той же скоростью и дальше тормозит обычным профилем. Ближе — обычный полёт.
-    const brake = f.maxSpeed * f.maxSpeed / (2 * f.accel * 0.85); // тот же запас 0.85, что в vWant
+    const brake = stopDistance(f.maxSpeed, f.accel); // путь торможения со скорости света (запас 0,85, как у vWant)
     if (Math.hypot(f.vx - tvx, f.vy - tvy) >= f.maxSpeed * 0.98 && remain > brake * 1.2) {
       const fx = way ? way.x : f.x, fy = way ? way.y : f.y;
       const fd = Math.hypot(fx - tx, fy - ty) || 1, R = stop + brake;
@@ -248,18 +248,20 @@
     // успеваем остановиться на оставшемся пути. Гравитация, тянущая вперёд (к цели),
     // съедает часть тормозной тяги — учитываем её в запасе торможения.
     const gPull = Math.max(0, g.x * ux + g.y * uy);
-    const brakeA = Math.max(f.accel * 0.1, f.accel * 0.85 - gPull);
-    const vWant = Math.min(f.maxSpeed, Math.sqrt(2 * brakeA * remain));
+    // Ускорение растёт со скоростью (ships.js accelAt): скорость, с которой ещё успеть остановиться, — brakeSpeed.
+    const a0 = Math.max(f.accel * 0.12, f.accel - gPull / 0.85);
+    const vWant = Math.min(f.maxSpeed, brakeSpeed(remain, a0));
+    const aMax = accelAt(f.accel, Math.hypot(f.vx - tvx, f.vy - tvy)); // тяга сейчас
     const dvx = tvx + ux * vWant - f.vx, dvy = tvy + uy * vWant - f.vy;
     // Тяга — то, что нужно для желаемой скорости, за вычетом того, что даёт гравитация; не больше f.accel.
     let thx = dvx / dt - g.x, thy = dvy / dt - g.y;
     const th = Math.hypot(thx, thy);
-    if (th > f.accel) { thx *= f.accel / th; thy *= f.accel / th; }
+    if (th > aMax) { thx *= aMax / th; thy *= aMax / th; }
     f.vx += (thx + g.x) * dt; f.vy += (thy + g.y) * dt;
     // Скорость света — предел (относительно цели).
     const rv = Math.hypot(f.vx - tvx, f.vy - tvy);
     if (rv > f.maxSpeed) { f.vx = tvx + (f.vx - tvx) * f.maxSpeed / rv; f.vy = tvy + (f.vy - tvy) * f.maxSpeed / rv; }
-    f.th = Math.min(th, f.accel); f.thx = thx; f.thy = thy;
+    f.th = Math.min(th, aMax); f.thx = thx; f.thy = thy;
     f.fuelUsed = (f.fuelUsed || 0) + f.th * dt;
     f.x += f.vx * dt; f.y += f.vy * dt;
     // Не пускаем корабль внутрь запретного радиуса звезды.
@@ -453,7 +455,7 @@
   function jumpIn(a) {
     const s = ship, c = SHIP_LIGHT, dx = a.dx, dy = a.dy;
     const dest = a.dest != null && sys.planets[a.dest] ? sys.planets[a.dest] : null;
-    const v0 = a.v ?? c, brake = a.dist ?? c * c / (2 * s.accel * 0.85); // с межзвёздного участка — у края системы
+    const v0 = a.v ?? c, brake = a.dist ?? stopDistance(c, s.accel); // с межзвёздного участка — у края системы
     let tx, ty, tvx = 0, tvy = 0, stop;
     if (dest) { const pp = planetPos(dest, simT), pv = planetVel(dest, simT); tx = pp.x; ty = pp.y; tvx = pv.x; tvy = pv.y; stop = dest.orbitR; }
     else { tx = -dx * WARP_STAR_STOP; ty = -dy * WARP_STAR_STOP; stop = 0; }
@@ -485,10 +487,11 @@
       // Разгон к звезде назначения: полная тяга по направлению на неё, до скорости света — скачок.
       const w = s.warp;
       turnTo(Math.atan2(w.dy, w.dx), dt);
-      s.vx += w.dx * s.accel * dt; s.vy += w.dy * s.accel * dt;
+      const aw = accelAt(s.accel, Math.hypot(s.vx, s.vy));
+      s.vx += w.dx * aw * dt; s.vy += w.dy * aw * dt;
       const v = Math.hypot(s.vx, s.vy);
       if (v > s.maxSpeed) { s.vx *= s.maxSpeed / v; s.vy *= s.maxSpeed / v; }
-      useFuel(s.accel * dt);
+      useFuel(aw * dt);
       s.x += s.vx * dt; s.y += s.vy * dt;
       s.thrust = true;
       if (Math.hypot(s.x, s.y) > sys.radius) leaveSystem();
@@ -498,7 +501,7 @@
       // Ручной полёт: по инерции под притяжением звезды; пока зажат «Газ» (кнопка / W) — тяга по носу.
       if (throttle && s.fuel > 0 && s.accel > 0) {
         const v0 = Math.hypot(s.vx, s.vy);
-        let used = s.accel * dt;
+        let used = accelAt(s.accel, v0) * dt; // ускорение растёт со скоростью
         if (throttle > 0) {
           // Газ — вдоль скорости (стоит — по носу); нос — по движению.
           if (v0 > 1e-3) s.heading = Math.atan2(s.vy, s.vx);

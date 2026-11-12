@@ -151,10 +151,10 @@
       ['Подача на двигатели', st.energyDemand ? `${Math.round(st.ratio * 100)}%` : '—'],
       ['Постоянный расход', `${st.energyPassive} / цикл`],
       ['Расход в бою', `${st.energyCombat} / цикл`],
-      ['Ускорение', `<span class="hl">${fmtN(ms2, 2)} м/с² (${fmtN(g, 2)} g)</span>`],
+      ['Ускорение на старте', `<span class="hl">${fmtN(ms2, 2)} м/с² (${fmtN(g, 2)} g)</span>`],
       ['Систему (500 а. е.)', `<span class="hl">${fmtT(travelTime(st.accel, 2 * SYSTEM_RADIUS))}</span>`],
       ['Между планетами (9 а. е.)', fmtT(travelTime(st.accel, 9 * AU))],
-      ['До скорости света', fmtT(SHIP_LIGHT / st.accel)],
+      ['До скорости света', fmtT(timeToSpeed(st.accel, SHIP_LIGHT))],
       ['Топливо', `${st.fuelName} (${FUEL[st.fuelKey].tier})` + (st.burnPerCycle > 0 ? `, ${st.fuelUnits} ед.` : st.engines ? ' — двигатели кормит реактор' : '')],
       ['Запас Δv', st.burnPerCycle > 0 ? kms(st.dv) : st.engines ? '∞' : '—'],
       ['Орудий', st.weapons],
@@ -164,7 +164,7 @@
     let html = '<div class="kv">' + rows.map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join('') + '</div>';
     if (st.engines && st.ratio < 1) html += `<div class="warn">Энергии хватает на ${Math.round(st.ratio * 100)}% тяги: спрос ${st.energyDemand}, подача ${st.supply} (реакторы + газохранилища).</div>`;
     if (!st.engines) html += '<div class="warn">Нет двигателей — корабль не полетит.</div>';
-    html += '<div class="muted small-text">Массы модулей — по умолчанию, цен нет (экономика v3 другая). Расчёт тяги — в <a href="reference.html">справочнике</a>: средний корабль на тритии пересекает систему за 1 мин.</div>';
+    html += '<div class="muted small-text">Массы модулей — по умолчанию, цен нет (экономика v3 другая). Расчёт тяги — в <a href="reference.html">справочнике</a>: ускорение растёт со скоростью; средний корабль на тритии пересекает систему за 1,5 мин и разгоняется до c за 2 мин.</div>';
     $('st-main').innerHTML = html;
 
     // Секторы: прочность палуб (3 + модули), орудия, щиты — без цитадели (v2 sectorStats).

@@ -88,11 +88,43 @@ function avgShip() {
   _avg = { mass: m / n, engines: e / n, n };
   return _avg;
 }
+// ---------- Ускорение, растущее со скоростью ----------
+// a(v) = a₀ · (1 + K · u²), u = v/c (корабль «легчает» на разгоне). Отсюда формулы (m — доля тяги на
+// торможении, у автопилота 0,85):
+//   время разгона 0 → v:      t = c / (a₀·√K) · atan(√K·u)
+//   путь разгона/торможения:  s = c² / (2·m·a₀·K) · ln(1 + K·u²)
+//   скорость, с которой ещё успеть остановиться на пути s — обратная к пути.
+// K и средний a₀ подбираются вместе (calibrate): средний корабль на тритии пересекает систему за
+// SHIP_CROSS_T и разгоняется до c за SHIP_LIGHT_T (data.js).
+let _cal = null;
+function calibrate() {
+  if (_cal) return _cal;
+  const c = SHIP_LIGHT, D = 2 * SYSTEM_RADIUS;
+  let a = 25, K = 100;
+  const cross = (a, K) => { const vp = brakeSpeedK(D / 2, a, K, 1); return 2 * timeToSpeedK(vp, a, K) + (vp >= c ? (D - 2 * stopDistK(c, a, K, 1)) / c : 0); };
+  for (let it = 0; it < 30; it++) {
+    let lo = 0.01, hi = 1e4;
+    for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (cross(m, K) > SHIP_CROSS_T) lo = m; else hi = m; }
+    a = (lo + hi) / 2;
+    lo = 1e-3; hi = 1e6;
+    for (let i = 0; i < 80; i++) { const m = Math.sqrt(lo * hi); if (timeToSpeedK(c, a, m) > SHIP_LIGHT_T) lo = m; else hi = m; }
+    K = Math.sqrt(lo * hi);
+  }
+  return (_cal = { a, K });
+}
+function timeToSpeedK(v, a0, K) { return SHIP_LIGHT / (a0 * Math.sqrt(K)) * Math.atan(Math.sqrt(K) * v / SHIP_LIGHT); }
+function stopDistK(v, a0, K, m) { const u = v / SHIP_LIGHT; return SHIP_LIGHT * SHIP_LIGHT / (2 * m * a0 * K) * Math.log(1 + K * u * u); }
+function brakeSpeedK(s, a0, K, m) { const x = Math.exp(Math.max(0, s) * 2 * m * a0 * K / (SHIP_LIGHT * SHIP_LIGHT)) - 1; return SHIP_LIGHT * Math.min(1, Math.sqrt(x / K)); }
+// Рабочие формы — с откалиброванным K.
+const accelAt = (a0, v) => { const u = v / SHIP_LIGHT; return a0 * (1 + calibrate().K * u * u); };
+const timeToSpeed = (a0, v) => a0 > 0 ? timeToSpeedK(v, a0, calibrate().K) : Infinity;
+const stopDistance = (v, a0, m = 0.85) => stopDistK(v, a0, calibrate().K, m);
+const brakeSpeed = (s, a0, m = 0.85) => brakeSpeedK(s, a0, calibrate().K, m);
+
 let _thrustK = null;
 function thrustK() {
   if (_thrustK) return _thrustK;
-  const a = 4 * 2 * SYSTEM_RADIUS / (SHIP_CROSS_T * SHIP_CROSS_T); // треугольный профиль: t = 2√(D/a)
-  _thrustK = a * avgShip().mass / avgShip().engines;               // тяга тритиевого двигателя, т·ед./с²
+  _thrustK = calibrate().a * avgShip().mass / avgShip().engines;   // тяга тритиевого двигателя, т·ед./с²
   return _thrustK;
 }
 
@@ -145,15 +177,16 @@ function fuelTable() {
   return FUEL_KEYS.map(k => {
     const F = FUEL[k], a = thrustK() * F.rel * A.engines / A.mass;
     return { key: k, ...F, thrustPerEngine: thrustK() * F.rel, accel: a, ms2: a * MS2_PER_UNIT,
-      toLight: SHIP_LIGHT / a, cross: travelTime(a, 2 * SYSTEM_RADIUS), hop: travelTime(a, 9 * AU) };
+      toLight: timeToSpeed(a, SHIP_LIGHT), cross: travelTime(a, 2 * SYSTEM_RADIUS), hop: travelTime(a, 9 * AU) };
   });
 }
 
-// Время перелёта «с места до места» по прямой (разгон — крейсер на пределе — торможение), для карточек.
-function travelTime(accel, dist, vmax = SHIP_LIGHT) {
+// Время перелёта «с места до места» по прямой (разгон до середины — торможение; на скорости света —
+// участок по инерции), с ускорением, растущим со скоростью. accel — базовое a₀ корабля.
+function travelTime(accel, dist) {
   if (!(accel > 0)) return Infinity;
-  const vp = Math.min(vmax, Math.sqrt(accel * dist));
-  return 2 * vp / accel + Math.max(0, dist - vp * vp / accel) / vp;
+  const vp = brakeSpeed(dist / 2, accel, 1);
+  return 2 * timeToSpeed(accel, vp) + (vp >= SHIP_LIGHT ? Math.max(0, dist - 2 * stopDistance(SHIP_LIGHT, accel, 1)) / SHIP_LIGHT : 0);
 }
 
 // ---------- Библиотека готовых кораблей (v2 server/ship_defaults.json, 26 дизайнов) ----------
