@@ -115,6 +115,12 @@ function calibrate() {
 function timeToSpeedK(v, a0, K) { return SHIP_LIGHT / (a0 * Math.sqrt(K)) * Math.atan(Math.sqrt(K) * v / SHIP_LIGHT); }
 function stopDistK(v, a0, K, m) { const u = v / SHIP_LIGHT; return SHIP_LIGHT * SHIP_LIGHT / (2 * m * a0 * K) * Math.log(1 + K * u * u); }
 function brakeSpeedK(s, a0, K, m) { const x = Math.exp(Math.max(0, s) * 2 * m * a0 * K / (SHIP_LIGHT * SHIP_LIGHT)) - 1; return SHIP_LIGHT * Math.min(1, Math.sqrt(x / K)); }
+// Автопилот (пользователь: «полёты естественнее — инерция, развороты, пересчёт курса»):
+//  - тяга только вдоль носа, нос разворачивается не быстрее TURN_RATE рад/с — повороты дугой,
+//    перед торможением корабль разворачивается кормой вперёд (~2 с на 180°);
+//  - торможение планируется на AP_BRAKE доли тяги: начинается раньше и мягче, запас остаётся
+//    на разворот и догон графика.
+const AP_BRAKE = 0.5, TURN_RATE = 1.6;
 // Рабочие формы — с откалиброванным K.
 const accelAt = (a0, v) => { const u = v / SHIP_LIGHT; return a0 * (1 + calibrate().K * u * u); };
 const timeToSpeed = (a0, v) => a0 > 0 ? timeToSpeedK(v, a0, calibrate().K) : Infinity;
@@ -195,9 +201,9 @@ function warpFuelK(st, p) {
 // работы двигателя (запас st.dv = время горения × a₀): секунда тяги на мощности p стоит a₀·p·fuelK.
 function warpEstimate(st, mode) {
   const p = WARP_MODES[mode].p, a = st.accel * p, fk = warpFuelK(st, p);
-  const ta = timeToSpeed(a, SHIP_LIGHT), tb = timeToSpeed(0.85 * a, SHIP_LIGHT);
+  const ta = timeToSpeed(a, SHIP_LIGHT), tb = timeToSpeed(AP_BRAKE * a, SHIP_LIGHT);
   return { accel: ta, brake: tb, fuelK: fk, p,
-    fuel: isFinite(st.dv) && st.dv > 0 ? st.accel * p * fk * (ta + 0.85 * tb) / st.dv : 0 };
+    fuel: isFinite(st.dv) && st.dv > 0 ? st.accel * p * fk * (ta + AP_BRAKE * tb) / st.dv : 0 };
 }
 
 // Время перелёта «с места до места» по прямой (разгон до середины — торможение; на скорости света —

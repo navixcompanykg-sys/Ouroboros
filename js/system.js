@@ -229,7 +229,7 @@
     // дальше, чем путь торможения со световой, — он исчезает и сразу появляется на расстоянии
     // торможения от цели (со стороны, откуда летел; при обходе звезды — со стороны путевой
     // точки) с той же скоростью и дальше тормозит обычным профилем. Ближе — обычный полёт.
-    const brake = stopDistance(f.maxSpeed, f.accel); // путь торможения со скорости света (запас 0,85, как у vWant)
+    const brake = stopDistance(f.maxSpeed, f.accel, AP_BRAKE); // путь торможения со скорости света (как планирует автопилот)
     if (Math.hypot(f.vx - tvx, f.vy - tvy) >= f.maxSpeed * 0.98 && remain > brake * 1.2) {
       const fx = way ? way.x : f.x, fy = way ? way.y : f.y;
       const fd = Math.hypot(fx - tx, fy - ty) || 1, R = stop + brake;
@@ -248,33 +248,36 @@
     // успеваем остановиться на оставшемся пути. Гравитация, тянущая вперёд (к цели),
     // съедает часть тормозной тяги — учитываем её в запасе торможения.
     const gPull = Math.max(0, g.x * ux + g.y * uy);
-    // Ускорение растёт со скоростью (ships.js accelAt): скорость, с которой ещё успеть остановиться, — brakeSpeed.
-    const a0 = Math.max(f.accel * 0.12, f.accel - gPull / 0.85);
-    const vWant = Math.min(f.maxSpeed, f.cruise ?? Infinity, brakeSpeed(remain, a0)); // cruise — после газа
-    const aMax = accelAt(f.accel, Math.hypot(f.vx - tvx, f.vy - tvy)); // тяга сейчас
-    let thx, thy, th;
-    if (f.cruise != null) {
-      // Крейсерский маршрут (разгон → по инерции → торможение; после газа): вектор скорости ДОВОРАЧИВАЕТСЯ
-      // к цели без потери величины, как у тяжёлого корабля (инерция: радиус поворота v²/a); величина
-      // идёт к vWant (крейсер или «пора тормозить»). Цель за спиной — сбрасываем ход, пока не развернёмся.
-      const rvx = f.vx - tvx, rvy = f.vy - tvy, rv0 = Math.hypot(rvx, rvy);
-      const cur = rv0 > 1e-6 ? Math.atan2(rvy, rvx) : Math.atan2(uy, ux), want = Math.atan2(uy, ux);
-      const dA = Math.atan2(Math.sin(want - cur), Math.cos(want - cur));
-      const turn = Math.max(-1, Math.min(1, dA / Math.max(1e-6, aMax * dt / Math.max(rv0, 1)))) * aMax * dt / Math.max(rv0, 1);
-      const target = vWant * Math.max(0.15, Math.cos(Math.min(Math.abs(dA), Math.PI / 2)));
-      const nm = Math.max(0, rv0 + Math.max(-aMax * dt, Math.min(aMax * dt, target - rv0)));
-      const na = cur + turn;
-      const nvx = tvx + Math.cos(na) * nm, nvy = tvy + Math.sin(na) * nm;
-      thx = (nvx - f.vx) / dt; thy = (nvy - f.vy) / dt; th = Math.min(aMax, Math.hypot(thx, thy));
-      f.vx = nvx; f.vy = nvy;
-    } else {
-      const dvx = tvx + ux * vWant - f.vx, dvy = tvy + uy * vWant - f.vy;
-      // Тяга — то, что нужно для желаемой скорости, за вычетом того, что даёт гравитация; не больше f.accel.
-      thx = dvx / dt - g.x; thy = dvy / dt - g.y;
-      th = Math.hypot(thx, thy);
-      if (th > aMax) { thx *= aMax / th; thy *= aMax / th; }
-      f.vx += (thx + g.x) * dt; f.vy += (thy + g.y) * dt;
-    }
+    // Ускорение растёт со скоростью (ships.js accelAt). Скорость, с которой ещё успеть остановиться, —
+    // brakeSpeed на AP_BRAKE доли тяги (мягкое торможение); у самой цели — плавный подход ∝ остатку пути.
+    const a0 = Math.max(f.accel * 0.12, f.accel - gPull / AP_BRAKE);
+    const rvx = f.vx - tvx, rvy = f.vy - tvy, rv0 = Math.hypot(rvx, rvy);
+    // Упреждение разворота: пока корабль разворачивается кормой вперёд (~π/TURN_RATE), он не тормозит —
+    // планируем торможение по пути, который останется ПОСЛЕ разворота, иначе догоняем график на полной тяге.
+    const lead = f.heading == null ? 0 : (1 - Math.cos(Math.atan2(Math.sin(f.heading - Math.atan2(-rvy, -rvx)), Math.cos(f.heading - Math.atan2(-rvy, -rvx))))) / 2 * Math.PI / TURN_RATE;
+    const remainAhead = Math.max(0, remain - rv0 * lead);
+    const vWant = Math.min(f.maxSpeed, f.cruise ?? Infinity, brakeSpeed(remainAhead, a0, AP_BRAKE), remain * 1.2 + 0.5);
+    const aMax = accelAt(f.accel, rv0);
+    // Нужная тяга: к желаемой скорости за кадр, за вычетом гравитации.
+    const wx = (tvx + ux * vWant - f.vx) / dt - g.x, wy = (tvy + uy * vWant - f.vy) / dt - g.y;
+    const need = Math.hypot(wx, wy);
+    // Инерция и развороты: тяга — только вдоль носа, нос поворачивается не быстрее TURN_RATE.
+    // Нос — туда, куда нужна заметная тяга (торможение — кормой вперёд), иначе по курсу (по скорости).
+    const velDir = rv0 > 1e-3 ? Math.atan2(rvy, rvx) : Math.atan2(uy, ux);
+    // Гистерезис: разворачиваться на тягу — когда поправка заметная (> 15% тяги), держать её — пока
+    // не станет мелкой (< 5%); иначе нос рыскал от мелких коррекций.
+    if (f.apBurn) { if (need < f.accel * 0.05) f.apBurn = false; } else if (need > f.accel * 0.15) f.apBurn = true;
+    const wantHead = f.apBurn ? Math.atan2(wy, wx) : velDir;
+    if (f.heading == null) f.heading = wantHead;
+    const dh = Math.atan2(Math.sin(wantHead - f.heading), Math.cos(wantHead - f.heading)), maxTurn = TURN_RATE * dt;
+    f.heading += Math.max(-maxTurn, Math.min(maxTurn, dh));
+    const hx = Math.cos(f.heading), hy = Math.sin(f.heading);
+    // Тяга — когда нос близок к нужному направлению (до 60°, плавно по cos²): «развернулся — потом жги»,
+    // иначе тяга вбок раскручивает корабль вокруг цели.
+    const cosA = need > 1e-9 ? (wx * hx + wy * hy) / need : 0;
+    const th = cosA > 0.5 ? Math.min(aMax, need) * cosA * cosA : 0;
+    const thx = hx * th, thy = hy * th;
+    f.vx += (thx + g.x) * dt; f.vy += (thy + g.y) * dt;
     // Скорость света — предел (относительно цели).
     const rv = Math.hypot(f.vx - tvx, f.vy - tvy);
     if (rv > f.maxSpeed) { f.vx = tvx + (f.vx - tvx) * f.maxSpeed / rv; f.vy = tvy + (f.vy - tvy) * f.maxSpeed / rv; }
@@ -417,7 +420,7 @@
   function routeSpeeds(s) {
     const tp = s.planet ? planetPos(s.planet, simT) : s.target, tv = s.planet ? planetVel(s.planet, simT) : { x: 0, y: 0 };
     const d = Math.max(0, Math.hypot(tp.x - s.x, tp.y - s.y) - (s.planet ? s.planet.orbitR : 0));
-    return { v: Math.hypot(s.vx - tv.x, s.vy - tv.y), safe: brakeSpeed(d, s.accel) };
+    return { v: Math.hypot(s.vx - tv.x, s.vy - tv.y), safe: brakeSpeed(d, s.accel, AP_BRAKE) };
   }
   // Ручная тяга за кадр: газ — вдоль скорости (стоит — по носу), тормоз — против (до остановки).
   // Ускорение растёт со скоростью; топливо — по времени тяги × мощность.
@@ -431,15 +434,18 @@
     thrPower = Math.min(1, thrPower + dt / THR_RAMP);
     const pw = THR_MIN + (1 - THR_MIN) * smooth(thrPower);
     let used = accelAt(s.accel, v0) * pw * dt;
+    // Нос разворачивается (TURN_RATE): газ — по движению, тормоз — против; тяга только вдоль носа.
+    const want = v0 > 1e-3 ? Math.atan2(s.vy, s.vx) + (throttle > 0 ? 0 : Math.PI) : s.heading;
+    turnTo(want, dt);
+    const hx = Math.cos(s.heading), hy = Math.sin(s.heading);
+    used *= Math.max(0, Math.cos(s.heading - want));
     if (throttle > 0) {
-      if (v0 > 1e-3) s.heading = Math.atan2(s.vy, s.vx);
-      s.vx += Math.cos(s.heading) * used; s.vy += Math.sin(s.heading) * used;
+      s.vx += hx * used; s.vy += hy * used;
       const v = Math.hypot(s.vx, s.vy);
       if (v > s.maxSpeed) { s.vx *= s.maxSpeed / v; s.vy *= s.maxSpeed / v; }
     } else if (v0 > 0) {
-      used = Math.min(used, v0);
-      s.vx -= s.vx / v0 * used; s.vy -= s.vy / v0 * used;
-      s.heading = Math.atan2(-s.vy, -s.vx); // развернулся: нос против движения, струя — вперёд
+      used = Math.min(used, v0); // тормоз — до остановки
+      s.vx += hx * used; s.vy += hy * used;
     } else used = 0;
     if (used > 0) { useFuel(used * s.accel / accelAt(s.accel, v0)); s.thrust = true; }
     if (s.state === 'flying' && s.cruise != null) s.cruise = Math.max(1, routeSpeeds(s).v); // маршрут — с новой скоростью
@@ -513,7 +519,7 @@
   function jumpIn(a) {
     const s = ship, c = SHIP_LIGHT, dx = a.dx, dy = a.dy;
     const dest = a.dest != null && sys.planets[a.dest] ? sys.planets[a.dest] : null;
-    const v0 = a.v ?? c, brake = a.dist ?? stopDistance(c, s.accel); // с межзвёздного участка — у края системы
+    const v0 = a.v ?? c, brake = a.dist ?? stopDistance(c, s.accel, AP_BRAKE); // с межзвёздного участка — у края системы
     let tx, ty, tvx = 0, tvy = 0, stop;
     if (dest) { const pp = planetPos(dest, simT), pv = planetVel(dest, simT); tx = pp.x; ty = pp.y; tvx = pv.x; tvy = pv.y; stop = dest.orbitR; }
     else { tx = -dx * WARP_STAR_STOP; ty = -dy * WARP_STAR_STOP; stop = 0; }
@@ -546,7 +552,8 @@
       const w = s.warp;
       turnTo(Math.atan2(w.dy, w.dx), dt);
       const aw = accelAt(s.accel * w.p, Math.hypot(s.vx, s.vy)); // экономно — половина мощности
-      s.vx += w.dx * aw * dt; s.vy += w.dy * aw * dt;
+      const hx = Math.cos(s.heading), hy = Math.sin(s.heading), kh = Math.max(0, hx * w.dx + hy * w.dy); // тяга вдоль носа
+      s.vx += hx * aw * kh * dt; s.vy += hy * aw * kh * dt;
       const v = Math.hypot(s.vx, s.vy);
       if (v > s.maxSpeed) { s.vx *= s.maxSpeed / v; s.vy *= s.maxSpeed / v; }
       useFuel(s.accel * w.p * w.fuelK * dt); // по времени тяги
@@ -577,15 +584,7 @@
       }
       s.thrust = s.th > s.accel * 0.05;
       // Нос корабля — по направлению тяги (при торможении разворачивается).
-      // Нос — по маршруту (по скорости): при разгоне, полёте по инерции и довороте курса; при торможении
-      // (тяга в основном против движения) — разворот кормой вперёд (пользователь: «летел боком»).
-      {
-        const v = Math.hypot(s.vx, s.vy), th = Math.hypot(s.thx || 0, s.thy || 0);
-        const braking = s.th > s.accel * 0.02 && v > 1e-3 && (s.thx * s.vx + s.thy * s.vy) < -0.5 * th * v;
-        if (braking) turnTo(Math.atan2(s.thy, s.thx), dt);
-        else if (v > 1e-3) turnTo(Math.atan2(s.vy, s.vx), dt);
-        else if (s.th > s.accel * 0.02) turnTo(Math.atan2(s.thy, s.thx), dt);
-      }
+      // Нос и развороты — внутри flightStep (тяга только вдоль носа).
       if (ev === 'arrived') {
         if (s.planet) enterOrbit(s.planet);
         else { s.vx = s.vy = 0; s.state = 'idle'; s.target = null; renderCard(); }
@@ -667,7 +666,7 @@
   function turnTo(target, dt) {
     let d = target - ship.heading;
     d = Math.atan2(Math.sin(d), Math.cos(d));
-    const max = 5 * dt;
+    const max = TURN_RATE * dt;
     ship.heading += Math.max(-max, Math.min(max, d));
   }
   // Пока корабль ждёт окна старта, он подстраивает своё место на орбите парковки: к моменту

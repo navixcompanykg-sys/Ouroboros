@@ -30,15 +30,15 @@
       if (T.v >= 0.98 * c) {
         // Скачок: сразу на расстояние торможения от звезды назначения.
         T.jumpFrom = T.along;
-        T.along = Math.max(T.along, T.D - stopDistance(T.v, a));
+        T.along = Math.max(T.along, T.D - stopDistance(T.v, a, AP_BRAKE));
         T.phase = 'brake'; T.jumpAnim = 0;
       }
     } else {
-      dv = Math.min(T.v, 0.85 * accelAt(a, T.v) * dt); T.v -= dv; T.along += T.v * dt;
+      dv = Math.min(T.v, AP_BRAKE * accelAt(a, T.v) * dt); T.v -= dv; T.along += T.v * dt;
       if (T.D - T.along <= SYSTEM_RADIUS || T.v <= 0) return arriveTravel();
     }
     // Топливо — по тяге (доля бака); сохраняем не каждый кадр.
-    if (isFinite(myShip.dv) && myShip.dv > 0) fuelBurn += myShip.accel * (T.p || 1) * (T.fuelK ?? 1) * (T.phase === 'accel' ? 1 : 0.85) * dt / myShip.dv; // по времени тяги
+    if (isFinite(myShip.dv) && myShip.dv > 0) fuelBurn += myShip.accel * (T.p || 1) * (T.fuelK ?? 1) * (T.phase === 'accel' ? 1 : AP_BRAKE) * dt / myShip.dv; // по времени тяги
     if ((travelSave += dt) > 0.5) {
       travelSave = 0;
       if (fuelBurn) { World.setFuel(World.fuel() - fuelBurn); fuelBurn = 0; }
@@ -61,7 +61,7 @@
     const left = ly > 1 ? Math.round(ly).toLocaleString('ru-RU') + ' св. лет' : Math.round((T.D - T.along) / AU).toLocaleString('ru-RU') + ' а. е.';
     return T.phase === 'accel'
       ? `Перелёт к ${T.name} (${T.p < 1 ? 'экономно' : 'быстро'}): разгон · скачок через ${fmtTT(Math.max(0, timeToSpeed(a, 0.98 * c) - timeToSpeed(a, T.v)))} · до цели ${left}`
-      : `Перелёт к ${T.name} (${T.p < 1 ? 'экономно' : 'быстро'}): торможение · до системы ${fmtTT(timeToSpeed(0.85 * a, T.v))} · до цели ${left}`;
+      : `Перелёт к ${T.name} (${T.p < 1 ? 'экономно' : 'быстро'}): торможение · до системы ${fmtTT(timeToSpeed(AP_BRAKE * a, T.v))} · до цели ${left}`;
   }
   // Панель скорости и топлива — всегда видна (как в системе).
   function renderGauges() {
