@@ -127,7 +127,7 @@
     : { x: ship.x, y: ship.y, vx: ship.vx, vy: ship.vy, moving: ship.state !== 'idle' };
 
   function orderFlyTo(target, mode = flightMode, opts = {}) {
-    ship.jumpIn = false;
+    ship.jumpIn = false; ship.cruise = null;
     // target: {planet} или {x, y}
     if (ship.state === 'landed') { ship.pending = { target, mode }; startTakeoff(); return; }
     if (ship.state === 'landing' || ship.state === 'takeoff') { ship.pending = { target, mode }; return; }
@@ -250,7 +250,7 @@
     const gPull = Math.max(0, g.x * ux + g.y * uy);
     // Ускорение растёт со скоростью (ships.js accelAt): скорость, с которой ещё успеть остановиться, — brakeSpeed.
     const a0 = Math.max(f.accel * 0.12, f.accel - gPull / 0.85);
-    const vWant = Math.min(f.maxSpeed, brakeSpeed(remain, a0));
+    const vWant = Math.min(f.maxSpeed, f.cruise ?? Infinity, brakeSpeed(remain, a0)); // cruise — после газа
     const aMax = accelAt(f.accel, Math.hypot(f.vx - tvx, f.vy - tvy)); // тяга сейчас
     const dvx = tvx + ux * vWant - f.vx, dvy = tvy + uy * vWant - f.vy;
     // Тяга — то, что нужно для желаемой скорости, за вычетом того, что даёт гравитация; не больше f.accel.
@@ -390,12 +390,16 @@
   // Цель — планета/точка активного полёта. Маршрута не было (орбита, дрейф) — корабль после отпускания
   // летит дальше по инерции с набранной скоростью (пользователь: «отпустил — сбрасывает скорость»).
   // throttle: 0 — двигатель молчит, 1 — газ (W) по носу, −1 — тормоз (S) против скорости (до остановки).
-  let throttle = 0, resume = null;
+  let throttle = 0, resume = null, thrPower = 0;
+  // Мощность ручной тяги нарастает: короткое нажатие — 10% (тонкая подстройка), полная — за THR_RAMP с.
+  // (Секунда полной тяги — полтора дня игры при ~0,6 g, это +80 км/с: на дуге со скоростью ~20 км/с
+  // мгновенная полная тяга выглядела рывком — пользователь: «ускорение быстрее, чем следует».)
+  const THR_RAMP = 2, THR_MIN = 0.1;
   function setThrottle(mode) {
     if (mode === throttle) return;
     const st = ship.state, was = throttle;
     if (mode && (st === 'landed' || st === 'landing' || st === 'takeoff')) return;
-    throttle = mode;
+    throttle = mode; thrPower = 0;
     $('b-gas').classList.toggle('on', mode === 1);
     $('b-brake').classList.toggle('on', mode === -1);
     if (mode && !was) {
@@ -410,8 +414,14 @@
       renderCard(true);
     } else if (!mode && resume && ship.state === 'adrift') {
       const r = resume; resume = null;
-      orderFlyTo(r.target, r.mode, { keep: true }); // дуга — с набранной скоростью, не гасить её
-      if (ship.state === 'adrift' && r.mode === 'eco') orderFlyTo(r.target, 'fast'); // дуги нет — быстрым
+      if (r.mode === 'eco') {
+        // После газа на экономной дуге: к цели с набранной скоростью как с крейсерской — автопилот
+        // доворачивает курс и тормозит только у цели, сверх набранного не разгоняется (пользователь:
+        // «после ускорения корабль замедляется»). Новая дуга с такой скоростью обычно не сходится.
+        const v = Math.hypot(ship.vx, ship.vy);
+        orderFlyTo(r.target, 'fast');
+        if (ship.state === 'flying') ship.cruise = Math.max(v, 1);
+      } else orderFlyTo(r.target, r.mode);
     }
   }
 
@@ -502,10 +512,16 @@
       // Ручной полёт: по инерции под притяжением звезды; пока зажат «Газ» (кнопка / W) — тяга по носу.
       if (throttle && s.fuel > 0 && s.accel > 0) {
         const v0 = Math.hypot(s.vx, s.vy);
-        let used = accelAt(s.accel, v0) * dt; // ускорение растёт со скоростью
+        thrPower = Math.min(1, thrPower + dt / THR_RAMP);
+        const pw = THR_MIN + (1 - THR_MIN) * smooth(thrPower);
+        let used = accelAt(s.accel, v0) * pw * dt; // ускорение растёт со скоростью; мощность нарастает
         if (throttle > 0) {
-          // Газ — вдоль скорости (стоит — по носу); нос — по движению.
-          if (v0 > 1e-3) s.heading = Math.atan2(s.vy, s.vx);
+          // Газ: есть цель (маршрут, прерванный газом) — тяга на цель, чтобы набранная скорость сразу
+          // была направлена куда надо (иначе автопилот потом разворачивает вектор и скорость проседает);
+          // цели нет — вдоль скорости (стоит — по носу).
+          const tg = resume && resume.target && (resume.target.planet ? planetPos(resume.target.planet, simT) : resume.target);
+          if (tg && Math.hypot(tg.x - s.x, tg.y - s.y) > 1) s.heading = Math.atan2(tg.y - s.y, tg.x - s.x);
+          else if (v0 > 1e-3) s.heading = Math.atan2(s.vy, s.vx);
           s.vx += Math.cos(s.heading) * used; s.vy += Math.sin(s.heading) * used;
           const v = Math.hypot(s.vx, s.vy);
           if (v > s.maxSpeed) { s.vx *= s.maxSpeed / v; s.vy *= s.maxSpeed / v; }
