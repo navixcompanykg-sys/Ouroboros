@@ -68,6 +68,17 @@
     const v = travel ? travel.v : 0, pc = v / SHIP_LIGHT * 100;
     document.getElementById('g-speed').innerHTML = `<span>Скорость</span><b>${Math.round(v * KMS_PER_UNIT).toLocaleString('ru-RU')} км/с</b>` +
       `<i>${!v ? 'у звезды' : pc >= 0.1 ? pc.toFixed(pc < 10 ? 1 : 0).replace('.', ',') + '% c' : '&lt;0,1% c'}</i>`;
+    // Крупный отсчёт под панелью (пользователь): до скачка — при разгоне, до системы — при торможении.
+    const gj = document.getElementById('g-jump');
+    gj.hidden = !travel;
+    if (travel) {
+      const a = myShip.accel * (travel.p || 1);
+      const acc = travel.phase === 'accel';
+      const left = acc ? Math.max(0, timeToSpeed(a, 0.98 * SHIP_LIGHT) - timeToSpeed(a, travel.v)) : timeToSpeed(AP_BRAKE * a, travel.v);
+      gj.firstElementChild.textContent = acc ? 'Скачок через' : 'До системы';
+      const sec = Math.ceil(left);
+      gj.lastElementChild.textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+    }
     const f = World.fuel() - fuelBurn;
     document.getElementById('g-fuel').innerHTML = `<span>Топливо</span><b>${isFinite(myShip.dv) ? (f * 100).toFixed(f < 0.1 ? 2 : 1).replace('.', ',') + '%' : 'реактор'}</b>`;
   }

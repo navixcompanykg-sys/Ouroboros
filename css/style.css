@@ -140,3 +140,10 @@ button:disabled { opacity: .55; cursor: default; }
 
 /* Строка карточки на всю ширину (прикидки режимов перелёта). */
 #c-facts .wide { grid-column: 1 / -1; }
+
+/* Крупный отсчёт до скачка / до системы — под панелью скорости и топлива (карта галактики). */
+#g-jump { position: fixed; top: calc(104px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 3;
+  padding: 6px 16px; text-align: center; pointer-events: none; white-space: nowrap; }
+#g-jump span { display: block; color: var(--muted); font-size: 11px; }
+#g-jump b { display: block; font-size: 30px; line-height: 1.1; font-weight: 700; color: #ffd9a0; font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) { #g-jump { top: calc(150px + env(safe-area-inset-top)); left: 10px; transform: none; } }
