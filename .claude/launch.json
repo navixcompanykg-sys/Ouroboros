@@ -5,7 +5,8 @@
       "name": "web",
       "runtimeExecutable": "node",
       "runtimeArgs": ["serve.js"],
-      "port": 8080
+      "port": 8080,
+      "autoPort": true
     }
   ]
 }

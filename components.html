@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#04060c">
+<title>Уроборос · Компоненты и производство</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/shipyard.css">
+<style>
+  .cmp { max-width: 1180px; margin: 0 auto; display: grid; gap: 12px; }
+  .cmp h2 { font-size: 16px; margin: 0 0 8px; }
+  .cmp h3 { font-size: 13px; margin: 14px 0 5px; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+  .cmp p, .cmp li { font-size: 13px; color: #c6d2e8; }
+  .cmp code { color: #ffd9a0; }
+  .cmp table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .cmp th, .cmp td { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  .cmp th { color: var(--muted); font-weight: 500; }
+  .cmp td:first-child, .cmp th:first-child { text-align: left; white-space: normal; }
+  .scroll { overflow-x: auto; }
+
+  /* Таблицы ввода */
+  table.inp td, table.inp th { padding: 2px 3px; }
+  table.inp input { width: 100%; min-width: 58px; font: inherit; font-size: 12.5px; text-align: right;
+    color: var(--text); background: rgba(0,0,0,.4); border: 1px solid var(--line); border-radius: 6px;
+    padding: 4px 6px; font-variant-numeric: tabular-nums; min-height: 28px; }
+  table.inp input:focus { outline: none; border-color: var(--accent); background: rgba(0,0,0,.6); }
+  table.inp input.empty { color: var(--muted); }
+  table.inp .calc { color: #ffd9a0; font-variant-numeric: tabular-nums; }
+  table.inp .calc.zero { color: var(--muted); }
+  table.inp .pname { font-size: 12.5px; }
+  table.inp .pname i { font-style: normal; color: var(--muted); font-size: 11px; }
+  table.inp tr.grp td { color: var(--accent); font-size: 11px; text-transform: uppercase;
+    letter-spacing: .05em; padding-top: 10px; border-bottom: 0; }
+  table.inp th.g { color: var(--accent); border-bottom: 1px solid var(--accent); font-size: 11.5px; }
+  table.inp td.b, table.inp th.b { border-left: 1px solid var(--line); }
+  table.inp tr:hover td { background: rgba(111,168,255,.06); }
+
+  /* Итоги кораблей */
+  .ships { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .ship { border: 1px solid var(--line); border-radius: 9px; padding: 10px; background: rgba(0,0,0,.18); }
+  .ship .t { font-weight: 600; margin-bottom: 6px; }
+  .ship select, #q-part { width: 100%; font: inherit; font-size: 12.5px; color: var(--text); background: rgba(0,0,0,.4);
+    border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; margin-bottom: 4px; }
+  .ship .r { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; padding: 2px 0; }
+  .ship .r span { color: var(--muted); }
+  .ship .r b { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .ship .r.key { border-top: 1px solid var(--line); padding-top: 3px; }
+  .ship .r.key b { color: #ffd9a0; }
+  .ship .r.warn b { color: #ff9a7a; }
+  .ship .g { margin: 8px 0 2px; color: var(--accent); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  .tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .tools .sp { margin-left: auto; color: var(--muted); font-size: 12px; }
+  #dump { width: 100%; height: 130px; font: 12px/1.4 ui-monospace, monospace; color: var(--text);
+    background: rgba(0,0,0,.45); border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: none; }
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; margin: 6px 0 10px; }
+  .flow b { background: rgba(111,168,255,.14); border: 1px solid var(--line); border-radius: 7px; padding: 4px 9px; font-weight: 600; }
+  .flow i { font-style: normal; color: var(--accent); }
+  @media (max-width: 860px) { .ships { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body class="page">
+<header class="bar">
+  <a class="btn" href="menu.html">← Меню</a>
+  <h1>Компоненты и производство</h1>
+  <a class="btn" href="shipyard.html">Конструктор</a>
+</header>
+
+<main class="cmp">
+
+  <section class="glass panel">
+    <h2>Как это устроено</h2>
+    <div class="flow">
+      <b>Сырьё</b><i>→</i><b>Компонент</b><i>→</i><b>Оборудование</b><i>→</i><b>Корабль</b>
+    </div>
+    <p>Параметры принадлежат <b>компонентам</b>, а не оборудованию. У оборудования задаётся только
+      <b>состав</b> — сколько компонентов каждого типа в него входит. Свойства предмета не вводятся,
+      а считаются: <code>параметр = Σ (компонентов в составе × влияние компонента на этот параметр)</code>.
+      Уровень компонентов меняет влияние — значит, и свойства предмета. Новое оборудование
+      добавляется одной строкой состава, все характеристики появятся сами.</p>
+
+    <h3>Сырьё: 4 типа по 3 уровня</h3>
+    <div class="scroll"><table id="t-mat"></table></div>
+    <h3>Компонент собирается из сырья своего типа</h3>
+    <div class="scroll"><table id="t-craft"></table></div>
+    <p>На любой компонент уходит ровно 3 единицы сырья — дорожает не количество, а уровень.
+      Масса идёт по цепочке сама: по правилу v2 (<code>ТЗ_Экономика §8.3</code>) при каждом переделе
+      <b id="loss"></b> массы уходит в отходы, поэтому <b>массу вводить не нужно нигде</b>.</p>
+    <div class="scroll"><table id="t-mass"></table></div>
+  </section>
+
+  <section class="glass panel">
+    <h2>1. Влияние компонента на параметры</h2>
+    <p>Сколько даёт <b>один</b> компонент этого типа и уровня. Пустое поле — ноль. Строка «Масса»
+      не вводится: она уже посчитана из массы сырья.</p>
+    <div class="tools">
+      <button id="b-save">Скачать файл</button>
+      <button id="b-load">Загрузить файл</button>
+      <button id="b-dump">Показать JSON</button>
+      <button id="b-reset">Сбросить к пустому</button>
+      <input type="file" id="f-load" accept=".json,application/json" hidden>
+      <span class="sp" id="saved">сохраняется автоматически</span>
+    </div>
+    <textarea id="dump" spellcheck="false" readonly></textarea>
+    <div class="scroll" style="margin-top:10px"><table class="inp" id="t-inf"></table></div>
+
+    <h3>Энергоёмкость топлива</h3>
+    <p>Энергетическое сырьё — это и есть топливо. Газохранилище сжигает <b>одну единицу за цикл</b>
+      и выдаёт столько энергии, сколько задано здесь; дальше эта энергия тратится оборудованием
+      наравне с выработкой реакторов. Выработка корабля = выработка оборудования + газохранилища ×
+      энергоёмкость топлива.</p>
+    <div class="scroll"><table class="inp" id="t-fuel"></table></div>
+  </section>
+
+  <section class="glass panel">
+    <h2>2. Состав оборудования</h2>
+    <p>Сколько компонентов каждого типа входит в предмет. От уровня состав не зависит — уровень
+      выбирается при сборке. Справа — масса предмета по уровням, она следует из состава.</p>
+    <div class="scroll"><table class="inp" id="t-comp"></table></div>
+  </section>
+
+  <section class="glass panel">
+    <h2>3. Свойства оборудования — выводятся</h2>
+    <p>Ничего не вводится: всё посчитано из состава и влияния компонентов.</p>
+    <select id="q-part"></select>
+    <div class="scroll"><table id="t-part"></table></div>
+  </section>
+
+  <section class="glass panel">
+    <h2>4. Итог: три корабля</h2>
+    <p>Дизайны — из конструктора. Уровень — из каких компонентов собран весь корабль. Орудие ставится
+      в каждый оружейный модуль.</p>
+    <div class="ships" id="ships"></div>
+    <p style="margin-top:10px">Как считается:</p>
+    <ul>
+      <li><b>Ускорение</b> = Σ(«ускорение на 100 т» × 100) ÷ масса корабля × доля энергии. Доля энергии —
+        сколько спроса двигателей закрывает выработка (не хватает — тяга падает кратно). Дальше работают
+        те же формулы, что в полёте (<code>ships.js</code>): ускорение растёт со скоростью как
+        <code>a₀(1 + K(v/c)²)</code>.</li>
+      <li><b>Энергия.</b> У компонентов два расхода: <b>пассивный</b> идёт всегда, <b>активный</b> — только
+        пока модуль работает. При разгоне = пассив всего корабля + актив только двигателей;
+        в бою = пассив + актив всех систем.</li>
+      <li><b>Пересечение сектора</b> — <span id="sec-d"></span> (пятая часть радиуса галактики) по модели
+        межзвёздного перелёта: разгон до 0,98 c, сверхсветовой скачок, торможение на половине тяги.</li>
+    </ul>
+  </section>
+</main>
+
+<script src="js/data.js"></script>
+<script src="js/ships.js"></script>
+<script src="js/components.js"></script>
+<script>
+// Универсальный конструктор: вводятся влияние компонентов и состав оборудования, всё остальное
+// выводится. Итоги трёх кораблей пересчитываются на каждый ввод теми же функциями, что считают полёт.
+(() => {
+  const $ = id => document.getElementById(id);
+  const f = (x, k = 0) => !isFinite(x) ? '—' : x.toLocaleString('ru-RU', { minimumFractionDigits: k, maximumFractionDigits: k });
+  const T = t => !isFinite(t) ? '—' : t < 120 ? `${f(t, 1)} с` : t < 7200 ? `${f(t / 60, 1)} мин` : `${f(t / 3600, 1)} ч`;
+  // Склонение по русскому числу: 1 газохранилище, 2 газохранилища, 5 газохранилищ.
+  const plural = (n, one, few, many) => {
+    const a = Math.abs(n) % 100, b = a % 10;
+    return a > 10 && a < 20 ? many : b > 1 && b < 5 ? few : b === 1 ? one : many;
+  };
+  let tbl = loadParts();
+
+  // ---------- Справка ----------
+  $('t-mat').innerHTML = '<tr><th>Тип</th><th>1 уровень</th><th>2 уровень</th><th>3 уровень</th></tr>' +
+    MAT_TYPES.map(m => `<tr><td>${m.name}</td>` +
+      m.res.map(k => { const r = RESOURCES.find(x => x.key === k); return `<td>${r ? r.name : k}</td>`; }).join('') + '</tr>').join('');
+  $('t-craft').innerHTML = '<tr><th>Компонент</th><th>Сырьё 1 ур.</th><th>Сырьё 2 ур.</th><th>Сырьё 3 ур.</th></tr>' +
+    CRAFT.map(c => `<tr><td>Компонент ${c.tier} уровня</td>` + c.need.map(n => `<td>${n || '—'}</td>`).join('') + '</tr>').join('');
+  $('loss').textContent = `${f(CRAFT_LOSS * 100)} %`;
+  $('t-mass').innerHTML = '<tr><th>Тип</th><th colspan="3">Масса единицы сырья</th><th colspan="3">Масса компонента</th></tr>' +
+    '<tr><th></th>' + TIERS.map(t => `<th>${t} ур.</th>`).join('') + TIERS.map(t => `<th>${t} ур.</th>`).join('') + '</tr>' +
+    MAT_TYPES.map(m => `<tr><td>${m.name}</td>` +
+      m.res.map(k => { const r = RESOURCES.find(x => x.key === k); return `<td>${f(rawMass(k), 1)}</td>`; }).join('') +
+      TIERS.map(t => `<td><b>${f(componentMass(m.key, t), 1)}</b></td>`).join('') + '</tr>').join('');
+  $('sec-d').textContent = `${f(SECTOR_UNITS / UNITS_PER_KPC, 1)} кпк ≈ ${f(SECTOR_UNITS / UNITS_PER_KPC * 3261.56)} св. лет`;
+
+  // ---------- 1. Влияние компонентов: строки — параметры, столбцы — 4 типа × 3 уровня ----------
+  const inpInf = (t, p, i) => {
+    const v = tbl.inf[t][p][i], e = v === null || v === undefined;
+    return `<input inputmode="decimal" data-tb="inf" data-t="${t}" data-p="${p}" data-i="${i}"` +
+      ` value="${e ? '' : v}"${e ? ' class="empty"' : ''}>`;
+  };
+  $('t-inf').innerHTML =
+    '<tr><th rowspan="2">Параметр</th>' + MAT_TYPES.map(m => `<th class="g b" colspan="3">${m.name}</th>`).join('') + '</tr>' +
+    '<tr>' + MAT_TYPES.map(() => TIERS.map((t, j) => `<th${j === 0 ? ' class="b"' : ''}>${t} ур.</th>`).join('')).join('') + '</tr>' +
+    PARAMS.map(p => `<tr><td class="pname">${p.name}${p.unit ? ` <i>${p.unit}</i>` : ''}</td>` +
+      MAT_TYPES.map(m => TIERS.map((t, j) => {
+        const b = j === 0 ? ' class="b"' : '';
+        return p.derived
+          ? `<td${j === 0 ? ' class="b calc"' : ' class="calc"'}>${f(componentMass(m.key, t), 1)}</td>`
+          : `<td${b}>${inpInf(m.key, p.key, j)}</td>`;
+      }).join('')).join('') + '</tr>').join('');
+
+  // Энергоёмкость единицы топлива по трём уровням энергетического сырья.
+  $('t-fuel').innerHTML = '<tr><th>Топливо</th><th>Уровень</th><th>Энергии за единицу</th></tr>' +
+    FUEL_RES.map((k, i) => { const r = RESOURCES.find(x => x.key === k);
+      const v = (tbl.fuel || [])[i], e = v === null || v === undefined;
+      return `<tr><td class="pname">${r ? r.name : k}</td><td>${i + 1} ур.</td>` +
+        `<td style="width:120px"><input inputmode="decimal" data-tb="fuel" data-i="${i}"` +
+        ` value="${e ? '' : v}"${e ? ' class="empty"' : ''}></td></tr>`; }).join('');
+
+  // ---------- 2. Состав оборудования: строки — предметы, столбцы — 4 типа компонентов ----------
+  const inpComp = (k, t) => {
+    const v = tbl.comp[k][t], e = v === null || v === undefined;
+    return `<input inputmode="numeric" data-tb="comp" data-k="${k}" data-t="${t}"` +
+      ` value="${e ? '' : v}"${e ? ' class="empty"' : ''}>`;
+  };
+  let ch = '<tr><th>Оборудование</th>' + MAT_TYPES.map(m => `<th>${m.name}</th>`).join('') +
+    '<th class="b">Всего</th>' + TIERS.map(t => `<th>Масса ${t} ур.</th>`).join('') + '</tr>';
+  for (const g of PART_GROUPS) {
+    ch += `<tr class="grp"><td colspan="${1 + MAT_TYPES.length + 4}">${g.name}</td></tr>`;
+    for (const p of PARTS.filter(x => x.group === g.key))
+      ch += `<tr><td class="pname">${p.name}${p.note ? ` <i>${p.note}</i>` : ''}</td>` +
+        MAT_TYPES.map(m => `<td>${inpComp(p.key, m.key)}</td>`).join('') +
+        `<td class="b calc" data-size="${p.key}">—</td>` +
+        TIERS.map(t => `<td class="calc" data-mass="${p.key}" data-i="${t}">—</td>`).join('') + '</tr>';
+  }
+  $('t-comp').innerHTML = ch;
+
+  // ---------- 3. Свойства оборудования (выводятся) ----------
+  $('q-part').innerHTML = PART_GROUPS.map(g =>
+    `<optgroup label="${g.name}">` + PARTS.filter(x => x.group === g.key).map(p =>
+      `<option value="${p.key}">${p.name}</option>`).join('') + '</optgroup>').join('');
+  function renderPart() {
+    const k = $('q-part').value, c = tbl.comp[k];
+    const made = MAT_TYPES.filter(m => +c[m.key] > 0).map(m => `${c[m.key]} × ${m.name}`).join(' + ') || 'состав не задан';
+    $('t-part').innerHTML = `<tr><th>Параметр</th>${TIERS.map(t => `<th>Уровень ${t}</th>`).join('')}</tr>` +
+      `<tr><td colspan="4" style="color:var(--muted)">Состав: ${made}</td></tr>` +
+      PARAMS.map(p => `<tr><td>${p.name}${p.unit ? ` <span style="color:var(--muted);font-size:11px">${p.unit}</span>` : ''}</td>` +
+        TIERS.map(t => { const v = partParam(tbl, k, p.key, t);
+          return `<td${v ? ' style="color:#ffd9a0"' : ' style="color:var(--muted)"'}>${v ? f(v, p.dec) : '—'}</td>`; }).join('') +
+        '</tr>').join('');
+  }
+
+  // ---------- 4. Три корабля ----------
+  const SHIPS = [
+    { t: 'Минимальный', design: 'Корвет Патрульный', tier: 1, gun: 'gun_autocannon', fuel: 1 },
+    { t: 'Средний',     design: 'Крейсер 1',         tier: 2, gun: 'gun_autocannon', fuel: 2 },
+    { t: 'Топовый',     design: 'Дредноут 1',        tier: 3, gun: 'gun_autocannon', fuel: 3 },
+  ];
+  const designs = loadDesigns(), guns = PARTS.filter(p => p.group === 'guns');
+  $('ships').innerHTML = SHIPS.map((s, i) =>
+    `<div class="ship"><div class="t">${s.t}</div>` +
+    `<select data-s="${i}" data-f="design">${designs.map(d =>
+      `<option${d.name === s.design ? ' selected' : ''}>${d.name}</option>`).join('')}</select>` +
+    `<select data-s="${i}" data-f="tier">${TIERS.map(t =>
+      `<option value="${t}"${t === s.tier ? ' selected' : ''}>Компоненты ${t} уровня</option>`).join('')}</select>` +
+    `<select data-s="${i}" data-f="gun">${guns.map((g, j) =>
+      `<option value="${g.key}"${j === 0 ? ' selected' : ''}>${g.name}</option>`).join('')}</select>` +
+    `<select data-s="${i}" data-f="fuel">${FUEL_RES.map((k, j) => { const r = RESOURCES.find(x => x.key === k);
+      return `<option value="${j + 1}"${j + 1 === s.fuel ? ' selected' : ''}>Топливо: ${r ? r.name : k}</option>`; }).join('')}</select>` +
+    `<div class="out" data-s="${i}"></div></div>`).join('');
+
+  const row = (n, v, cls = '') => `<div class="r ${cls}"><span>${n}</span><b>${v}</b></div>`;
+  function renderAll() {
+    // Производные ячейки таблицы состава
+    document.querySelectorAll('[data-size]').forEach(el => {
+      const n = partSize(tbl, el.dataset.size);
+      el.textContent = n || '—'; el.classList.toggle('zero', !n);
+    });
+    document.querySelectorAll('[data-mass]').forEach(el => {
+      const m = partParam(tbl, el.dataset.mass, 'mass', +el.dataset.i);
+      el.textContent = m ? f(m, 1) : '—'; el.classList.toggle('zero', !m);
+    });
+    renderPart();
+    document.querySelectorAll('.out').forEach(el => {
+      const i = +el.dataset.s, s = SHIPS[i];
+      const d = designs.find(x => x.name === s.design) || designs[0];
+      const st = shipTotals(tbl, d, s.tier, s.gun, s.fuel);
+      el.innerHTML =
+        '<div class="g">Итоги</div>' +
+        row('Пересечь сектор', T(st.crossSector), 'key') +
+        row('Разгон до скорости света', T(st.toLight), 'key') +
+        row('Общий урон', f(st.damage, 1), 'key') +
+        row('Общая прочность', f(st.durability, 1), 'key') +
+        row('Общая масса, т', f(st.mass), 'key') +
+        row('Выработка энергии', f(st.energySupply, 1), 'key') +
+        row('Энергия при разгоне', f(st.energyThrust, 1) + (st.deficitThrust ? ` (−${f(st.deficitThrust, 1)})` : ''), 'key' + (st.deficitThrust ? ' warn' : '')) +
+        row('Энергия в бою', f(st.energyCombat, 1) + (st.deficitCombat ? ` (−${f(st.deficitCombat, 1)})` : ''), 'key' + (st.deficitCombat ? ' warn' : '')) +
+        '<div class="g">Подробно</div>' +
+        row('Класс', st.cls.name) +
+        row('Палуб · модулей', `${st.decks} · ${st.modules}`) +
+        row('Ускорение a₀', `${f(st.ms2, 2)} м/с²`) +
+        row('Доля энергии на тягу', `${f(st.energyRatio * 100)} %`) +
+        row('Разворот', `${f(st.turnRate, 1)} °/с`) +
+        row('Пересечь систему (500 а. е.)', T(st.crossSystem)) +
+        row('Радиозащита · теплозащита', `${f(st.rad, 1)} · ${f(st.heat, 1)}`) +
+        row('Энергия: оборудование', f(st.energyGen, 1)) +
+        row('Энергия: топливо', `${f(st.energyBurn, 1)} (${st.tanks} ${plural(st.tanks, 'газохранилище', 'газохранилища', 'газохранилищ')})`) +
+        row('Расход пассивно (всегда)', f(st.energyPassive, 1)) +
+        row('Расход активно: двигатели', f(st.energyDrive, 1)) +
+        row('Расход активно: все системы', f(st.energyActive, 1)) +
+        row('Ёмкость', f(st.sum.cap));
+    });
+  }
+
+  // ---------- Ввод и автосохранение ----------
+  let saveT = null;
+  function touched() {
+    $('saved').textContent = 'сохраняю…';
+    clearTimeout(saveT);
+    saveT = setTimeout(() => {
+      saveParts(tbl);
+      const ok = (() => { try { return !!localStorage.getItem(PARTS_KEY); } catch (_) { return false; } })();
+      const t = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      $('saved').textContent = ok ? `сохранено в браузере · ${t}` : 'НЕ СОХРАНЯЕТСЯ — скачайте файл';
+      $('saved').style.color = ok ? '' : '#ff9a7a';
+    }, 250);
+  }
+  // Дозапись при закрытии вкладки, чтобы задержка в 250 мс не съела последнюю правку.
+  // leaving = уходим осознанно (сброс, загрузка файла) — тогда писать НЕЛЬЗЯ, иначе сброс
+  // тут же вернёт стёртое обратно из памяти.
+  let leaving = false;
+  addEventListener('beforeunload', () => { if (leaving) return; clearTimeout(saveT); saveParts(tbl); });
+
+  function onInput(e) {
+    const el = e.target; if (el.tagName !== 'INPUT' || !el.dataset.tb) return;
+    const s = el.value.trim().replace(',', '.'), v = s === '' ? null : (isFinite(+s) ? +s : null);
+    if (el.dataset.tb === 'inf') tbl.inf[el.dataset.t][el.dataset.p][+el.dataset.i] = v;
+    else if (el.dataset.tb === 'fuel') tbl.fuel[+el.dataset.i] = v;
+    else tbl.comp[el.dataset.k][el.dataset.t] = v;
+    el.classList.toggle('empty', v === null);
+    renderAll(); touched();
+  }
+  $('t-inf').addEventListener('input', onInput);
+  $('t-comp').addEventListener('input', onInput);
+  $('t-fuel').addEventListener('input', onInput);
+  $('q-part').addEventListener('change', renderPart);
+  $('ships').addEventListener('change', e => {
+    const el = e.target; if (el.tagName !== 'SELECT') return;
+    SHIPS[+el.dataset.s][el.dataset.f] = el.dataset.f === 'tier' ? +el.value : el.value;
+    renderAll();
+  });
+
+  // Файл — на случай другого браузера, телефона или очистки данных: хранилище браузера не вечное.
+  $('b-save').onclick = () => {
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(tbl, null, 1)], { type: 'application/json' }));
+    a.download = `ouroboros-компоненты-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}.json`;
+    a.click(); URL.revokeObjectURL(a.href);
+  };
+  $('b-load').onclick = () => $('f-load').click();
+  $('f-load').onchange = e => {
+    const file = e.target.files[0]; if (!file) return;
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const s = JSON.parse(r.result);
+        if (!s || !s.inf || !s.comp) throw 0;
+        if (!confirm('Заменить всё, что сейчас внесено, числами из файла?')) return;
+        leaving = true; clearTimeout(saveT); saveParts(s); location.reload();
+      } catch (_) { alert('Не похоже на файл этой таблицы — ничего не менял.'); }
+    };
+    r.readAsText(file); e.target.value = '';
+  };
+  $('b-dump').onclick = () => {
+    const t = $('dump'), show = t.style.display !== 'block';
+    t.style.display = show ? 'block' : 'none';
+    if (show) { t.value = JSON.stringify(tbl, null, 1); t.select(); }
+  };
+  $('b-reset').onclick = () => {
+    if (!confirm('Стереть все внесённые числа и вернуть пустой шаблон?')) return;
+    leaving = true; clearTimeout(saveT);
+    try { localStorage.removeItem(PARTS_KEY); } catch (_) {}
+    location.reload();
+  };
+
+  renderAll();
+})();
+</script>
+</body>
+</html>
