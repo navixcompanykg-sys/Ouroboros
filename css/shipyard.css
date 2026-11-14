@@ -15,6 +15,9 @@ input, select { font: inherit; color: var(--text); background: rgba(0, 0, 0, 0.3
   border-radius: 8px; padding: 7px 8px; min-height: 36px; width: 100%; }
 input:focus, select:focus { outline: none; border-color: var(--accent); }
 select:disabled { opacity: .6; }
+/* Раскрытый список рисует система: без явных цветов получается светлый текст на светлом фоне. */
+select option { background: #0d1626; color: #e8eefc; }
+select option:checked { background: #1b2a44; }
 h2 { font-size: 15px; margin: 0 0 6px; }
 h3 { font-size: 13px; margin: 12px 0 4px; color: var(--muted); font-weight: 600; }
 
@@ -70,3 +73,12 @@ h3 { font-size: 13px; margin: 12px 0 4px; color: var(--muted); font-weight: 600;
 .menu .sub { color: var(--muted); margin-bottom: 26px; }
 .menu .btn, .menu button { display: flex; justify-content: center; width: 100%; margin: 8px 0; font-size: 16px; min-height: 48px; }
 .menu .ship { margin-top: 22px; padding: 12px; text-align: left; }
+
+/* Сводка «По таблице компонентов» — те же числа, что на экране производства. */
+.st-row { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 3px 0;
+  border-bottom: 1px solid var(--line); }
+.st-row span { color: var(--muted); }
+.st-row b { font-variant-numeric: tabular-nums; }
+.st-row.warn b { color: #ff9a7a; }
+#cmp-controls label { display: flex; flex-direction: column; gap: 3px; color: var(--muted); }
+#cmp-controls select { min-width: 110px; }

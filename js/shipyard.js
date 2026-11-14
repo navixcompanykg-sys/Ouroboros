@@ -44,9 +44,12 @@
     cur = +b.dataset.i; selDeck = null; render();
   };
   const uniqueName = base => { let n = base, i = 2; while (list.some(d => d.name === n)) n = `${base} ${i++}`; return n; };
+  // Форма корабля — СТАНДАРТ (решение пользователя): новый корабль берёт форму текущего,
+  // оборудования на нём нет, кроме обязательной цитадели.
   $('b-new').onclick = () => {
-    list.push({ name: uniqueName('Новый корабль'), decks: [[2, 3, [...CITADEL_MANDATORY]]] });
-    cur = list.length - 1; selDeck = '2:3'; save(); render();
+    const form = design().decks.map(([r, c]) => [r, c, deckSector(r, c) === CITADEL_SECTOR ? [...CITADEL_MANDATORY] : []]);
+    list.push({ name: uniqueName(design().name + ' (пустой)'), decks: form });
+    cur = list.length - 1; selDeck = null; save(); render();
   };
   $('b-copy').onclick = () => {
     const c = JSON.parse(JSON.stringify(design())); c.name = uniqueName(c.name + ' (копия)');
@@ -83,21 +86,19 @@
     }
     g.innerHTML = html;
   }
+  // Палубы не строятся и не сносятся — форма закреплена. Клик только выбирает палубу.
   $('deck-grid').onclick = e => {
     const b = e.target.closest('.deck'); if (!b) return;
-    const r = +b.dataset.r, c = +b.dataset.c, d = design(), key = r + ':' + c;
-    if (!deckAt(d, r, c)) {
-      d.decks.push([r, c, deckSector(r, c) === CITADEL_SECTOR ? [...CITADEL_MANDATORY] : []]);
-      fixCitadel(d); save();
-    }
-    selDeck = key; render();
+    const r = +b.dataset.r, c = +b.dataset.c;
+    if (!deckAt(design(), r, c)) return;      // пустая клетка вне формы — не трогаем
+    selDeck = r + ':' + c; render();
   };
-  $('b-clear').onclick = () => { design().decks = []; selDeck = null; save(); render(); };
-  $('b-fill').onclick = () => {
+  // «Снять оборудование» — только модули, цитадель остаётся: форма и обязательные модули стандартны.
+  $('b-clear').onclick = () => {
+    if (!confirm('Снять всё оборудование с корабля? Форма палуб и цитадель останутся.')) return;
     const d = design();
-    for (let r = 0; r < DECK_ROWS; r++) for (let c = 0; c < DECK_COLS; c++)
-      if (!deckAt(d, r, c)) d.decks.push([r, c, []]);
-    fixCitadel(d); save(); render();
+    for (const dk of d.decks) dk[2] = deckSector(dk[0], dk[1]) === CITADEL_SECTOR ? [...CITADEL_MANDATORY] : [];
+    save(); render();
   };
 
   // Модули выбранной палубы.
@@ -123,20 +124,18 @@
     }
     const extra = dk[2].slice(cls.perDeck).filter(Boolean).length;
     if (extra) html += `<div class="warn">При классе «${cls.name}» на палубе ${cls.perDeck} слота — ещё ${extra} модул. не учитываются.</div>`;
-    html += `<div class="row"><button id="b-undeck">Снять палубу</button></div>`;
+    html += '<div class="muted small-text">Форма корабля закреплена — палубы не добавляются и не снимаются.</div>';
     el.innerHTML = html;
     el.querySelectorAll('select').forEach(sel => sel.onchange = () => {
       dk[2][+sel.dataset.s] = sel.value || null;
       while (dk[2].length && !dk[2][dk[2].length - 1]) dk[2].pop();
       save(); render();
     });
-    $('b-undeck').onclick = () => {
-      d.decks = d.decks.filter(x => x !== dk); selDeck = null; fixCitadel(d); save(); render();
-    };
   }
 
   // ---------- Характеристики ----------
   function renderStats() {
+    if (typeof renderCmpStats === 'function' && parts) renderCmpStats();
     const d = design(), st = shipStats(d);
     // Ускорение в настоящих м/с²: 1 мировая ед./с² = 11,4 км/с за секунду игры (≈ 1,52 сут) ≈ 0,0865 м/с².
     const ms2 = st.accel * KMS_PER_UNIT * 1000 / (365.25 * 86400 / 240), g = ms2 / 9.81;
@@ -167,26 +166,111 @@
     html += '<div class="muted small-text">Массы модулей — по умолчанию, цен нет (экономика v3 другая). Расчёт тяги — в <a href="reference.html">справочнике</a>: ускорение растёт со скоростью; средний корабль на тритии пересекает систему за 1,5 мин и разгоняется до c за 2 мин.</div>';
     $('st-main').innerHTML = html;
 
-    // Секторы: прочность палуб (3 + модули), орудия, щиты — без цитадели (v2 sectorStats).
-    const per = st.cls.perDeck, sec = Array.from({ length: 6 }, () => ({ pp: 0, om: 0, zp: 0, n: 0 }));
+    // Секторы: прочность палуб (3 + модули) и орудия — без цитадели (v2 sectorStats).
+    const per = st.cls.perDeck, sec = Array.from({ length: 6 }, () => ({ pp: 0, om: 0, n: 0 }));
     for (const [r, c, mods] of d.decks) {
       const s = deckSector(r, c); if (s === CITADEL_SECTOR) continue;
       let pp = 3;
       for (const k of mods.slice(0, per)) if (k && SHIP_MODULE[k]) {
         pp += SHIP_MODULE[k].dur;
         if (k === 'weapon_mount') sec[s].om++;
-        if (k === 'shield') sec[s].zp++;
       }
       sec[s].pp += pp; sec[s].n++;
     }
-    $('st-sectors').innerHTML = '<table><tr><th>Сектор</th><th>Палуб</th><th>🧱 прочн.</th><th>🎯 орудий</th><th>🛡 щитов</th></tr>' +
-      sec.map((x, i) => `<tr><td>${SECTOR_NAMES[i]}</td><td>${x.n}</td><td>${x.pp}</td><td>${x.om}</td><td>${x.zp}</td></tr>`).join('') + '</table>';
+    $('st-sectors').innerHTML = '<table><tr><th>Сектор</th><th>Палуб</th><th>🧱 прочн.</th><th>🎯 орудий</th></tr>' +
+      sec.map((x, i) => `<tr><td>${SECTOR_NAMES[i]}</td><td>${x.n}</td><td>${x.pp}</td><td>${x.om}</td></tr>`).join('') + '</table>';
 
     const mine = (World.design() || START_DESIGN) === d.name;
     $('b-mine').disabled = mine || !st.engines;
     $('b-mine').textContent = mine ? '★ Это ваш корабль' : 'Сделать моим кораблём';
     $('st-mine').textContent = `Сейчас ваш корабль: ${World.design() || START_DESIGN}. Смена корабля — с полным баком.`;
   }
+  // ---------- Сборка по таблице компонентов ----------
+  // Конструктор и экран «Компоненты и производство» считают ОДНИМ кодом (js/components.js) по
+  // ОДНОЙ таблице (data/parts.json): состав оборудования и влияние компонентов — оттуда, тут
+  // только выбор уровней и показ. Правило «одна величина — одно место» (docs/Уроки.md §3).
+  let parts = null, cmpOpt = { tier: 2, power: 2, fuel: 2, gun: 'gun_autocannon' };
+  const cmpNum = (x, k = 0) => !isFinite(x) ? '—'
+    : x.toLocaleString('ru-RU', { minimumFractionDigits: k, maximumFractionDigits: k });
+  const cmpTime = t => !isFinite(t) ? '—' : t < 120 ? cmpNum(t, 1) + ' с'
+    : t < 7200 ? cmpNum(t / 60, 1) + ' мин' : cmpNum(t / 3600, 1) + ' ч';
+
+  function renderCmpControls() {
+    const sel = (f, html) => `<select data-cmp="${f}">${html}</select>`;
+    const lvl = v => TIERS.map(t => `<option value="${t}"${t === v ? ' selected' : ''}>${t} ур.</option>`).join('');
+    const guns = PARTS.filter(p => p.group === 'guns');
+    $('cmp-controls').innerHTML =
+      '<label class="small-text">Компоненты ' + sel('tier', lvl(cmpOpt.tier)) + '</label>' +
+      '<label class="small-text">Источники энергии ' + sel('power', lvl(cmpOpt.power)) + '</label>' +
+      '<label class="small-text">Топливо ' + sel('fuel', FUEL_KEYS.map((k, i) =>
+        `<option value="${i + 1}"${i + 1 === cmpOpt.fuel ? ' selected' : ''}>${FUEL[k].name}</option>`).join('')) + '</label>' +
+      '<label class="small-text">Орудие ' + sel('gun', guns.map(g =>
+        `<option value="${g.key}"${g.key === cmpOpt.gun ? ' selected' : ''}>${g.name}</option>`).join('')) + '</label>';
+  }
+
+  function renderCmpStats() {
+    if (!parts) { $('cmp-stats').innerHTML = '<div class="muted small-text">Таблица компонентов не загружена.</div>'; return; }
+    const st = shipTotals(parts, design(), cmpOpt.tier, cmpOpt.gun, cmpOpt.fuel, cmpOpt.power);
+    const row = (n, v, warn) => `<div class="st-row${warn ? ' warn' : ''}"><span>${n}</span><b>${v}</b></div>`;
+    const def = st.deficitThrust > 0;
+    $('cmp-stats').innerHTML =
+      row('Масса, т', cmpNum(st.mass)) +
+      row('Тяга · ускорение', `${cmpNum(st.thrust)} · ${cmpNum(st.ms2, 2)} м/с²`) +
+      row('Разгон до скорости света', cmpTime(st.toLight)) +
+      row('Пересечь систему', cmpTime(st.crossSystem)) +
+      row('Пересечь сектор', cmpTime(st.crossSector)) +
+      row('Прочность · восстановление', `${cmpNum(st.durability)} · ${cmpNum(st.repair)}`) +
+      row('Защита: термо · радиация', `${cmpNum(st.heat)} · ${cmpNum(st.rad)}`) +
+      row('Урон залпа', cmpNum(st.damage)) +
+      row('Дальность: стрельба · радар', `${cmpNum(st.fireRange)} · ${cmpNum(st.range)}`) +
+      cmpGunRows(st) +
+      row('РЭБ: воздействие · защита', `${cmpNum(st.ecmPower)} · ${cmpNum(st.ecmDef)}`) +
+      row('Глушит такой же корабль до', st.ecmPower > 0
+        ? `${cmpNum(st.ecmReachSelf)} (${cmpNum(st.range > 0 ? st.ecmReachSelf / st.range * 100 : 0)} % радара)` : '—') +
+      row('Энергия: выработка', `${cmpNum(st.energySupply)} (оборуд. ${cmpNum(st.energyGen)} + топливо ${cmpNum(st.energyBurn)})`) +
+      row('Энергия: разгон · бой', `${cmpNum(st.energyThrust)} · ${cmpNum(st.energyCombat)}`, def) +
+      row('Доля энергии на тягу', cmpNum(st.energyRatio * 100) + ' %', def) +
+      row('Запас энергии', cmpNum(st.energyStore)) +
+      row('Ёмкость груза · жизнеобеспечение', `${cmpNum(st.capacity)} · ${cmpNum(st.lifeSupport)}`) +
+      (st.extra.length ? st.extra.map(p => row(p.name, cmpNum(p.value))).join('') : '');
+  }
+
+  // Поведение выбранного орудия с дистанцией: у кого урон падает, у кого точность, кого сбивает ПВО.
+  function cmpGunRows(st) {
+    const g = cmpOpt.gun, r = GUN_RULES[g];
+    if (!r || !parts) return '';
+    const rng = partParam(parts, g, 'fireRange', cmpOpt.tier);
+    if (rng <= 0) return '';
+    const at = k => gunAt(parts, g, cmpOpt.tier, rng * k);
+    const half = at(0.5), edge = at(1);
+    const icept = interceptChance(parts, g, cmpOpt.tier);
+    const row = (n, v, warn) => `<div class="st-row${warn ? ' warn' : ''}"><span>${n}</span><b>${v}</b></div>`;
+    return row('Урон орудия: вплотную · половина · предел',
+        `${cmpNum(at(0).damage, 1)} · ${cmpNum(half.damage, 1)} · ${cmpNum(edge.damage, 1)}`) +
+      row('Точность там же', `100 % · ${cmpNum(half.acc * 100)} % · ${cmpNum(edge.acc * 100)} %`) +
+      row('Сбивает ПВО', icept > 0 ? cmpNum(icept * 100) + ' % залпа' : 'не перехватывается', icept > 0.7) +
+      `<div class="muted small-text">${r.note}</div>`;
+  }
+
+  $('cmp-controls').addEventListener('change', e => {
+    const f = e.target.dataset.cmp; if (!f) return;
+    cmpOpt[f] = f === 'gun' ? e.target.value : +e.target.value;
+    renderCmpStats();
+  });
+
+  // Таблица — из файла проекта (data/parts.json); нет сервера или файла — начальный пресет.
+  (async () => {
+    try {
+      const got = await Store.load('parts');
+      parts = loadParts(got.data);
+      $('cmp-src').textContent = got.from === 'file' ? 'таблица: data/parts.json'
+        : got.from === 'local' ? 'таблица: из браузера (запустите serve.js)'
+        : 'таблица: начальный пресет';
+    } catch (e) { $('cmp-src').textContent = 'таблицу компонентов загрузить не вышло'; }
+    renderCmpControls();
+    renderCmpStats();
+  })();
+
   $('b-mine').onclick = () => { World.setDesign(design().name); renderList(); renderStats(); };
 
   // Топливо — класс скорости (ships.js FUEL): водород — медленные, тритий — средние, антиматерия — быстрые.

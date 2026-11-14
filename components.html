@@ -36,11 +36,51 @@
   table.inp td.b, table.inp th.b { border-left: 1px solid var(--line); }
   table.inp tr:hover td { background: rgba(111,168,255,.06); }
 
+  /* Справочник параметров */
+  table.plist input { text-align: left; min-width: 0; }
+  table.plist td { white-space: normal; }
+  table.plist td.role { color: var(--muted); font-size: 11px; text-align: left; }
+  table.plist td.num { color: var(--muted); width: 28px; text-align: right; }
+  table.plist td.act { white-space: nowrap; width: 1%; }
+  table.plist button { font: inherit; font-size: 12px; line-height: 1; padding: 5px 8px; margin-left: 3px;
+    color: var(--text); background: rgba(255,255,255,.06); border: 1px solid var(--line);
+    border-radius: 6px; cursor: pointer; }
+  table.plist button:hover { border-color: var(--accent); }
+  table.plist button.del:hover { border-color: #ff9a7a; color: #ff9a7a; }
+  table.plist .lock { color: var(--muted); font-size: 11px; }
+
+  /* Оборудование: своя карточка на каждый вид */
+  .parts { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 10px; }
+  .parts .gl { grid-column: 1 / -1; color: var(--accent); font-size: 11px; text-transform: uppercase;
+    letter-spacing: .05em; margin-top: 6px; }
+  .pc { border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; background: rgba(0,0,0,.18); }
+  .pc .n { font-weight: 600; font-size: 13px; }
+  .pc .note { color: var(--muted); font-size: 11px; font-weight: 400; }
+  .pc table { font-size: 12.5px; }
+  .pc td, .pc th { padding: 2px 3px; }
+  .pc td.num { color: var(--muted); width: 20px; text-align: right; }
+  .pc td.v { color: #ffd9a0; font-variant-numeric: tabular-nums; width: 58px; }
+  .pc td.v.zero { color: var(--muted); }
+  .pc select { width: 100%; font: inherit; font-size: 12px; color: var(--text);
+    background: rgba(0,0,0,.4); border: 1px solid var(--line); border-radius: 6px; padding: 3px 4px; }
+  .pc select.empty { color: var(--muted); }
+  .pc select:disabled { color: var(--text); opacity: .75; border-style: dashed; }
+  .pc input { width: 100%; min-width: 0; font: inherit; font-size: 12px; text-align: right; color: var(--text);
+    background: rgba(0,0,0,.4); border: 1px solid var(--line); border-radius: 6px; padding: 3px 4px;
+    font-variant-numeric: tabular-nums; }
+  .pc .cmpx { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 5px 0 6px; }
+  .pc .cmpx label { display: block; color: var(--muted); font-size: 10.5px; margin-bottom: 1px; }
+
+  /* Проверка боя */
+  table.hits td.h { font-variant-numeric: tabular-nums; }
+  table.hits td.bad { color: #ff9a7a; font-weight: 600; }
+  table.hits td.one { color: #ffd9a0; }
+
   /* Итоги кораблей */
   .ships { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
   .ship { border: 1px solid var(--line); border-radius: 9px; padding: 10px; background: rgba(0,0,0,.18); }
   .ship .t { font-weight: 600; margin-bottom: 6px; }
-  .ship select, #q-part { width: 100%; font: inherit; font-size: 12.5px; color: var(--text); background: rgba(0,0,0,.4);
+  .ship select { width: 100%; font: inherit; font-size: 12.5px; color: var(--text); background: rgba(0,0,0,.4);
     border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; margin-bottom: 4px; }
   .ship .r { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; padding: 2px 0; }
   .ship .r span { color: var(--muted); }
@@ -73,73 +113,127 @@
     <div class="flow">
       <b>Сырьё</b><i>→</i><b>Компонент</b><i>→</i><b>Оборудование</b><i>→</i><b>Корабль</b>
     </div>
-    <p>Параметры принадлежат <b>компонентам</b>, а не оборудованию. У оборудования задаётся только
-      <b>состав</b> — сколько компонентов каждого типа в него входит. Свойства предмета не вводятся,
-      а считаются: <code>параметр = Σ (компонентов в составе × влияние компонента на этот параметр)</code>.
-      Уровень компонентов меняет влияние — значит, и свойства предмета. Новое оборудование
-      добавляется одной строкой состава, все характеристики появятся сами.</p>
+    <p>Параметры принадлежат <b>компонентам</b>, а не оборудованию. У оборудования задаётся
+      <b>состав</b> (сколько компонентов каждого типа в него входит) и <b>порядок параметров</b> —
+      свои 10 мест, в каждое ставится параметр из справочника, пустое место допустимо. Влияние
+      компонентов задано <b>по номеру места</b>, одно на всё оборудование:
+      <code>значение = Σ (компонентов в составе × влияние компонента на это место)</code>.
+      Уровень компонентов меняет влияние — значит, и свойства предмета.</p>
 
     <h3>Сырьё: 4 типа по 3 уровня</h3>
     <div class="scroll"><table id="t-mat"></table></div>
     <h3>Компонент собирается из сырья своего типа</h3>
     <div class="scroll"><table id="t-craft"></table></div>
     <p>На любой компонент уходит ровно 3 единицы сырья — дорожает не количество, а уровень.
-      Масса идёт по цепочке сама: по правилу v2 (<code>ТЗ_Экономика §8.3</code>) при каждом переделе
-      <b id="loss"></b> массы уходит в отходы, поэтому <b>массу вводить не нужно нигде</b>.</p>
-    <div class="scroll"><table id="t-mass"></table></div>
+      Масса — такой же параметр компонента, как остальные: её вводят в таблице влияния
+      (решение пользователя — привязывать параметры к компонентам, а не выводить из сырья).</p>
   </section>
 
   <section class="glass panel">
-    <h2>1. Влияние компонента на параметры</h2>
-    <p>Сколько даёт <b>один</b> компонент этого типа и уровня. Пустое поле — ноль. Строка «Масса»
-      не вводится: она уже посчитана из массы сырья.</p>
+    <h2>1. Справочник параметров</h2>
+    <p>Все параметры, какие есть в игре. Список ваш: название и единицы правятся прямо здесь,
+      порядок меняется стрелками, лишнее удаляется, новое добавляется кнопкой внизу. Из этого
+      списка потом выбираются параметры на места у каждого вида оборудования. Первые четыре места
+      заняты всегда и не выбираются — <b>масса, прочность, термостойкость, радиационная защита</b>
+      есть у всего оборудования.</p>
     <div class="tools">
+      <button id="b-now">Сохранить</button>
       <button id="b-save">Скачать файл</button>
       <button id="b-load">Загрузить файл</button>
       <button id="b-dump">Показать JSON</button>
+      <button id="b-all">Заменить всё пробным балансом</button>
       <button id="b-reset">Сбросить к пустому</button>
       <input type="file" id="f-load" accept=".json,application/json" hidden>
       <span class="sp" id="saved">сохраняется автоматически</span>
+      <span class="sp" id="stale" style="margin-left:10px;color:#ff9a7a;display:none"></span>
     </div>
     <textarea id="dump" spellcheck="false" readonly></textarea>
-    <div class="scroll" style="margin-top:10px"><table class="inp" id="t-inf"></table></div>
+    <div class="scroll" style="margin-top:10px"><table class="inp plist" id="t-params"></table></div>
+    <p style="margin-top:8px"><button id="b-addp">+ Добавить параметр</button></p>
+  </section>
+
+  <section class="glass panel">
+    <h2>2. Влияние компонента на параметры</h2>
+    <p>Сколько даёт <b>один</b> компонент этого типа и уровня по каждому параметру. Строки —
+      названия параметров из справочника. У предмета в расчёт идёт только то, что есть в его
+      списке мест: у двигателя это тяга, у РЭБ — мощность воздействия. Пустое поле — ноль,
+      масса здесь такой же параметр, как все остальные.</p>
+    <div class="scroll"><table class="inp" id="t-inf"></table></div>
 
     <h3>Энергоёмкость топлива</h3>
     <p>Энергетическое сырьё — это и есть топливо. Газохранилище сжигает <b>одну единицу за цикл</b>
       и выдаёт столько энергии, сколько задано здесь; дальше эта энергия тратится оборудованием
-      наравне с выработкой реакторов. Выработка корабля = выработка оборудования + газохранилища ×
-      энергоёмкость топлива.</p>
+      наравне с выработкой реакторов.</p>
     <div class="scroll"><table class="inp" id="t-fuel"></table></div>
   </section>
 
   <section class="glass panel">
-    <h2>2. Состав оборудования</h2>
-    <p>Сколько компонентов каждого типа входит в предмет. От уровня состав не зависит — уровень
-      выбирается при сборке. Справа — масса предмета по уровням, она следует из состава.</p>
-    <div class="scroll"><table class="inp" id="t-comp"></table></div>
+    <h2>3. Оборудование: состав, места параметров и итог</h2>
+    <p>У каждого вида оборудования свой состав и свой порядок параметров по местам. <b>Мин</b> —
+      предмет собран целиком из компонентов 1 уровня, <b>макс</b> — из компонентов 3 уровня;
+      компоненты в предмете бывают любых уровней вперемешку, поэтому настоящее значение всегда
+      между ними, а состав при этом неизменен.</p>
+    <div class="parts" id="t-parts"></div>
   </section>
 
   <section class="glass panel">
-    <h2>3. Свойства оборудования — выводятся</h2>
-    <p>Ничего не вводится: всё посчитано из состава и влияния компонентов.</p>
-    <select id="q-part"></select>
-    <div class="scroll"><table id="t-part"></table></div>
+    <h2>4. Проверка боя: попаданий до вывода модуля</h2>
+    <p>Урон идёт <b>сначала по каркасу палубы</b> (обшивке) и только потом по самому модулю,
+      поэтому на вывод одного модуля нужно пробить <code>прочность каркаса + прочность модуля</code>.
+      Цель — <b>1…5 попаданий</b>, когда орудие и корпус собраны из компонентов одного уровня;
+      выход за рамки подсвечен. Уровни разные — разрыв больше, это нормально.</p>
+    <div class="tools" style="margin-bottom:6px">
+      <label style="font-size:13px;color:#c6d2e8">Орудие собрано из компонентов
+        <select id="q-gt" style="width:auto;display:inline-block">
+          <option value="1">1 уровня</option><option value="2" selected>2 уровня</option><option value="3">3 уровня</option>
+        </select></label>
+      <label style="font-size:13px;color:#c6d2e8">корпус цели —
+        <select id="q-ht" style="width:auto;display:inline-block">
+          <option value="1">1 уровня</option><option value="2" selected>2 уровня</option><option value="3">3 уровня</option>
+        </select></label>
+    </div>
+    <div class="scroll"><table class="hits" id="t-hits"></table></div>
+
+    <h3>РЭБ: радиус подавления</h3>
+    <p>Подавление работает <b>в радиусе радара</b> и слабеет линейно с расстоянием:
+      <code>действующая мощность = мощность × (1 − расстояние / радиус радара)</code>. Пока она
+      больше защиты цели, воздействие удаётся, поэтому
+      <code>радиус подавления = радиус радара × (1 − защита ÷ мощность)</code>. Вплотную мощность
+      почти всегда пробивает, а <b>на удалении достаточная защита делает корабль неуязвимым</b>.
+      В ячейке — до какой доли радара глушит; «—» значит, что не пробивает вовсе.</p>
+    <div class="scroll"><table class="hits" id="t-ecm"></table></div>
   </section>
 
   <section class="glass panel">
-    <h2>4. Итог: три корабля</h2>
+    <h2>5. Итог: три корабля</h2>
     <p>Дизайны — из конструктора. Уровень — из каких компонентов собран весь корабль. Орудие ставится
       в каждый оружейный модуль.</p>
     <div class="ships" id="ships"></div>
     <p style="margin-top:10px">Как считается:</p>
     <ul>
-      <li><b>Ускорение</b> = Σ(«ускорение на 100 т» × 100) ÷ масса корабля × доля энергии. Доля энергии —
-        сколько спроса двигателей закрывает выработка (не хватает — тяга падает кратно). Дальше работают
-        те же формулы, что в полёте (<code>ships.js</code>): ускорение растёт со скоростью как
-        <code>a₀(1 + K(v/c)²)</code>.</li>
-      <li><b>Энергия.</b> У компонентов два расхода: <b>пассивный</b> идёт всегда, <b>активный</b> — только
-        пока модуль работает. При разгоне = пассив всего корабля + актив только двигателей;
-        в бою = пассив + актив всех систем.</li>
+      <li><b>Роли параметров.</b> Расчёт корабля узнаёт параметры по роли: масса, ускорение, энергия,
+        прочность, защиты, урон, ёмкость, дальности. Если роль у нескольких параметров (три вида
+        урона, две ёмкости) — они складываются; дальности не складываются, берётся лучшая.
+        Добавленный вами параметр без роли просто суммируется и показан отдельной строкой.</li>
+      <li><b>Ускорение</b> = Σ(«ускорение на 100 ед. массы» × 100) ÷ масса корабля × доля энергии.
+        Доля энергии — сколько спроса двигателей закрывает выработка. Дальше работают те же формулы,
+        что в полёте (<code>ships.js</code>): <code>a₀(1 + K(v/c)²)</code>.</li>
+      <li><b>Энергия.</b> Пассивное потребление идёт всегда, активное — пока модуль работает.
+        При разгоне = пассив всего корабля + актив только двигателей; в бою = пассив + актив всех систем.</li>
+      <li><b>Уровень источников энергии</b> выбирается отдельно: реакторы и паруса считаются по
+        нему, топливо — по своему уровню. Правило баланса: всё одного уровня — энергии хватает
+        на полную тягу; источники слабее потребителей — тяга проседает; всё топовое — работает
+        на максимуме.</li>
+      <li><b>РЭБ.</b> Подавление работает в радиусе радара и слабеет линейно с расстоянием:
+        действующая мощность = <code>мощность × (1 − расстояние / радиус радара)</code>. Воздействие
+        удаётся, пока она больше защиты цели, поэтому радиус подавления =
+        <code>радиус радара × (1 − защита / мощность)</code>: вплотную пробивает почти всегда,
+        а издали достаточная защита делает корабль неуязвимым.</li>
+      <li><b>Запас энергии.</b> Неважно, как энергия получена — сжиганием газа в газохранилище,
+        реактором или солнечным парусом: она копится в аккумуляторе внутри самого оборудования
+        и в отдельных аккумуляторах, которые просто увеличивают общий запас. Пока запас не кончился,
+        нехватка выработки тягу не режет; «доля энергии на тягу» — это устойчивый режим, то есть
+        что останется, когда запас израсходован.</li>
       <li><b>Пересечение сектора</b> — <span id="sec-d"></span> (пятая часть радиуса галактики) по модели
         межзвёздного перелёта: разгон до 0,98 c, сверхсветовой скачок, торможение на половине тяги.</li>
     </ul>
@@ -148,20 +242,31 @@
 
 <script src="js/data.js"></script>
 <script src="js/ships.js"></script>
+<script src="js/store.js"></script>
 <script src="js/components.js"></script>
+<script src="js/parts-preset.js"></script>
 <script>
-// Универсальный конструктор: вводятся влияние компонентов и состав оборудования, всё остальное
-// выводится. Итоги трёх кораблей пересчитываются на каждый ввод теми же функциями, что считают полёт.
-(() => {
+// Вводятся: справочник параметров, влияние компонентов по местам, состав и места у оборудования.
+// Всё остальное выводится. Итоги трёх кораблей пересчитываются на каждый ввод теми же функциями,
+// что считают полёт.
+(async () => {
   const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const f = (x, k = 0) => !isFinite(x) ? '—' : x.toLocaleString('ru-RU', { minimumFractionDigits: k, maximumFractionDigits: k });
+  // Число без заданной точности: целое — без дробной части, иначе до трёх знаков.
+  const fv = x => !isFinite(x) ? '—' : Number.isInteger(x) ? f(x)
+    : f(x, Math.abs(x) < 1 ? 3 : Math.abs(x) < 100 ? 2 : Math.abs(x) < 1000 ? 1 : 0);
   const T = t => !isFinite(t) ? '—' : t < 120 ? `${f(t, 1)} с` : t < 7200 ? `${f(t / 60, 1)} мин` : `${f(t / 3600, 1)} ч`;
   // Склонение по русскому числу: 1 газохранилище, 2 газохранилища, 5 газохранилищ.
   const plural = (n, one, few, many) => {
     const a = Math.abs(n) % 100, b = a % 10;
     return a > 10 && a < 20 ? many : b > 1 && b < 5 ? few : b === 1 ? one : many;
   };
-  let tbl = loadParts();
+  // Таблица берётся из файла проекта data/parts.json (js/store.js), зеркало в браузере —
+  // только запасной вариант, когда страницу открыли без serve.js.
+  const got = await Store.load('parts');
+  let tbl = loadParts(got.data);
+  const WHERE = got.from;
 
   // ---------- Справка ----------
   $('t-mat').innerHTML = '<tr><th>Тип</th><th>1 уровень</th><th>2 уровень</th><th>3 уровень</th></tr>' +
@@ -169,30 +274,85 @@
       m.res.map(k => { const r = RESOURCES.find(x => x.key === k); return `<td>${r ? r.name : k}</td>`; }).join('') + '</tr>').join('');
   $('t-craft').innerHTML = '<tr><th>Компонент</th><th>Сырьё 1 ур.</th><th>Сырьё 2 ур.</th><th>Сырьё 3 ур.</th></tr>' +
     CRAFT.map(c => `<tr><td>Компонент ${c.tier} уровня</td>` + c.need.map(n => `<td>${n || '—'}</td>`).join('') + '</tr>').join('');
-  $('loss').textContent = `${f(CRAFT_LOSS * 100)} %`;
-  $('t-mass').innerHTML = '<tr><th>Тип</th><th colspan="3">Масса единицы сырья</th><th colspan="3">Масса компонента</th></tr>' +
-    '<tr><th></th>' + TIERS.map(t => `<th>${t} ур.</th>`).join('') + TIERS.map(t => `<th>${t} ур.</th>`).join('') + '</tr>' +
-    MAT_TYPES.map(m => `<tr><td>${m.name}</td>` +
-      m.res.map(k => { const r = RESOURCES.find(x => x.key === k); return `<td>${f(rawMass(k), 1)}</td>`; }).join('') +
-      TIERS.map(t => `<td><b>${f(componentMass(m.key, t), 1)}</b></td>`).join('') + '</tr>').join('');
   $('sec-d').textContent = `${f(SECTOR_UNITS / UNITS_PER_KPC, 1)} кпк ≈ ${f(SECTOR_UNITS / UNITS_PER_KPC * 3261.56)} св. лет`;
 
-  // ---------- 1. Влияние компонентов: строки — параметры, столбцы — 4 типа × 3 уровня ----------
-  const inpInf = (t, p, i) => {
-    const v = tbl.inf[t][p][i], e = v === null || v === undefined;
-    return `<input inputmode="decimal" data-tb="inf" data-t="${t}" data-p="${p}" data-i="${i}"` +
+  // ---------- 1. Справочник параметров ----------
+  // Масса особая: она считается из сырья, расчёт корабля без неё не живёт — её не удалить.
+  // Остальное целиком в руках пользователя: имя, единицы, порядок, добавление, удаление.
+  function buildParams() {
+    const list = paramList(tbl);
+    $('t-params').innerHTML =
+      '<tr><th>№</th><th>Параметр</th><th>Ед.</th><th>Роль</th><th></th></tr>' +
+      list.map((p, i) => {
+        const locked = isMass(p);
+        return `<tr><td class="num">${i + 1}</td>` +
+          `<td><input data-pe="name" data-k="${p.key}" value="${esc(p.name)}"${locked ? ' disabled' : ''}></td>` +
+          `<td style="width:110px"><input data-pe="unit" data-k="${p.key}" value="${esc(p.unit || '')}"${locked ? ' disabled' : ''}></td>` +
+          `<td class="role">${ROLE_NAME[p.role] || '—'}</td>` +
+          `<td class="act">` +
+            `<button data-pm="up" data-k="${p.key}"${i === 0 ? ' disabled' : ''}>↑</button>` +
+            `<button data-pm="down" data-k="${p.key}"${i === list.length - 1 ? ' disabled' : ''}>↓</button>` +
+            (locked ? '<span class="lock"> из сырья</span>'
+                    : `<button class="del" data-pm="del" data-k="${p.key}">✕</button>`) +
+          '</td></tr>';
+      }).join('');
+  }
+  const ROLE_NAME = {
+    mass: 'масса (из сырья)', accel: 'ускорение', turn: 'поворот', dur: 'прочность',
+    heat: 'термостойкость', rad: 'радиационная защита', dmg: 'урон', cap: 'грузовая ёмкость',
+    enGen: 'выработка энергии', enActive: 'активный расход', enPassive: 'пассивный расход',
+    range: 'дальность радара', fire: 'дальность стрельбы',
+    enCap: 'ёмкость аккумулятора', life: 'жизнеобеспечение', repair: 'восстановление прочности',
+    ecm: 'мощность РЭБ', ecmDef: 'РЭБ-защита',
+  };
+
+  $('t-params').addEventListener('input', e => {
+    const el = e.target; if (!el.dataset.pe) return;
+    const p = paramByKey(tbl, el.dataset.k); if (!p) return;
+    p[el.dataset.pe] = el.value;
+    if (el.dataset.pe === 'name') {                     // имя видно в списках мест и в строках влияния
+      document.querySelectorAll(`#t-parts option[value="${p.key}"]`).forEach(o => o.textContent = p.name);
+      buildInf();
+    }
+    renderAll(); touched();
+  });
+  $('t-params').addEventListener('click', e => {
+    const el = e.target.closest('button'); if (!el || !el.dataset.pm) return;
+    const list = tbl.params, i = list.findIndex(p => p.key === el.dataset.k);
+    if (i < 0) return;
+    if (el.dataset.pm === 'del') {
+      const used = PARTS.filter(x => (tbl.slots[x.key] || []).includes(list[i].key)).length;
+      if (!confirm(`Удалить параметр «${list[i].name}»?` + (used ? `\nОн занимает место у ${used} видов оборудования — места освободятся.` : ''))) return;
+      for (const k in tbl.slots) tbl.slots[k] = tbl.slots[k].map(x => x === list[i].key ? null : x);
+      list.splice(i, 1);
+    } else {
+      const j = el.dataset.pm === 'up' ? i - 1 : i + 1;
+      if (j < 0 || j >= list.length) return;
+      [list[i], list[j]] = [list[j], list[i]];
+    }
+    buildParams(); buildInf(); buildParts(); renderAll(); touched();
+  });
+  $('b-addp').onclick = () => {
+    tbl.params.push({ key: newParamKey(tbl), name: 'Новый параметр', unit: '' });
+    buildParams(); buildInf(); buildParts(); renderAll(); touched();
+  };
+
+  // ---------- 2. Влияние компонентов: строки — МЕСТА 1…10, столбцы — 4 типа × 3 уровня ----------
+  const inpInf = (t, key, i) => {
+    const a = tbl.inf[t][key] || (tbl.inf[t][key] = [null, null, null]);
+    const v = a[i], e = v === null || v === undefined;
+    return `<input inputmode="decimal" data-tb="inf" data-t="${t}" data-p="${key}" data-i="${i}"` +
       ` value="${e ? '' : v}"${e ? ' class="empty"' : ''}>`;
   };
-  $('t-inf').innerHTML =
-    '<tr><th rowspan="2">Параметр</th>' + MAT_TYPES.map(m => `<th class="g b" colspan="3">${m.name}</th>`).join('') + '</tr>' +
-    '<tr>' + MAT_TYPES.map(() => TIERS.map((t, j) => `<th${j === 0 ? ' class="b"' : ''}>${t} ур.</th>`).join('')).join('') + '</tr>' +
-    PARAMS.map(p => `<tr><td class="pname">${p.name}${p.unit ? ` <i>${p.unit}</i>` : ''}</td>` +
-      MAT_TYPES.map(m => TIERS.map((t, j) => {
-        const b = j === 0 ? ' class="b"' : '';
-        return p.derived
-          ? `<td${j === 0 ? ' class="b calc"' : ' class="calc"'}>${f(componentMass(m.key, t), 1)}</td>`
-          : `<td${b}>${inpInf(m.key, p.key, j)}</td>`;
-      }).join('')).join('') + '</tr>').join('');
+  function buildInf() {
+    $('t-inf').innerHTML =
+      '<tr><th rowspan="2">Параметр</th>' + MAT_TYPES.map(m => `<th class="g b" colspan="3">${m.name}</th>`).join('') + '</tr>' +
+      '<tr>' + MAT_TYPES.map(() => TIERS.map((t, j) => `<th${j === 0 ? ' class="b"' : ''}>${t} ур.</th>`).join('')).join('') + '</tr>' +
+      paramList(tbl).map(p => `<tr><td class="pname">${esc(p.name)}${p.unit ? ` <i>${esc(p.unit)}</i>` : ''}</td>` +
+        MAT_TYPES.map(m => TIERS.map((t, j) =>
+          `<td${j === 0 ? ' class="b"' : ''}>${inpInf(m.key, p.key, j)}</td>`).join('')).join('') + '</tr>').join('');
+  }
+  buildInf();
 
   // Энергоёмкость единицы топлива по трём уровням энергетического сырья.
   $('t-fuel').innerHTML = '<tr><th>Топливо</th><th>Уровень</th><th>Энергии за единицу</th></tr>' +
@@ -202,44 +362,51 @@
         `<td style="width:120px"><input inputmode="decimal" data-tb="fuel" data-i="${i}"` +
         ` value="${e ? '' : v}"${e ? ' class="empty"' : ''}></td></tr>`; }).join('');
 
-  // ---------- 2. Состав оборудования: строки — предметы, столбцы — 4 типа компонентов ----------
-  const inpComp = (k, t) => {
-    const v = tbl.comp[k][t], e = v === null || v === undefined;
-    return `<input inputmode="numeric" data-tb="comp" data-k="${k}" data-t="${t}"` +
-      ` value="${e ? '' : v}"${e ? ' class="empty"' : ''}>`;
-  };
-  let ch = '<tr><th>Оборудование</th>' + MAT_TYPES.map(m => `<th>${m.name}</th>`).join('') +
-    '<th class="b">Всего</th>' + TIERS.map(t => `<th>Масса ${t} ур.</th>`).join('') + '</tr>';
-  for (const g of PART_GROUPS) {
-    ch += `<tr class="grp"><td colspan="${1 + MAT_TYPES.length + 4}">${g.name}</td></tr>`;
-    for (const p of PARTS.filter(x => x.group === g.key))
-      ch += `<tr><td class="pname">${p.name}${p.note ? ` <i>${p.note}</i>` : ''}</td>` +
-        MAT_TYPES.map(m => `<td>${inpComp(p.key, m.key)}</td>`).join('') +
-        `<td class="b calc" data-size="${p.key}">—</td>` +
-        TIERS.map(t => `<td class="calc" data-mass="${p.key}" data-i="${t}">—</td>`).join('') + '</tr>';
+  // ---------- 3. Оборудование: состав + места параметров + мин/макс ----------
+  // Карточки строятся ОДИН раз (и заново — когда поменялся справочник параметров: в списках
+  // мест другие варианты). Числа обновляются отдельно, не трогая DOM полей, иначе ввод состава
+  // терял бы курсор на каждом нажатии.
+  function buildParts() {
+    const opts = sel => '<option value="">— пусто —</option>' +
+      paramList(tbl).map(p => `<option value="${p.key}"${p.key === sel ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
+    let h = '';
+    for (const g of PART_GROUPS) {
+      h += `<div class="gl">${g.name}</div>`;
+      for (const p of PARTS.filter(x => x.group === g.key)) {
+        const c = tbl.comp[p.key];
+        h += `<div class="pc"><div class="n">${p.name}${p.note ? ` <span class="note">${p.note}</span>` : ''}</div>` +
+          '<div class="cmpx">' + MAT_TYPES.map(m => {
+            const v = c[m.key], e = v === null || v === undefined;
+            return `<div><label>${m.name}</label><input inputmode="numeric" data-tb="comp" data-k="${p.key}" data-t="${m.key}"` +
+              ` value="${e ? '' : v}"${e ? ' class="empty"' : ''}></div>`;
+          }).join('') + '</div>' +
+          '<table><tr><th>№</th><th>Параметр</th><th>Мин</th><th>Макс</th></tr>' +
+          Array.from({ length: PARAM_SLOTS }, (_, s) => {
+            const sp = slotParam(tbl, p.key, s), fixed = s < FIXED_SLOTS.length;
+            return `<tr><td class="num">${s + 1}</td>` +
+              `<td><select data-tb="slot" data-k="${p.key}" data-s="${s}"${sp ? '' : ' class="empty"'}${
+                fixed ? ' disabled title="есть у всего оборудования"' : ''}>${opts(sp && sp.key)}</select></td>` +
+              `<td class="v" data-k="${p.key}" data-s="${s}" data-m="min"></td>` +
+              `<td class="v" data-k="${p.key}" data-s="${s}" data-m="max"></td></tr>`;
+          }).join('') + '</table></div>';
+      }
+    }
+    $('t-parts').innerHTML = h;
   }
-  $('t-comp').innerHTML = ch;
-
-  // ---------- 3. Свойства оборудования (выводятся) ----------
-  $('q-part').innerHTML = PART_GROUPS.map(g =>
-    `<optgroup label="${g.name}">` + PARTS.filter(x => x.group === g.key).map(p =>
-      `<option value="${p.key}">${p.name}</option>`).join('') + '</optgroup>').join('');
-  function renderPart() {
-    const k = $('q-part').value, c = tbl.comp[k];
-    const made = MAT_TYPES.filter(m => +c[m.key] > 0).map(m => `${c[m.key]} × ${m.name}`).join(' + ') || 'состав не задан';
-    $('t-part').innerHTML = `<tr><th>Параметр</th>${TIERS.map(t => `<th>Уровень ${t}</th>`).join('')}</tr>` +
-      `<tr><td colspan="4" style="color:var(--muted)">Состав: ${made}</td></tr>` +
-      PARAMS.map(p => `<tr><td>${p.name}${p.unit ? ` <span style="color:var(--muted);font-size:11px">${p.unit}</span>` : ''}</td>` +
-        TIERS.map(t => { const v = partParam(tbl, k, p.key, t);
-          return `<td${v ? ' style="color:#ffd9a0"' : ' style="color:var(--muted)"'}>${v ? f(v, p.dec) : '—'}</td>`; }).join('') +
-        '</tr>').join('');
+  function updateParts() {
+    document.querySelectorAll('#t-parts td.v').forEach(el => {
+      const s = +el.dataset.s;
+      const v = el.dataset.m === 'min' ? slotMin(tbl, el.dataset.k, s) : slotMax(tbl, el.dataset.k, s);
+      el.textContent = v ? fv(v) : '—';
+      el.classList.toggle('zero', !v);
+    });
   }
 
   // ---------- 4. Три корабля ----------
   const SHIPS = [
-    { t: 'Минимальный', design: 'Корвет Патрульный', tier: 1, gun: 'gun_autocannon', fuel: 1 },
-    { t: 'Средний',     design: 'Крейсер 1',         tier: 2, gun: 'gun_autocannon', fuel: 2 },
-    { t: 'Топовый',     design: 'Дредноут 1',        tier: 3, gun: 'gun_autocannon', fuel: 3 },
+    { t: 'Минимальный', design: 'Корвет Патрульный', tier: 1, gun: 'gun_autocannon', fuel: 1, power: 1 },
+    { t: 'Средний',     design: 'Крейсер 1',         tier: 2, gun: 'gun_autocannon', fuel: 2, power: 2 },
+    { t: 'Топовый',     design: 'Дредноут 1',        tier: 3, gun: 'gun_autocannon', fuel: 3, power: 3 },
   ];
   const designs = loadDesigns(), guns = PARTS.filter(p => p.group === 'guns');
   $('ships').innerHTML = SHIPS.map((s, i) =>
@@ -247,39 +414,88 @@
     `<select data-s="${i}" data-f="design">${designs.map(d =>
       `<option${d.name === s.design ? ' selected' : ''}>${d.name}</option>`).join('')}</select>` +
     `<select data-s="${i}" data-f="tier">${TIERS.map(t =>
-      `<option value="${t}"${t === s.tier ? ' selected' : ''}>Компоненты ${t} уровня</option>`).join('')}</select>` +
+      `<option value="${t}"${t === s.tier ? ' selected' : ''}>Все компоненты ${t} ур.${
+        t === 1 ? ' — минимум' : t === TIERS.length ? ' — максимум' : ''}</option>`).join('')}</select>` +
+    `<select data-s="${i}" data-f="power">${TIERS.map(t =>
+      `<option value="${t}"${t === s.power ? ' selected' : ''}>Источники энергии: ${t} ур.</option>`).join('')}</select>` +
     `<select data-s="${i}" data-f="gun">${guns.map((g, j) =>
       `<option value="${g.key}"${j === 0 ? ' selected' : ''}>${g.name}</option>`).join('')}</select>` +
     `<select data-s="${i}" data-f="fuel">${FUEL_RES.map((k, j) => { const r = RESOURCES.find(x => x.key === k);
       return `<option value="${j + 1}"${j + 1 === s.fuel ? ' selected' : ''}>Топливо: ${r ? r.name : k}</option>`; }).join('')}</select>` +
     `<div class="out" data-s="${i}"></div></div>`).join('');
 
+  // ---------- 4. Проверка боя ----------
+  // Столбцы — по кому стреляем (самые частые модули), строки — чем. Число = попаданий до вывода.
+  // Каркас в целях не нужен: он и так считается в каждой строке как обшивка перед модулем.
+  const HIT_TARGETS = ['engine', 'engine_ion', 'reactor', 'gas_storage', 'weapon_mount',
+    'radar', 'life_support', 'cargo'].filter(k => PART[k]);
+  function renderHits() {
+    const gt = +$('q-gt').value, ht = +$('q-ht').value;
+    const guns = PARTS.filter(p => p.group === 'guns');
+    $('t-hits').innerHTML =
+      '<tr><th>Орудие</th><th>Урон</th><th>Дальность</th><th>Урон на половине</th><th>Точность там же</th><th>Сбивает ПВО</th>' +
+      HIT_TARGETS.map(k => `<th>${PART[k].name}</th>`).join('') + '</tr>' +
+      guns.map(g => {
+        const dmg = damageTotal(tbl, g.key, gt), rng = partParam(tbl, g.key, 'fireRange', gt);
+        const half = gunAt(tbl, g.key, gt, rng / 2), icept = interceptChance(tbl, g.key, gt);
+        return `<tr><td>${g.name}</td><td class="h">${dmg ? fv(dmg) : '—'}</td><td class="h">${rng ? fv(rng) : '—'}</td>` +
+          `<td class="h">${rng ? fv(half.damage) : '—'}</td><td class="h">${rng ? f(half.acc * 100) + ' %' : '—'}</td>` +
+          `<td class="h${icept > 0.7 ? ' bad' : ''}">${icept > 0 ? f(icept * 100) + ' %' : '—'}</td>` +
+          HIT_TARGETS.map(k => {
+            const h = hitsToKill(tbl, g.key, k, gt, ht);
+            const cls = !isFinite(h) ? '' : h > HITS_MAX || h < HITS_MIN ? ' bad' : h === 1 ? ' one' : '';
+            return `<td class="h${cls}">${isFinite(h) ? h : '—'}</td>`;
+          }).join('') + '</tr>';
+      }).join('');
+  }
+  // Радиус подавления: строки — сколько модулей РЭБ у того, кто глушит, столбцы — сколько
+  // защитных модулей (вычислительных) у цели. Уровни берутся из тех же двух списков сверху.
+  function renderEcm() {
+    const gt = +$('q-gt').value, ht = +$('q-ht').value;
+    const power1 = partParam(tbl, 'ecm', 'ecmPower', gt);
+    const radar = partParam(tbl, 'radar', 'radar', gt);
+    const defEcm = partParam(tbl, 'ecm', 'ecmDef', ht);
+    const defComp = partParam(tbl, 'computer', 'ecmDef', ht);
+    const cols = [0, 1, 2, 3, 4];
+    $('t-ecm').innerHTML =
+      `<tr><th>Модулей РЭБ</th><th>Мощность</th>` +
+      cols.map(n => `<th>защита цели: ${n} выч. модул${n === 1 ? 'ь' : n < 5 && n ? 'я' : 'ей'}</th>`).join('') + '</tr>' +
+      [1, 2, 3].map(k => {
+        const p = k * power1;
+        return `<tr><td>${k}</td><td class="h">${fv(p)}</td>` + cols.map(n => {
+          const d = n * defComp + defEcm;          // у цели свой модуль РЭБ тоже прикрывает
+          const r = ecmReach(p, d, radar);
+          const part = radar > 0 ? r / radar : 0;
+          return `<td class="h${r <= 0 ? ' bad' : part > 0.9 ? ' one' : ''}">${
+            r > 0 ? fv(r) + ' (' + f(part * 100) + ' %)' : '—'}</td>`;
+        }).join('') + '</tr>';
+      }).join('') +
+      `<tr><td colspan="${cols.length + 2}" style="color:var(--muted)">Радиус радара ${fv(radar)}; ` +
+      `у одного модуля РЭБ воздействие ${fv(power1)} и защита ${fv(defEcm)}, у вычислительного модуля защита ${fv(defComp)}.</td></tr>`;
+  }
+  $('q-gt').addEventListener('change', () => { renderHits(); renderEcm(); });
+  $('q-ht').addEventListener('change', () => { renderHits(); renderEcm(); });
+
   const row = (n, v, cls = '') => `<div class="r ${cls}"><span>${n}</span><b>${v}</b></div>`;
   function renderAll() {
-    // Производные ячейки таблицы состава
-    document.querySelectorAll('[data-size]').forEach(el => {
-      const n = partSize(tbl, el.dataset.size);
-      el.textContent = n || '—'; el.classList.toggle('zero', !n);
-    });
-    document.querySelectorAll('[data-mass]').forEach(el => {
-      const m = partParam(tbl, el.dataset.mass, 'mass', +el.dataset.i);
-      el.textContent = m ? f(m, 1) : '—'; el.classList.toggle('zero', !m);
-    });
-    renderPart();
+    updateParts();
+    renderHits();
+    renderEcm();
     document.querySelectorAll('.out').forEach(el => {
       const i = +el.dataset.s, s = SHIPS[i];
       const d = designs.find(x => x.name === s.design) || designs[0];
-      const st = shipTotals(tbl, d, s.tier, s.gun, s.fuel);
+      const st = shipTotals(tbl, d, s.tier, s.gun, s.fuel, s.power);
       el.innerHTML =
         '<div class="g">Итоги</div>' +
         row('Пересечь сектор', T(st.crossSector), 'key') +
         row('Разгон до скорости света', T(st.toLight), 'key') +
-        row('Общий урон', f(st.damage, 1), 'key') +
-        row('Общая прочность', f(st.durability, 1), 'key') +
+        row('Общий урон', fv(st.damage), 'key') +
+        row('Общая прочность', fv(st.durability), 'key') +
+        row('Восстановление прочности', fv(st.repair), 'key') +
         row('Общая масса, т', f(st.mass), 'key') +
-        row('Выработка энергии', f(st.energySupply, 1), 'key') +
-        row('Энергия при разгоне', f(st.energyThrust, 1) + (st.deficitThrust ? ` (−${f(st.deficitThrust, 1)})` : ''), 'key' + (st.deficitThrust ? ' warn' : '')) +
-        row('Энергия в бою', f(st.energyCombat, 1) + (st.deficitCombat ? ` (−${f(st.deficitCombat, 1)})` : ''), 'key' + (st.deficitCombat ? ' warn' : '')) +
+        row('Выработка энергии', fv(st.energySupply), 'key') +
+        row('Энергия при разгоне', fv(st.energyThrust) + (st.deficitThrust ? ` (−${fv(st.deficitThrust)})` : ''), 'key' + (st.deficitThrust ? ' warn' : '')) +
+        row('Энергия в бою', fv(st.energyCombat) + (st.deficitCombat ? ` (−${fv(st.deficitCombat)})` : ''), 'key' + (st.deficitCombat ? ' warn' : '')) +
         '<div class="g">Подробно</div>' +
         row('Класс', st.cls.name) +
         row('Палуб · модулей', `${st.decks} · ${st.modules}`) +
@@ -287,51 +503,86 @@
         row('Доля энергии на тягу', `${f(st.energyRatio * 100)} %`) +
         row('Разворот', `${f(st.turnRate, 1)} °/с`) +
         row('Пересечь систему (500 а. е.)', T(st.crossSystem)) +
-        row('Радиозащита · теплозащита', `${f(st.rad, 1)} · ${f(st.heat, 1)}`) +
-        row('Энергия: оборудование', f(st.energyGen, 1)) +
-        row('Энергия: топливо', `${f(st.energyBurn, 1)} (${st.tanks} ${plural(st.tanks, 'газохранилище', 'газохранилища', 'газохранилищ')})`) +
-        row('Расход пассивно (всегда)', f(st.energyPassive, 1)) +
-        row('Расход активно: двигатели', f(st.energyDrive, 1)) +
-        row('Расход активно: все системы', f(st.energyActive, 1)) +
-        row('Ёмкость', f(st.sum.cap));
+        row('Радиозащита · теплозащита', `${fv(st.rad)} · ${fv(st.heat)}`) +
+        row('Дальность стрельбы · радара', `${fv(st.fireRange)} · ${fv(st.range)}`) +
+        row('РЭБ: воздействие · защита', `${fv(st.ecmPower)} · ${fv(st.ecmDef)}`) +
+        row('Глушит такой же корабль до', st.ecmPower > 0
+          ? `${fv(st.ecmReachSelf)} (${f(st.range > 0 ? st.ecmReachSelf / st.range * 100 : 0)} % радара)`
+          : '—') +
+        row('Грузовая ёмкость', fv(st.capacity)) +
+        row('Запас энергии', fv(st.energyStore)) +
+        row('Запаса хватит: разгон · бой', (isFinite(st.cyclesThrust) ? fv(st.cyclesThrust) : '∞') +
+          ' · ' + (isFinite(st.cyclesCombat) ? fv(st.cyclesCombat) : '∞') + ' цикл.') +
+        row('Запас жизнеобеспечения', fv(st.lifeSupport)) +
+        row('Энергия: оборудование', fv(st.energyGen)) +
+        row('Энергия: топливо', `${fv(st.energyBurn)} (${st.tanks} ${plural(st.tanks, 'газохранилище', 'газохранилища', 'газохранилищ')})`) +
+        row('Расход пассивно (всегда)', fv(st.energyPassive)) +
+        row('Расход активно: двигатели', fv(st.energyDrive)) +
+        row('Расход активно: все системы', fv(st.energyActive)) +
+        (st.extra.length ? '<div class="g">Прочие параметры</div>' +
+          st.extra.map(p => row(p.name, fv(p.value) + (p.unit ? ` ${p.unit}` : ''))).join('') : '');
     });
   }
 
   // ---------- Ввод и автосохранение ----------
-  let saveT = null;
+  let saveT = null, dirty = false;          // dirty — пользователь реально что-то поменял
+  // Каждая правка уходит В ФАЙЛ data/parts.json (и в зеркало браузера). Так таблица не умирает
+  // ни от чистки браузера, ни от моих правок кода — требование пользователя.
+  async function writeNow() {
+    const r = await Store.save('parts', tbl);
+    if (r.ok) dirty = false;
+    const t = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    $('saved').textContent = r.where === 'file' ? `сохранено в data/parts.json · ${t}`
+      : r.where === 'local' ? `сохранено ТОЛЬКО в браузере · ${t} — в файл не попало: запустите start-game.bat и откройте http://localhost:8080/components.html`
+      : 'НЕ СОХРАНЯЕТСЯ — скачайте файл';
+    $('saved').style.color = r.where === 'file' ? '' : '#ff9a7a';
+  }
   function touched() {
+    dirty = true;
     $('saved').textContent = 'сохраняю…';
     clearTimeout(saveT);
-    saveT = setTimeout(() => {
-      saveParts(tbl);
-      const ok = (() => { try { return !!localStorage.getItem(PARTS_KEY); } catch (_) { return false; } })();
-      const t = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      $('saved').textContent = ok ? `сохранено в браузере · ${t}` : 'НЕ СОХРАНЯЕТСЯ — скачайте файл';
-      $('saved').style.color = ok ? '' : '#ff9a7a';
-    }, 250);
+    saveT = setTimeout(writeNow, 400);
   }
   // Дозапись при закрытии вкладки, чтобы задержка в 250 мс не съела последнюю правку.
   // leaving = уходим осознанно (сброс, загрузка файла) — тогда писать НЕЛЬЗЯ, иначе сброс
   // тут же вернёт стёртое обратно из памяти.
   let leaving = false;
-  addEventListener('beforeunload', () => { if (leaving) return; clearTimeout(saveT); saveParts(tbl); });
+  // ВАЖНО: при уходе пишем ТОЛЬКО если пользователь что-то правил. Иначе простое открытие
+  // страницы перезаписывает файл тем, что лежало в памяти вкладки, — так я уже затёр чужую
+  // таблицу (третий раз на тех же граблях, см. docs/Уроки-v2.md §1).
+  addEventListener('beforeunload', () => {
+    if (leaving || !dirty) return;
+    clearTimeout(saveT); saveParts(tbl);                   // зеркало — синхронно
+    try { navigator.sendBeacon('data/parts.json', new Blob([JSON.stringify(tbl, null, 1)], { type: 'application/json' })); }
+    catch (_) { /* нет serve.js — остаётся зеркало */ }
+  });
 
   function onInput(e) {
-    const el = e.target; if (el.tagName !== 'INPUT' || !el.dataset.tb) return;
+    const el = e.target; if (!el.dataset.tb) return;
+    if (el.dataset.tb === 'slot') {                       // выбор параметра на место
+      tbl.slots[el.dataset.k][+el.dataset.s] = el.value || null;
+      el.classList.toggle('empty', !el.value);
+      renderAll(); touched(); return;
+    }
     const s = el.value.trim().replace(',', '.'), v = s === '' ? null : (isFinite(+s) ? +s : null);
-    if (el.dataset.tb === 'inf') tbl.inf[el.dataset.t][el.dataset.p][+el.dataset.i] = v;
+    if (el.dataset.tb === 'inf') {
+      const a = tbl.inf[el.dataset.t][el.dataset.p] || (tbl.inf[el.dataset.t][el.dataset.p] = [null, null, null]);
+      a[+el.dataset.i] = v;
+    }
     else if (el.dataset.tb === 'fuel') tbl.fuel[+el.dataset.i] = v;
     else tbl.comp[el.dataset.k][el.dataset.t] = v;
     el.classList.toggle('empty', v === null);
     renderAll(); touched();
   }
   $('t-inf').addEventListener('input', onInput);
-  $('t-comp').addEventListener('input', onInput);
   $('t-fuel').addEventListener('input', onInput);
-  $('q-part').addEventListener('change', renderPart);
+  // Состав и места — внутри карточек предметов; карточки перерисовываются, поэтому слушаем
+  // контейнер. Для <select> событие change, для полей состава — input.
+  $('t-parts').addEventListener('input', onInput);
+  $('t-parts').addEventListener('change', e => { if (e.target.dataset.tb === 'slot') onInput(e); });
   $('ships').addEventListener('change', e => {
     const el = e.target; if (el.tagName !== 'SELECT') return;
-    SHIPS[+el.dataset.s][el.dataset.f] = el.dataset.f === 'tier' ? +el.value : el.value;
+    SHIPS[+el.dataset.s][el.dataset.f] = el.dataset.f === 'design' || el.dataset.f === 'gun' ? el.value : +el.value;
     renderAll();
   });
 
@@ -347,12 +598,13 @@
   $('f-load').onchange = e => {
     const file = e.target.files[0]; if (!file) return;
     const r = new FileReader();
-    r.onload = () => {
+    r.onload = async () => {
       try {
         const s = JSON.parse(r.result);
         if (!s || !s.inf || !s.comp) throw 0;
         if (!confirm('Заменить всё, что сейчас внесено, числами из файла?')) return;
-        leaving = true; clearTimeout(saveT); saveParts(s); location.reload();
+        await Store.backup('parts', tbl);
+        leaving = true; clearTimeout(saveT); await Store.save('parts', s); location.reload();
       } catch (_) { alert('Не похоже на файл этой таблицы — ничего не менял.'); }
     };
     r.readAsText(file); e.target.value = '';
@@ -362,14 +614,49 @@
     t.style.display = show ? 'block' : 'none';
     if (show) { t.value = JSON.stringify(tbl, null, 1); t.select(); }
   };
-  $('b-reset').onclick = () => {
-    if (!confirm('Стереть все внесённые числа и вернуть пустой шаблон?')) return;
+  // Явное сохранение: страница и так пишет в браузер через 250 мс после правки, но кнопка
+  // нужна — иначе непонятно, сохранено ли, и страшно нажимать «Сбросить».
+  $('b-now').onclick = () => { clearTimeout(saveT); writeNow(); };
+  // Полная замена — отдельная кнопка с явным предупреждением: она ЗАТИРАЕТ состав оборудования.
+  $('b-all').onclick = async () => {
+    if (typeof PARTS_PRESET === 'undefined') return alert('Нет js/parts-preset.js — соберите: node tools/parts-balance.js --write');
+    if (!confirm('Заменить ВСЁ целиком: числа влияния, состав оборудования и места?')) return;
+    const copy = await Store.backup('parts', tbl);        // копия на диск — потерять нельзя
+    leaving = true; clearTimeout(saveT);
+    await Store.save('parts', JSON.parse(JSON.stringify(PARTS_PRESET)));
+    alert(copy ? 'Прежняя таблица сохранена: ' + copy : 'Копию на диск сделать не вышло (нет serve.js)');
+    location.reload();
+  };
+  $('b-reset').onclick = async () => {
+    if (!confirm('Стереть всё внесённое и вернуть пустой шаблон?')) return;
+    const copy = await Store.backup('parts', tbl);        // копия на диск — потерять нельзя
     leaving = true; clearTimeout(saveT);
     try { localStorage.removeItem(PARTS_KEY); } catch (_) {}
+    await Store.save('parts', blankParts());
+    alert(copy ? 'Прежняя таблица сохранена: ' + copy : 'Копию на диск сделать не вышло (нет serve.js)');
     location.reload();
   };
 
+  // Пробный баланс мог пересобраться после того, как вы его загрузили: тогда в браузере лежат
+  // прежние числа, и легко решить, что расчёт кривой. Честно говорим об этом.
+  // Числа влияния обновляются сами при загрузке (loadParts), поэтому здесь только отметка,
+  // от какой сборки они пришли. Состав оборудования — ваш, его ничто не перезаписывает.
+  {
+    const el = $('stale');
+    el.style.display = '';
+    el.style.color = WHERE === 'file' ? '' : '#ff9a7a';
+    el.textContent = (WHERE === 'file' ? 'таблица из data/parts.json'
+      : WHERE === 'local' ? 'таблица из браузера: страница открыта без сервера игры (или сервер поднят не из папки проекта) — запустите start-game.bat и откройте http://localhost:8080/components.html, иначе правки не сохранятся в data/parts.json'
+      : 'таблица новая, из пробного баланса') +
+      (tbl.build ? ` · числа влияния: сборка ${tbl.build}` : '') + ' · состав оборудования ваш';
+  }
+
+  buildParams();
+  buildParts();
   renderAll();
+  // Файла ещё нет (первый запуск или таблица пришла из браузера) — сразу кладём её на диск,
+  // чтобы дальше жила в data/parts.json, а не только в браузере.
+  if (WHERE === null) writeNow();           // файла нет совсем — создаём; чужой не трогаем
 })();
 </script>
 </body>

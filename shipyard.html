@@ -40,10 +40,9 @@
       <div id="deck-grid"></div>
       <div class="bow">нос ▶</div>
     </div>
-    <div class="muted small-text">Пустая клетка — построить палубу. Построенная — выбрать её и настроить модули. Цифра — сектор обстрела, «Ц» — цитадель (жизнеобеспечение и радар там всегда).</div>
+    <div class="muted small-text"><b>Форма корабля — стандарт и не меняется:</b> палубы нельзя ни добавить, ни снять. Выберите палубу и ставьте на неё оборудование. Цифра — сектор обстрела, «Ц» — цитадель (жизнеобеспечение и радар там всегда).</div>
     <div class="row">
-      <button id="b-clear">Очистить</button>
-      <button id="b-fill">Залить всё</button>
+      <button id="b-clear">Снять оборудование</button>
     </div>
     <div id="deck-edit"></div>
   </section>
@@ -57,6 +56,17 @@
     <button id="b-mine" class="primary">Сделать моим кораблём</button>
     <div id="st-mine" class="muted small-text"></div>
   </section>
+
+  <!-- Сборка по таблице компонентов (data/parts.json) -->
+  <section class="glass panel stats">
+    <h2>По таблице компонентов</h2>
+    <div class="muted small-text">Те же числа, что на экране «Компоненты и производство»:
+      свойства корабля считаются из состава оборудования и влияния компонентов. Меняйте уровень
+      компонентов, источников энергии, топливо и орудие — сводка пересчитывается сразу.</div>
+    <div class="row" id="cmp-controls"></div>
+    <div id="cmp-stats"></div>
+    <div class="muted small-text" id="cmp-src"></div>
+  </section>
 </main>
 
 <script src="js/data.js"></script>
@@ -64,6 +74,9 @@
 <script src="js/galaxy-gen.js"></script>
 <script src="js/world.js"></script>
 <script src="js/ships.js"></script>
+<script src="js/store.js"></script>
+<script src="js/components.js"></script>
+<script src="js/parts-preset.js"></script>
 <script src="js/shipyard.js"></script>
 </body>
 </html>

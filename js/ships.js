@@ -31,26 +31,25 @@ const SHIP_MODULES = [
   { key: 'life_support', name: 'Жизнеобеспечение',      dur: 1, gen: 0,  active: 2,   passive: 2, mass: 20 },
   { key: 'colonist',     name: 'Колониальный модуль',   dur: 1, gen: 0,  active: 2,   passive: 2, mass: 40 },
   { key: 'weapon_mount', name: 'Оружейный модуль',      dur: 2, gen: 0,  active: 1,   passive: 0, mass: 25 },
-  { key: 'solar_sail',   name: 'Солнечный парус',       dur: 1, gen: 0,  active: 0,   passive: 0, mass: 10 },
   { key: 'engine',       name: 'Двигатель',             dur: 2, gen: 0,  active: 5,   passive: 0, mass: 30 },
   { key: 'engine_ion',   name: 'Ионный двигатель',      dur: 2, gen: 0,  active: 100, passive: 0, mass: 35 },
+  { key: 'solar_sail',   name: 'Солнечный парус',       dur: 1, gen: 10, active: 0,   passive: 0, mass: 10 },
   { key: 'reactor',      name: 'Атомный реактор',       dur: 2, gen: 40, active: 0,   passive: 0, mass: 45 },
   { key: 'gas_storage',  name: 'Газохранилище',         dur: 2, gen: 0,  active: 0,   passive: 0, mass: 25 },
   { key: 'battery',      name: 'Аккумуляторы',          dur: 1, gen: 0,  active: 0,   passive: 0, mass: 20 },
   { key: 'repair',       name: 'Ремонтный модуль',      dur: 1, gen: 0,  active: 2,   passive: 0, mass: 20 },
-  { key: 'solar_panel',  name: 'Солнечная панель',      dur: 1, gen: 10, active: 0,   passive: 0, mass: 8 },
   { key: 'teleport',     name: 'Телепорт-модуль',       dur: 1, gen: 0,  active: 40,  passive: 0, mass: 40 },
   { key: 'miner',        name: 'Шахтёр',                dur: 2, gen: 0,  active: 3,   passive: 0, mass: 35 },
   { key: 'radar',        name: 'Радар',                 dur: 1, gen: 0,  active: 1,   passive: 1, mass: 10 },
   { key: 'ecm',          name: 'Модуль РЭБ',            dur: 1, gen: 0,  active: 3,   passive: 0, mass: 12 },
   { key: 'computer',     name: 'Вычислительный модуль', dur: 1, gen: 0,  active: 5,   passive: 5, mass: 15 },
-  { key: 'shield',       name: 'Защитное поле',         dur: 1, gen: 0,  active: 15,  passive: 1, mass: 25 },
-  { key: 'dock',         name: 'Стыковочный док',       dur: 2, gen: 0,  active: 0,   passive: 0, mass: 50 },
   { key: 'hangar',       name: 'Ангар',                 dur: 2, gen: 0,  active: 0,   passive: 0, mass: 60 },
   { key: 'cargo',        name: 'Грузовой отсек',        dur: 2, gen: 0,  active: 0,   passive: 0, mass: 30 },
 ];
 const SHIP_MODULE = Object.fromEntries(SHIP_MODULES.map(m => [m.key, m]));
 const SHIP_FRAME_MASS = 50; // т на палубу (каркас) — по умолчанию
+// Солнечная панель объединена с парусом (решение пользователя): остался один «Солнечный парус» —
+// он и движитель (слабая тяга без топлива), и источник энергии (gen 10, как бывшая панель).
 const isEngine = k => k === 'engine' || k === 'engine_ion' || k === 'solar_sail';
 
 // ---------- Топливо и тяга ----------
@@ -75,17 +74,26 @@ const designFuel = d => FUEL[d.fuel] ? d.fuel : (d.decks.some(x => x[2].includes
 // Средний корабль библиотеки: средняя масса и среднее число «двигателей» (в единицах ENGINE_REL)
 // среди дизайнов с двигателями. Калибровка (thrustK): средний корабль на тритии пересекает систему
 // (2 × SYSTEM_RADIUS) за SHIP_CROSS_T с с разгоном и торможением (data.js, требование пользователя).
-// Библиотека неизменна, поэтому калибровка не плывёт от правок игрока в конструкторе.
+// ЭТАЛОН КАЛИБРОВКИ — отдельная встроенная сборка, не корабль из библиотеки. Раньше средние
+// брались по библиотеке, и стоило снять с кораблей оборудование (а это делает пользователь
+// в конструкторе), как двигателей не оставалось и калибровка рушилась делением на ноль.
+// Эталон — «средний крейсер» прежней библиотеки: 6 палуб, 3 ионных двигателя, 7 реакторов,
+// газохранилище, жизнеобеспечение и радар. Менять его = менять масштаб времени во всей игре.
+const CAL_SHIP = { name: 'эталон калибровки', decks: [
+  [2, 4, ['weapon_mount', 'weapon_mount', 'battery']],
+  [2, 5, []],
+  [3, 3, ['weapon_mount', 'weapon_mount', 'reactor', 'reactor']],
+  [2, 2, ['engine_ion', 'engine_ion', 'engine_ion', 'reactor']],
+  [1, 3, ['weapon_mount', 'weapon_mount', 'reactor', 'reactor']],
+  [2, 3, ['life_support', 'radar', 'reactor', 'gas_storage']],
+] };
 let _avg = null;
 function avgShip() {
   if (_avg) return _avg;
-  let m = 0, e = 0, n = 0;
-  for (const d of SHIP_LIBRARY) {
-    const mods = designModules(d), eng = mods.reduce((s, k) => s + (k === 'solar_sail' ? 0 : ENGINE_REL[k] || 0), 0);
-    if (!eng) continue;
-    m += d.decks.length * SHIP_FRAME_MASS + mods.reduce((s, k) => s + SHIP_MODULE[k].mass, 0); e += eng; n++;
-  }
-  _avg = { mass: m / n, engines: e / n, n };
+  const mods = designModules(CAL_SHIP);
+  const eng = mods.reduce((s, k) => s + (k === 'solar_sail' ? 0 : ENGINE_REL[k] || 0), 0);
+  const mass = CAL_SHIP.decks.length * SHIP_FRAME_MASS + mods.reduce((s, k) => s + SHIP_MODULE[k].mass, 0);
+  _avg = { mass, engines: eng || 1, n: 1 };
   return _avg;
 }
 // ---------- Ускорение, растущее со скоростью ----------
@@ -152,9 +160,9 @@ function shipStats(d, fuelKey = designFuel(d)) {
   for (const k of mods) {
     const m = SHIP_MODULE[k];
     mass += m.mass; dur += m.dur; gen += m.gen; passive += m.passive;
-    if (k === 'solar_sail') thrust += ENGINE_REL.solar_sail * K;
+    if (k === 'solar_sail') thrust += ENGINE_REL.solar_sail * K;   // парус тянет без топлива
     else if (isEngine(k)) { demand += m.active; thrust += ENGINE_REL[k] * F.rel * K; }
-    if (k === 'weapon_mount' || k === 'shield' || k === 'ecm') combat += m.active;
+    if (k === 'weapon_mount' || k === 'ecm') combat += m.active;
   }
   const reactor = n('reactor') * SHIP_MODULE.reactor.gen;
   const supply = reactor + n('gas_storage') * F.yield;          // энергии за цикл при сжигании во всех хранилищах
@@ -215,39 +223,53 @@ function travelTime(accel, dist) {
 }
 
 // ---------- Библиотека готовых кораблей (v2 server/ship_defaults.json, 26 дизайнов) ----------
+// Библиотека — ФОРМЫ и КЛАССЫ кораблей (решение пользователя): палубы на месте, оборудования
+// нет, кроме цитадели — там всегда жизнеобеспечение и радар. Всё остальное игрок ставит сам
+// в конструкторе.
 const SHIP_LIBRARY = [
-  { name: "Корвет Патрульный", decks: [[2, 3, ["life_support","radar","engine_ion","reactor","gas_storage","weapon_mount","weapon_mount","reactor"]]] },
-  { name: "Шатл Грузовой", decks: [[2, 3, ["life_support","radar","engine","engine","gas_storage","weapon_mount","cargo"]]] },
-  { name: "Фрегат", decks: [[2, 4, ["weapon_mount","weapon_mount","weapon_mount","gas_storage"]], [2, 3, ["life_support","radar","engine_ion","reactor","reactor"]]] },
-  { name: "Челнок", decks: [[2, 2, ["engine_ion","engine_ion","reactor","weapon_mount","gas_storage"]], [2, 3, ["life_support","radar","reactor","reactor","reactor","reactor"]]] },
-  { name: "Эсминец 1", decks: [[2, 4, ["weapon_mount"]], [3, 3, ["weapon_mount","weapon_mount","reactor","reactor"]], [1, 3, ["engine_ion","engine_ion","weapon_mount","reactor"]], [2, 3, ["life_support","radar","reactor","gas_storage"]]] },
-  { name: "Клипер 1", decks: [[3, 3, ["reactor","reactor","weapon_mount","cargo"]], [2, 2, ["engine_ion","engine_ion","engine_ion","battery"]], [1, 3, ["reactor","reactor","weapon_mount","gas_storage"]], [2, 3, ["life_support","radar","reactor","reactor"]]] },
-  { name: "Эсминец 2", decks: [[2, 4, ["weapon_mount","weapon_mount","weapon_mount","weapon_mount"]], [2, 5, []], [2, 2, ["engine","engine","weapon_mount","weapon_mount"]], [2, 3, ["life_support","radar","gas_storage"]]] },
-  { name: "Клипер 2", decks: [[3, 2, ["gas_storage","weapon_mount","cargo","cargo"]], [2, 2, ["weapon_mount","cargo","cargo"]], [1, 2, ["engine","engine","engine","engine"]], [2, 3, ["life_support","radar","gas_storage"]]] },
-  { name: "Крейсер 1", decks: [[2, 4, ["weapon_mount","weapon_mount","battery"]], [2, 5, []], [3, 3, ["weapon_mount","weapon_mount","reactor","reactor"]], [2, 2, ["engine_ion","engine_ion","engine_ion","reactor"]], [1, 3, ["weapon_mount","weapon_mount","reactor","reactor"]], [2, 3, ["life_support","radar","reactor","gas_storage"]]] },
-  { name: "Баржа 1", decks: [[3, 3, ["battery","weapon_mount","weapon_mount","cargo"]], [3, 4, ["cargo","reactor","reactor","reactor"]], [2, 2, ["engine_ion","engine_ion","engine_ion","engine_ion"]], [1, 3, ["weapon_mount","cargo","reactor","reactor"]], [1, 4, ["reactor","reactor"]], [2, 3, ["life_support","radar","reactor","gas_storage"]]] },
-  { name: "Крейсер 2", decks: [[2, 4, ["weapon_mount","weapon_mount"]], [3, 4, ["weapon_mount","weapon_mount","weapon_mount"]], [3, 2, ["weapon_mount","weapon_mount"]], [1, 2, ["engine","engine","engine","gas_storage"]], [1, 4, ["weapon_mount","weapon_mount"]], [2, 3, ["life_support","radar","gas_storage"]]] },
-  { name: "Баржа 2", decks: [[1, 5, ["weapon_mount","cargo","cargo","cargo"]], [3, 5, ["cargo"]], [3, 4, ["weapon_mount","weapon_mount","cargo","cargo"]], [2, 2, ["engine","engine","engine","engine"]], [1, 4, ["engine","engine","gas_storage","gas_storage"]], [2, 3, ["life_support","radar","gas_storage"]]] },
-  { name: "Лайнер 1", decks: [[1, 5, ["gas_storage","battery","weapon_mount"]], [3, 5, ["cargo","reactor","reactor"]], [3, 3, ["weapon_mount","weapon_mount","cargo"]], [3, 4, ["cargo","reactor","reactor"]], [4, 4, ["reactor","reactor","reactor"]], [3, 2, ["weapon_mount","cargo","reactor"]], [2, 2, ["engine_ion","engine_ion","reactor"]], [1, 2, ["engine_ion","engine_ion","engine_ion"]], [0, 4, ["weapon_mount","cargo"]], [1, 3, []], [1, 4, []], [2, 3, ["life_support","radar","reactor"]]] },
-  { name: "Лайнер 2", decks: [[2, 4, ["gas_storage","gas_storage","gas_storage"]], [2, 5, ["gas_storage","gas_storage","weapon_mount"]], [3, 3, ["weapon_mount","cargo","cargo"]], [3, 2, ["weapon_mount","cargo","cargo"]], [4, 2, []], [1, 1, ["engine","engine","engine"]], [2, 2, ["cargo"]], [3, 1, ["engine","engine","engine"]], [0, 2, ["engine","engine","engine"]], [1, 2, ["weapon_mount","cargo","cargo"]], [1, 3, ["weapon_mount","cargo","cargo"]], [2, 3, ["life_support","radar"]]] },
-  { name: "Линкор 1", decks: [[1, 5, ["battery","weapon_mount","weapon_mount"]], [2, 4, []], [2, 5, []], [3, 5, []], [3, 3, ["weapon_mount","weapon_mount","weapon_mount"]], [3, 4, ["reactor","reactor","reactor"]], [3, 2, ["weapon_mount","weapon_mount","reactor"]], [2, 2, ["engine_ion","reactor","gas_storage"]], [1, 2, ["engine_ion","engine_ion","engine_ion"]], [1, 3, ["weapon_mount","weapon_mount","reactor"]], [1, 4, ["reactor"]], [2, 3, ["life_support","radar","reactor"]]] },
-  { name: "Линкор 2", decks: [[2, 4, ["gas_storage","gas_storage","gas_storage"]], [3, 3, ["weapon_mount","weapon_mount","weapon_mount"]], [4, 3, ["weapon_mount","weapon_mount","weapon_mount"]], [4, 4, ["weapon_mount"]], [4, 5, []], [3, 2, ["engine","engine"]], [1, 2, ["engine","engine","engine"]], [0, 3, ["weapon_mount","weapon_mount","weapon_mount"]], [0, 4, ["weapon_mount","weapon_mount","weapon_mount"]], [0, 5, ["weapon_mount"]], [1, 3, []], [2, 3, ["life_support","radar"]]] },
-  { name: "Дредноут 1", decks: [[0, 6, []], [2, 4, ["gas_storage","battery"]], [4, 6, ["weapon_mount","weapon_mount"]], [3, 3, ["weapon_mount","weapon_mount"]], [3, 4, ["reactor","reactor"]], [4, 4, ["reactor","reactor"]], [4, 5, ["reactor","reactor"]], [3, 2, ["weapon_mount","weapon_mount"]], [4, 1, ["reactor","reactor"]], [1, 0, ["engine_ion","engine_ion"]], [1, 1, ["weapon_mount"]], [2, 1, []], [2, 2, []], [3, 0, ["engine_ion","engine_ion"]], [3, 1, []], [0, 1, ["weapon_mount","weapon_mount"]], [1, 2, []], [0, 4, ["weapon_mount","weapon_mount"]], [0, 5, []], [1, 3, []], [1, 4, []], [2, 3, ["life_support","radar"]]] },
-  { name: "Танкер 1", decks: [[1, 5, ["reactor","gas_storage"]], [2, 4, ["battery","weapon_mount"]], [2, 5, ["cargo","reactor"]], [2, 6, ["reactor","reactor"]], [3, 5, ["reactor","reactor"]], [3, 3, ["weapon_mount","cargo"]], [3, 4, ["reactor","reactor"]], [4, 4, ["reactor","reactor"]], [3, 2, ["weapon_mount","cargo"]], [4, 2, ["reactor","reactor"]], [1, 0, ["engine_ion","engine_ion"]], [1, 1, ["engine_ion","engine_ion"]], [2, 1, ["engine_ion","reactor"]], [2, 2, ["weapon_mount","cargo"]], [3, 0, ["engine_ion","engine_ion"]], [3, 1, ["reactor"]], [0, 2, ["weapon_mount","cargo"]], [1, 2, []], [0, 4, ["weapon_mount","cargo"]], [1, 3, []], [1, 4, []], [2, 3, ["life_support","radar"]]] },
-  { name: "Танкер 2", decks: [[2, 4, ["gas_storage","gas_storage"]], [2, 5, ["gas_storage","gas_storage"]], [2, 6, ["gas_storage","gas_storage"]], [3, 3, ["weapon_mount","weapon_mount"]], [3, 4, ["cargo","cargo"]], [3, 2, ["weapon_mount","cargo"]], [4, 1, ["cargo"]], [4, 2, []], [0, 0, ["engine","engine"]], [1, 0, ["engine","engine"]], [1, 1, ["engine"]], [2, 1, ["weapon_mount","cargo"]], [2, 2, ["cargo"]], [3, 0, ["engine","engine"]], [3, 1, []], [4, 0, ["engine","engine"]], [0, 1, ["engine","engine"]], [0, 2, ["weapon_mount","cargo"]], [1, 2, ["cargo"]], [1, 3, ["weapon_mount","cargo"]], [1, 4, ["cargo","cargo"]], [2, 3, ["life_support","radar"]]] },
-  { name: "Дредноут 2", decks: [[0, 6, []], [1, 5, ["gas_storage","gas_storage"]], [1, 6, ["gas_storage","weapon_mount"]], [2, 4, ["weapon_mount","weapon_mount"]], [2, 5, []], [2, 6, []], [3, 5, []], [3, 6, []], [4, 6, []], [3, 3, ["weapon_mount","weapon_mount"]], [3, 4, ["weapon_mount","weapon_mount"]], [4, 3, []], [3, 2, ["weapon_mount","weapon_mount"]], [1, 1, ["engine","engine"]], [2, 1, ["engine","engine"]], [2, 2, ["weapon_mount","weapon_mount"]], [3, 1, ["engine","engine"]], [1, 2, ["weapon_mount","weapon_mount"]], [0, 3, ["weapon_mount","weapon_mount"]], [1, 3, ["weapon_mount","weapon_mount"]], [1, 4, []], [2, 3, ["life_support","radar"]]] },
-  { name: "Корвет 2 Боевой", decks: [[2, 3, ["life_support","radar","engine","gas_storage","weapon_mount","weapon_mount","weapon_mount"]]] },
-  { name: "Шатл 2 Скоростной", decks: [[2, 3, ["life_support","radar","engine_ion","reactor","reactor","gas_storage","weapon_mount","cargo"]]] },
-  { name: "Фрегат 2", decks: [[2, 4, ["weapon_mount","weapon_mount","weapon_mount","weapon_mount"]], [2, 3, ["life_support","radar","engine","engine","gas_storage"]]] },
-  { name: "Челнок 2", decks: [[2, 2, ["engine","engine","engine","weapon_mount","cargo","cargo"]], [2, 3, ["life_support","radar","gas_storage","gas_storage","weapon_mount"]]] },
+  { name: "Корвет Патрульный", decks: [[2, 3, ["life_support","radar"]]] },
+  { name: "Шатл Грузовой", decks: [[2, 3, ["life_support","radar"]]] },
+  { name: "Фрегат", decks: [[2, 4, []], [2, 3, ["life_support","radar"]]] },
+  { name: "Челнок", decks: [[2, 2, []], [2, 3, ["life_support","radar"]]] },
+  { name: "Эсминец 1", decks: [[2, 4, []], [3, 3, []], [1, 3, []], [2, 3, ["life_support","radar"]]] },
+  { name: "Клипер 1", decks: [[3, 3, []], [2, 2, []], [1, 3, []], [2, 3, ["life_support","radar"]]] },
+  { name: "Эсминец 2", decks: [[2, 4, []], [2, 5, []], [2, 2, []], [2, 3, ["life_support","radar"]]] },
+  { name: "Клипер 2", decks: [[3, 2, []], [2, 2, []], [1, 2, []], [2, 3, ["life_support","radar"]]] },
+  { name: "Крейсер 1", decks: [[2, 4, []], [2, 5, []], [3, 3, []], [2, 2, []], [1, 3, []], [2, 3, ["life_support","radar"]]] },
+  { name: "Баржа 1", decks: [[3, 3, []], [3, 4, []], [2, 2, []], [1, 3, []], [1, 4, []], [2, 3, ["life_support","radar"]]] },
+  { name: "Крейсер 2", decks: [[2, 4, []], [3, 4, []], [3, 2, []], [1, 2, []], [1, 4, []], [2, 3, ["life_support","radar"]]] },
+  { name: "Баржа 2", decks: [[1, 5, []], [3, 5, []], [3, 4, []], [2, 2, []], [1, 4, []], [2, 3, ["life_support","radar"]]] },
+  { name: "Лайнер 1", decks: [[1, 5, []], [3, 5, []], [3, 3, []], [3, 4, []], [4, 4, []], [3, 2, []], [2, 2, []], [1, 2, []], [0, 4, []], [1, 3, []], [1, 4, []], [2, 3, ["life_support","radar"]]] },
+  { name: "Лайнер 2", decks: [[2, 4, []], [2, 5, []], [3, 3, []], [3, 2, []], [4, 2, []], [1, 1, []], [2, 2, []], [3, 1, []], [0, 2, []], [1, 2, []], [1, 3, []], [2, 3, ["life_support","radar"]]] },
+  { name: "Линкор 1", decks: [[1, 5, []], [2, 4, []], [2, 5, []], [3, 5, []], [3, 3, []], [3, 4, []], [3, 2, []], [2, 2, []], [1, 2, []], [1, 3, []], [1, 4, []], [2, 3, ["life_support","radar"]]] },
+  { name: "Линкор 2", decks: [[2, 4, []], [3, 3, []], [4, 3, []], [4, 4, []], [4, 5, []], [3, 2, []], [1, 2, []], [0, 3, []], [0, 4, []], [0, 5, []], [1, 3, []], [2, 3, ["life_support","radar"]]] },
+  { name: "Дредноут 1", decks: [[0, 6, []], [2, 4, []], [4, 6, []], [3, 3, []], [3, 4, []], [4, 4, []], [4, 5, []], [3, 2, []], [4, 1, []], [1, 0, []], [1, 1, []], [2, 1, []], [2, 2, []], [3, 0, []], [3, 1, []], [0, 1, []], [1, 2, []], [0, 4, []], [0, 5, []], [1, 3, []], [1, 4, []], [2, 3, ["life_support","radar"]]] },
+  { name: "Танкер 1", decks: [[1, 5, []], [2, 4, []], [2, 5, []], [2, 6, []], [3, 5, []], [3, 3, []], [3, 4, []], [4, 4, []], [3, 2, []], [4, 2, []], [1, 0, []], [1, 1, []], [2, 1, []], [2, 2, []], [3, 0, []], [3, 1, []], [0, 2, []], [1, 2, []], [0, 4, []], [1, 3, []], [1, 4, []], [2, 3, ["life_support","radar"]]] },
+  { name: "Танкер 2", decks: [[2, 4, []], [2, 5, []], [2, 6, []], [3, 3, []], [3, 4, []], [3, 2, []], [4, 1, []], [4, 2, []], [0, 0, []], [1, 0, []], [1, 1, []], [2, 1, []], [2, 2, []], [3, 0, []], [3, 1, []], [4, 0, []], [0, 1, []], [0, 2, []], [1, 2, []], [1, 3, []], [1, 4, []], [2, 3, ["life_support","radar"]]] },
+  { name: "Дредноут 2", decks: [[0, 6, []], [1, 5, []], [1, 6, []], [2, 4, []], [2, 5, []], [2, 6, []], [3, 5, []], [3, 6, []], [4, 6, []], [3, 3, []], [3, 4, []], [4, 3, []], [3, 2, []], [1, 1, []], [2, 1, []], [2, 2, []], [3, 1, []], [1, 2, []], [0, 3, []], [1, 3, []], [1, 4, []], [2, 3, ["life_support","radar"]]] },
+  { name: "Корвет 2 Боевой", decks: [[2, 3, ["life_support","radar"]]] },
+  { name: "Шатл 2 Скоростной", decks: [[2, 3, ["life_support","radar"]]] },
+  { name: "Фрегат 2", decks: [[2, 4, []], [2, 3, ["life_support","radar"]]] },
+  { name: "Челнок 2", decks: [[2, 2, []], [2, 3, ["life_support","radar"]]] },
   { name: "Дредноут 3", decks: [[1, 5, []], [1, 6, []], [2, 4, []], [2, 5, []], [2, 6, []], [3, 5, []], [3, 6, []], [3, 3, []], [3, 4, []], [4, 3, []], [4, 4, []], [3, 2, []], [4, 2, []], [1, 1, []], [3, 1, []], [0, 2, []], [1, 2, []], [0, 3, []], [0, 4, []], [1, 3, []], [1, 4, []], [2, 3, ["life_support","radar"]]] },
-  { name: "Стартовый", decks: [[2, 4, ["miner","battery","colonist","cargo"]], [3, 3, ["engine_ion","engine_ion","reactor","reactor"]], [2, 2, ["reactor","reactor","reactor","reactor"]], [1, 3, ["engine_ion","engine_ion","cargo","gas_storage"]], [2, 3, ["life_support","radar","reactor","reactor"]]] },
+  { name: "Стартовый", decks: [[2, 4, []], [3, 3, []], [2, 2, []], [1, 3, []], [2, 3, ["life_support","radar"]]] },
 ];
 
 // Дизайны игрока — своя копия библиотеки в браузере (правки конструктора); нет — исходная библиотека.
 const SHIPS_KEY = 'ouro.v3.ships';
 function loadDesigns() {
-  try { const s = JSON.parse(localStorage.getItem(SHIPS_KEY)); if (Array.isArray(s) && s.length) return s; } catch (_) { /* нет или испорчено */ }
+  try {
+    const s = JSON.parse(localStorage.getItem(SHIPS_KEY));
+    // Сохранённые раньше дизайны могут содержать убранные модули: солнечная панель слилась
+    // с парусом, защитного поля и стыковочного дока больше нет — такие слоты просто пустеют.
+    if (Array.isArray(s) && s.length) {
+      for (const d of s) for (const deck of d.decks || [])
+        if (Array.isArray(deck.modules)) deck.modules = deck.modules
+          .map(k => k === 'solar_panel' ? 'solar_sail' : k)
+          .filter(k => !k || SHIP_MODULE[k]);
+      return s;
+    }
+  } catch (_) { /* нет или испорчено */ }
   return JSON.parse(JSON.stringify(SHIP_LIBRARY));
 }
 function saveDesigns(list) { try { localStorage.setItem(SHIPS_KEY, JSON.stringify(list)); } catch (_) { /* приватный режим */ } }
