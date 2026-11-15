@@ -50,6 +50,7 @@ function generateSurface(planet, gstar) {
       hexes.push({ q, r, ...terrainAt(t, env, Math.abs(r) / Math.max(1, R), rng), res: {} });
     }
   }
+  if (t === 'gas') markStorms(rng, hexes, R);
   markFreshWater(hexes);
   distributeHexResources(rng, hexes, planet, env);
   return { radius: R, env, hexes };
@@ -70,12 +71,35 @@ function surfaceEnv(p, rng) {
   return { water, life, atmo, tectonic, heatBias };
 }
 
+// БУРЯ НА ГАЗОВОМ ГИГАНТЕ ЗАНИМАЕТ НЕСКОЛЬКО ГЕКСОВ, а не один (решение пользователя).
+// Раньше каждый гекс сам бросал 5 % на «вихрь», и бури получались россыпью одиночных точек —
+// на газовом гиганте так не бывает: это вихрь размером с планету (Большое красное пятно вдвое
+// шире Земли). Ставим одно-два пятна: центр и его соседи, у крупной карты иногда второе кольцо.
+function markStorms(rng, hexes, R) {
+  const at = (q, r) => hexes.find(h => h.q === q && h.r === r);
+  const NB = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+  const count = R >= 4 && rng() < 0.3 ? 2 : 1;            // обычно одно пятно, иногда два
+  for (let n = 0; n < count; n++) {
+    const c = hexes[Math.floor(rng() * hexes.length)];
+    const ring = R >= 4 && rng() < 0.25 ? 2 : 1;           // изредка пятно пошире
+    c.type = 'storm';
+    let wave = [c];
+    for (let d = 0; d < ring; d++) {
+      const next = [];
+      for (const h of wave) for (const [dq, dr] of NB) {
+        const nb = at(h.q + dq, h.r + dr);
+        if (nb && nb.type !== 'storm') { nb.type = 'storm'; next.push(nb); }
+      }
+      wave = next;
+    }
+  }
+}
+
 // Тип гекса по широте и условиям — логика v2 generateSurface (пояса сдвигает heatBias,
 // горы/холмы растут с тектоникой, лес/джунгли/степь — только при жизни и атмосфере).
 function terrainAt(t, env, lat, rng) {
   const { water: w, atmo, tectonic, heatBias, life } = env;
-  if (t === 'gas') { // полосы по широте: светлые зоны, тёмные пояса, редкие вихри
-    if (rng() < 0.05) return { type: 'storm', crater: false };
+  if (t === 'gas') { // полосы по широте: светлые зоны и тёмные пояса; вихри ставятся отдельно
     // Полосы через синус, а не делением широты: широта квантуется радиусом карты, и
     // при делении на целые полосы почти всё сваливалось в один тип.
     const band = Math.sin(lat * Math.PI * 3.5 + (rng() - 0.5) * 0.5);
@@ -172,11 +196,26 @@ function hexWeight(key, h) {
 
 const DEPOSIT_SPREAD = [0.6, 1.8]; // разброс богатства месторождений между собой
 
+// Среднее число гексов на планету по галактике (замер: 7 гексов у 7 % планет, 19 у 3 %,
+// 37 у 41 %, 61 у 49 % — в среднем 46,1). От него нормируется норма ресурсов, см. ниже.
+const HEX_REF = 46;
+
 function distributeHexResources(rng, hexes, planet, env) {
-  // Запас — в сотых долях единицы (у ресурсов v3 дробные значения): целые сотые
-  // делятся без потерь, сумма по гексам точно равна составу планеты.
+  // НОРМА РЕСУРСОВ НОРМИРУЕТСЯ ПО ЧИСЛУ ГЕКСОВ (решение пользователя: «чтоб более мелкие
+  // планеты не имели большей концентрации, норму ресурсов нужно повышать или резать от
+  // среднего значения по числу гексов»).
+  //
+  // Состав планеты из таблицы — это ДОЛЯ (сумма по планете ≤ 100), то есть концентрация, а не
+  // количество. Раньше её делили на число гексов: один и тот же состав у астероида из 7 гексов
+  // и у планеты из 61 давал в девять раз более густой гекс на астероиде. Теперь запас на карту
+  // = состав × (гексов / 46): концентрация в гексе одинакова, а большая планета богаче В СУММЕ,
+  // потому что гексов больше. Это и физически верно, и убирает из разлёта множитель ×9.
+  //
+  // Платой идёт прежний инвариант «сумма по гексам ТОЧНО равна составу»: теперь она равна
+  // составу × (гексов / 46). Для карты среднего размера ничего не изменилось.
+  const sizeK = hexes.length / HEX_REF;
   RESOURCES.forEach((r, i) => {
-    const total = Math.round(planet.composition[i].value * 100);
+    const total = Math.round(planet.composition[i].value * 100 * sizeK);
     if (total <= 0) return;
     let rule = HEX_RULES[r.key];
     if (planet.type === 'core' && r.key === 'superdense') rule = { kind: 'deposits', bg: 1, n: 0, mtn: false }; // ядро однородно
