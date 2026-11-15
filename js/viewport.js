@@ -55,8 +55,11 @@ function createViewport(cvs, opts) {
     vp.DPR = Math.min(window.devicePixelRatio || 1, 2);
     // Своя коробка, а не окно: на экране планеты канвас — ячейка сетки между панелями, и карта
     // должна пересчитываться, когда панель свернули или развернули (docs/Интерфейс.md §1).
-    vp.W = cvs.clientWidth || window.innerWidth;
-    vp.H = cvs.clientHeight || window.innerHeight;
+    // Если CSS почему-то не задал канвасу размер, его clientWidth — это собственные 300×150,
+    // и мерить их бессмысленно: берём окно.
+    const w = cvs.clientWidth, h = cvs.clientHeight;
+    vp.W = w > 310 ? w : window.innerWidth;
+    vp.H = h > 160 ? h : window.innerHeight;
     cvs.width = Math.round(vp.W * vp.DPR); cvs.height = Math.round(vp.H * vp.DPR);
     cvs.style.width = vp.W + 'px'; cvs.style.height = vp.H + 'px';
     if (opts.onResize) opts.onResize();

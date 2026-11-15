@@ -11,7 +11,10 @@
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
   font: 14px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden;
   -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
-#view { position: fixed; inset: 0; touch-action: none; cursor: crosshair; display: block; }
+/* width/height обязательны: у <canvas> есть СВОЙ размер (300×150 по умолчанию), и одного
+   inset:0 мало — замещаемый элемент с ним не растягивается. Без явного размера viewport.js,
+   меряющий cvs.clientWidth, читал бы эти 300×150 и сам же их закреплял. */
+#view { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; display: block; }
 
 .glass { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
