@@ -20,11 +20,14 @@
 </div>
 
 <div id="tools">
+  <button id="b-colony" title="Колония, добыча и флот">Колония</button>
   <button id="b-system" title="Карта звёздной системы">Система</button>
   <button id="b-takeoff" class="primary" title="Вернуться на орбиту">Взлёт</button>
 </div>
 
 <div id="layers" class="glass"></div>
+
+<div id="colony" class="glass" hidden></div>
 
 <div id="card" class="glass">
   <div class="c-head">
@@ -35,14 +38,21 @@
   <div id="c-body"></div>
 </div>
 
-<div id="hint">Щелчок по гексу — его ресурсы · сверху слева — слой: местность или ресурс</div>
+<div id="hint">Щелчок по гексу — его ресурсы · «Колония» — добыча кораблём, стройка и флот</div>
 
 <script src="js/data.js"></script>
 <script src="js/gen.js"></script>
 <script src="js/galaxy-gen.js"></script>
 <script src="js/surface.js"></script>
 <script src="js/viewport.js"></script>
+<script src="js/ships.js"></script>
+<script src="js/store.js"></script>
+<script src="js/components.js"></script>
+<script src="js/parts-preset.js"></script>
 <script src="js/world.js"></script>
+<script src="js/colony.js"></script>
+<script src="js/notify.js"></script>
+<script src="js/planet-ui.js"></script>
 <script src="js/planet.js"></script>
 <script>setTimeout(() => { const h = document.getElementById('hint'); if (h) h.style.opacity = 0; }, 8000);</script>
 </body>

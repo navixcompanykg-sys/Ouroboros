@@ -147,3 +147,36 @@ button:disabled { opacity: .55; cursor: default; }
 #g-jump span { display: block; color: var(--muted); font-size: 11px; }
 #g-jump b { display: block; font-size: 30px; line-height: 1.1; font-weight: 700; color: #ffd9a0; font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) { #g-jump { top: calc(150px + env(safe-area-inset-top)); left: 10px; transform: none; } }
+
+/* ---------- Оповещения игрока (js/notify.js) ---------- */
+#alerts { position: fixed; z-index: 9; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; gap: 6px; width: 300px; max-width: calc(100vw - 20px); }
+.al { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; font-size: 12.5px;
+  background: rgba(20, 30, 52, 0.94); border: 1px solid rgba(255, 180, 90, 0.45); color: #ffd9a8;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45); }
+.al.bad { border-color: rgba(255, 110, 80, .55); color: #ffbfae; }
+.al-t { flex: 1 1 auto; }
+.al-go, .al-x { min-height: 26px; padding: 2px 8px; font-size: 12px; flex: none; }
+.al-x { background: transparent; border-color: transparent; }
+
+/* ---------- Колония и флот (js/planet.js) ---------- */
+#colony { position: fixed; z-index: 3; left: 10px; top: 120px; width: 300px; max-height: calc(100vh - 150px);
+  overflow-y: auto; padding: 10px 12px; }
+#colony[hidden] { display: none; }
+#colony h4 { margin: 0 0 6px; font-size: 13px; }
+#colony .sub { color: var(--muted); font-size: 11px; margin-bottom: 8px; }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: 12.5px; }
+.kv span { color: var(--muted); }
+.sect { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.bl { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; width: 100%;
+  background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px;
+  text-align: left; font-size: 12.5px; margin-bottom: 4px; cursor: pointer; }
+.bl:hover { border-color: var(--accent); }
+.bl:disabled { opacity: .5; cursor: default; }
+.bl i { display: block; color: var(--muted); font-size: 11px; font-style: normal; }
+.bl b { font-variant-numeric: tabular-nums; font-weight: 500; font-size: 11.5px; color: #cfd9ec; }
+.bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.08); overflow: hidden; margin: 3px 0 6px; }
+.bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-2), var(--accent)); }
+.bar.warn i { background: linear-gradient(90deg, #a8502a, #ff9a5a); }
+.tag { display: inline-block; padding: 1px 6px; border-radius: 6px; font-size: 11px;
+  background: rgba(111,168,255,.16); color: #cfe0ff; margin-left: 6px; }

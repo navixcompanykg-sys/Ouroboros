@@ -11,6 +11,9 @@
   const planet = sys.planets[Math.min(sys.planets.length - 1, Math.max(0, parseInt(qs.get('p'), 10) || 0))];
   const surf = generateSurface(planet, gstar);
   if (!surf) { location.href = World.systemUrl(gstar.id); return; } // газовый гигант — поверхности нет
+  // Оповещение «к кораблю» приводит сюда с ?pick= — сначала делаем этот корабль активным.
+  const pick = parseInt(qs.get('pick'), 10);
+  if (pick > 0 && World.fleet().some(s => s.id === pick)) World.setActive(pick);
   World.setShip(planet.index, true);
 
   const S = 40; // размер гекса (мировые единицы)
@@ -74,6 +77,21 @@
     // Тонкие границы и выделение.
     ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1;
     for (const h of surf.hexes) { const c = center(h), p = cam.toScreen(c.x, c.y); hexPath(p.x, p.y, sz * 0.97); ctx.stroke(); }
+    // Постройки колонии, текущая стройка и гекс, который копает корабль (js/planet-ui.js).
+    const marks = typeof PlanetUI !== 'undefined' ? PlanetUI.marks() : [];
+    for (const m of marks) {
+      const h = surf.hexes.find(x => x.q === m.q && x.r === m.r); if (!h) continue;
+      const c = center(h), p = cam.toScreen(c.x, c.y);
+      ctx.beginPath(); ctx.arc(p.x, p.y, sz * 0.42, 0, Math.PI * 2);
+      ctx.fillStyle = m.kind === 'ship' ? 'rgba(255,205,120,0.92)'
+        : m.kind === 'site' ? 'rgba(130,160,210,0.75)' : 'rgba(14,22,40,0.88)';
+      ctx.fill();
+      ctx.strokeStyle = m.kind === 'ship' ? '#ffd48a' : '#8fb4ff'; ctx.lineWidth = Math.max(1, sz * 0.05); ctx.stroke();
+      ctx.fillStyle = m.kind === 'ship' ? '#2a1c04' : '#dce7ff';
+      ctx.font = Math.round(sz * 0.5) + 'px system-ui, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(m.text, p.x, p.y + sz * 0.02);
+    }
     if (selected) {
       const c = center(selected), p = cam.toScreen(c.x, c.y);
       hexPath(p.x, p.y, sz * 0.97); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5; ctx.stroke();
@@ -91,6 +109,7 @@
     if (dx > dy && dx > dz) rx = -ry - rz; else if (dy <= dz) rz = -rx - ry;
     selected = surf.hexes.find(h => h.q === rx && h.r === rz) || null;
     renderCard();
+    if (typeof PlanetUI !== 'undefined') PlanetUI.render();
   }
 
   // ---------- Интерфейс ----------
@@ -143,7 +162,27 @@
   $('b-system').onclick = () => { location.href = World.systemUrl(gstar.id); };
   $('b-takeoff').onclick = () => { location.href = World.systemUrl(gstar.id) + '&takeoff=1'; };
 
-  window.__dbg = () => ({ planet, surf, cam });
+  // Панель колонии и флота: добыча кораблём, стройка, космодром, переключение кораблей.
+  $('b-colony').onclick = () => {
+    const el = $('colony');
+    el.hidden = !el.hidden;
+    $('b-colony').classList.toggle('on', !el.hidden);
+  };
+  if (typeof PlanetUI !== 'undefined') PlanetUI.init({
+    gstar, planet, surf, selected: () => selected, redraw: () => {},
+  });
+
+  window.__dbg = () => ({ planet, surf, cam, colony: () => PlanetUI.colony(), ship: () => World.active(),
+    // Прокрутить время вперёд: такт колонии 10 реальных минут, живьём не посмотреть.
+    skip(mins = 60) {
+      const back = mins * 60 * 1000;
+      const sh = World.active(); if (sh.at) sh.at -= back;
+      const dt = Math.floor(back / COL.TICK_MS);
+      for (const k in sh.hv || {}) sh.hv[k].t -= dt; // иначе лимит съёма остаётся в будущем
+      const col = PlanetUI.colony(); if (col) col.t -= Math.floor(back / COL.TICK_MS);
+      World.save(); PlanetUI.tick();
+      return { ship: sh, colony: PlanetUI.colony() };
+    } });
 
   renderHud(); renderLayers(); renderCard();
   (function frame() { draw(); requestAnimationFrame(frame); })();

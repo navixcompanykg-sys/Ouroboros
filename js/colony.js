@@ -1,0 +1,512 @@
+// Экономика колонии и корабельная добыча (ТЗ §8.7–8.9). Числа — подбор из tools/colony.js,
+// проверенный прогоном: стартовая планета выходит в автономность за 3 суток 6 часов реального
+// времени, рентабельны 27 % обитаемых планет. Менять их здесь и в tools/colony.js ВМЕСТЕ —
+// второй реализации расчёта не заводить (docs/Уроки.md §3).
+//
+// Такт — 10 РЕАЛЬНЫХ минут (решение пользователя), содержание зданий — раз в час (6 тактов).
+// Время берётся с часов: сколько тактов прошло с последнего визита, столько и считается.
+// Корабельная добыча идёт НЕПРЕРЫВНО (доля такта за секунду) — иначе игрок десять минут смотрит
+// на пустой трюм.
+const COL = {
+  TICK_MS: 10 * 60 * 1000,
+
+  MINE_K: 10,            // шахта: 10 × уровень × содержание гекса за такт (ТЗ §8.7)
+  SHIP_MINE_K: 5,        // корабль ВДВОЕ слабее шахты 1 уровня (решение пользователя), зато берёт
+                         // все ресурсы гекса сразу и может привезти то, чего колонии не хватает
+
+  UPKEEP_RAW: 700,       // содержание здания 1 уровня за ЧАС, сырьём своего типа (любым внутри типа)
+  UPKEEP_EVERY: 6,       // содержание раз в час, добыча раз в 10 минут
+  GRACE: 3,              // три часа подряд без оплаты → здание разбирают
+
+  BUILD_TICKS: 6,        // здание 1 уровня строится реальный час
+
+  FOOD_PER_POP: 1,       // житель (и экипаж корабля — он эквивалентен одному колонисту) ест 1 пищу за такт
+  FARM_CAP: 60,          // ферма уровня L делает до 60 × L пищи за такт
+  FOOD_ART_RAW: 5,       // искусственная пища: 5 ед. структурного сырья...
+  FOOD_ART_EN: 2000,     // ...и 2000 энергии на единицу
+  FOOD_KEEP: 4,          // ДОПУЩЕНИЕ: колония держит запас пищи на столько тактов потребления
+
+  DOME_CAP: 10,          // купол уровня L держит 10 × L жителей
+  POP_TICKS: 144,        // ±1 житель раз в реальные сутки
+
+  WAGE: 6,               // крипты рабочему за такт
+  MFARM_EN: 200000,      // майнинг-ферма жжёт до 200 000 × уровень энергии за такт
+  TOKEN_PER_EN: 0.0004,  // крипты за единицу энергии
+
+  UNIQ_RAW: 10,          // планетарная единица: по 10 ед. сырья 1, 2 и 3 уровня разных типов (§8.5)
+  PROD_TICKS: 144,       // производство уровня L выдаёт одну единицу раз в 144 / L тактов
+
+  DAY_TICKS: 144,        // реальные сутки
+  ALERT_LIFE: 0.5,       // оповещение, когда жизнеобеспечение истощено больше чем наполовину
+};
+
+// Группы сырья по уровням: [1 уровень, 2 уровень, 3 уровень] — ступени внутри группы (ТЗ §5).
+const COL_GROUPS = {
+  s: ['silicates', 'rareEarth', 'superdense'],
+  c: ['silicon', 'niobium', 'isotopes'],
+  e: ['hydrogen', 'tritium', 'antimatter'],
+  b: ['microbiota', 'flora', 'bitumen'],
+};
+const COL_GROUP_NAME = { s: 'Структурные', c: 'Вычислительные', e: 'Энергоносители', b: 'Биомасса' };
+const COL_KEY_GROUP = {};
+for (const g in COL_GROUPS) COL_GROUPS[g].forEach(k => { COL_KEY_GROUP[k] = g; });
+
+// Постройки 1 уровня. uniq — планетарных единиц (§8.6); у шахт и производства 0 — решение
+// пользователя, иначе колонию не с чего начать. upkeep — тип сырья, которым здание содержится
+// (ДОПУЩЕНИЕ: то, с чем здание работает); work — нужен ли рабочий (§8.8).
+const COL_BUILDINGS = [
+  { key: 'mine_s', name: 'Шахта структурная', group: 's', cost: { s: 800, c: 200 }, upkeep: 's', work: true,
+    desc: 'Силикаты, редкоземельные металлы, сверхплотные минералы с гекса' },
+  { key: 'mine_c', name: 'Шахта вычислительная', group: 'c', cost: { s: 800, c: 200 }, upkeep: 'c', work: true,
+    desc: 'Кремний, ниобий, изотопы с гекса' },
+  { key: 'mine_e', name: 'Шахта энергетическая', group: 'e', cost: { s: 800, c: 200 }, upkeep: 'e', work: true,
+    desc: 'Водород, тритий, антиматерия с гекса' },
+  { key: 'mine_b', name: 'Шахта биохимическая', group: 'b', cost: { s: 800, c: 200 }, upkeep: 'b', work: true,
+    desc: 'Микробиота, дикая флора, битумы с гекса' },
+  { key: 'prod', name: 'Производство', cost: { s: 1500, c: 600 }, upkeep: 's', work: true,
+    desc: 'Делает планетарную единицу: 10 + 10 + 10 сырья трёх уровней разных типов' },
+  { key: 'farm', name: 'Фермы', cost: { s: 900, c: 500, uniq: 1 }, upkeep: 'e', work: true,
+    desc: 'Пища: из биомассы 1 к 1 либо искусственно за сырьё и энергию' },
+  { key: 'mfarm', name: 'Майнинг-ферма', cost: { s: 400, c: 1200, uniq: 1 }, upkeep: 'c', work: true,
+    desc: 'Жжёт энергию в крипту — ею платят рабочим' },
+  { key: 'dome', name: 'Купол', cost: { s: 1200, c: 300, uniq: 1 }, upkeep: 's', work: false,
+    desc: 'Жильё: предел населения 10 на уровень' },
+  { key: 'port', name: 'Космодром', cost: { s: 2000, c: 1000, uniq: 1 }, upkeep: 's', work: true,
+    desc: 'Строит корабли из сырья колонии' },
+];
+const COL_BUILDING = Object.fromEntries(COL_BUILDINGS.map(b => [b.key, b]));
+// Кого укомплектовывают первым, если населения или крипты не хватает на всех (правило v2).
+const COL_PRIO = { mine_s: 0, mine_c: 0, mine_e: 0, mine_b: 0, farm: 1, mfarm: 2, prod: 3, port: 4, dome: 99 };
+
+const Colony = (() => {
+  const tickAt = ms => Math.floor(ms / COL.TICK_MS);
+
+  // star/planet колония помнит сама: по ним космодром знает, где появится собранный корабль.
+  function blank(now, star, planet) {
+    return { t: tickAt(now), star, planet, stock: {}, food: 0, crypto: 0, pop: 0, uniq: 0,
+      buildings: [], site: null, yard: null, log: [] };
+  }
+
+  // ---------- склад ----------
+  const inGroup = (col, g) => COL_GROUPS[g].reduce((a, k) => a + (col.stock[k] || 0), 0);
+  function spendIn(col, g, q) { // списать из группы, начиная с самого обильного
+    let left = q;
+    for (const k of COL_GROUPS[g].slice().sort((a, b) => (col.stock[b] || 0) - (col.stock[a] || 0))) {
+      if (left <= 1e-9) break;
+      const take = Math.min(left, col.stock[k] || 0);
+      col.stock[k] = (col.stock[k] || 0) - take; left -= take;
+    }
+    return q - Math.max(0, left);
+  }
+  function burn(col, en) { // сжечь носители на en энергии, дешёвыми вперёд (ТЗ §7.3: 100/300/800)
+    let need = en;
+    for (const k of COL_GROUPS.e) {
+      if (need <= 1e-9) break;
+      const per = FUEL[k] ? FUEL[k].yield : 100;
+      const take = Math.min(col.stock[k] || 0, need / per);
+      col.stock[k] = (col.stock[k] || 0) - take; need -= take * per;
+    }
+    return en - Math.max(0, need);
+  }
+  const add = (store, k, q) => { if (q) store[k] = (store[k] || 0) + q; };
+
+  // ---------- что колония умеет ----------
+  const live = col => col.buildings.filter(b => !b.dead);
+  const has = (col, key) => live(col).some(b => b.kind === key);
+  const domeCap = col => live(col).reduce((a, b) => a + (b.kind === 'dome' ? COL.DOME_CAP * b.lvl : 0), 0);
+  function mineOutput(hex, kind, lvl) { // ед./такт по каждому ресурсу группы
+    const out = {};
+    const g = COL_BUILDING[kind].group;
+    for (const k of COL_GROUPS[g]) { const v = COL.MINE_K * lvl * (hex.res[k] || 0); if (v) out[k] = v; }
+    return out;
+  }
+  // Корабельная добыча: ВСЕ ресурсы гекса, вдвое слабее шахты 1 уровня.
+  function shipOutput(hex) {
+    const out = {};
+    for (const k in hex.res) { const v = COL.SHIP_MINE_K * hex.res[k]; if (v) out[k] = v; }
+    return out;
+  }
+
+  // ---------- такт колонии ----------
+  function step(col, surf) {
+    const hexAt = (q, r) => surf.hexes.find(h => h.q === q && h.r === r);
+    const L = live(col);
+
+    // рабочие: сколько мест укомплектовано (население и крипта, §8.8)
+    const need = L.filter(b => COL_BUILDING[b.kind].work)
+      .sort((a, b) => COL_PRIO[a.kind] - COL_PRIO[b.kind]);
+    const paid = Math.min(col.pop, Math.floor(col.crypto / COL.WAGE), need.length);
+    const manned = new Set(need.slice(0, paid));
+
+    // 1. добыча
+    for (const b of L) {
+      if (!COL_BUILDING[b.kind].group || !manned.has(b)) continue;
+      const h = hexAt(b.q, b.r); if (!h) continue;
+      const out = mineOutput(h, b.kind, b.lvl);
+      for (const k in out) add(col.stock, k, out[k]);
+    }
+
+    // 2. стройка
+    if (col.site && --col.site.left <= 0) {
+      col.buildings.push({ kind: col.site.kind, q: col.site.q, r: col.site.r, lvl: 1, missed: 0 });
+      note(col, 'Готово: ' + COL_BUILDING[col.site.kind].name);
+      col.site = null;
+    }
+
+    // 2б. космодром: корабль собирается своё время, по готовности встаёт на этой же планете
+    if (col.yard && --col.yard.left <= 0) {
+      const sh = World.addShip(col.yard.name, col.star, col.planet);
+      sh.seeded = true; sh.at = Date.now();
+      note(col, 'Космодром собрал корабль: ' + col.yard.name);
+      col.yard = null;
+    }
+
+    // 3. содержание — раз в час, сырьём своего типа (§8.8, 1 уровень)
+    if (col.t % COL.UPKEEP_EVERY === 0) for (const b of L) {
+      const g = COL_BUILDING[b.kind].upkeep, q = COL.UPKEEP_RAW * b.lvl;
+      if (inGroup(col, g) >= q) { spendIn(col, g, q); b.missed = 0; }
+      else if (++b.missed >= COL.GRACE) {
+        b.dead = true;
+        note(col, 'Разобрано за долги: ' + COL_BUILDING[b.kind].name);
+      }
+    }
+
+    // 4. пища и население
+    const eaters = col.pop;
+    const cap = L.reduce((a, b) => a + (b.kind === 'farm' && manned.has(b) ? COL.FARM_CAP * b.lvl : 0), 0);
+    const want = Math.min(cap, Math.max(0, eaters * COL.FOOD_KEEP - col.food));
+    const bio = Math.min(want, inGroup(col, 'b'));
+    let art = want - bio;
+    if (art > 0) {
+      art = Math.min(art, Math.floor(burn(col, art * COL.FOOD_ART_EN) / COL.FOOD_ART_EN));
+      art = Math.min(art, Math.floor(spendIn(col, 's', art * COL.FOOD_ART_RAW) / COL.FOOD_ART_RAW));
+    }
+    if (bio > 0) spendIn(col, 'b', bio);
+    col.food += bio + art;
+    const eaten = Math.min(col.food, eaters * COL.FOOD_PER_POP);
+    col.food -= eaten;
+    const hungry = eaten < eaters * COL.FOOD_PER_POP - 1e-9;
+    col.popClock = (col.popClock || 0) + 1;
+    if (col.popClock >= COL.POP_TICKS) {
+      col.popClock = 0;
+      if (hungry) { col.pop = Math.max(col.floraBase || 0, col.pop - 1); note(col, 'Голод: население убыло'); }
+      else if (col.pop < domeCap(col)) { col.pop++; note(col, 'Население выросло до ' + col.pop); }
+    }
+
+    // 5. крипта
+    const mf = L.find(b => b.kind === 'mfarm' && manned.has(b));
+    const minted = mf ? burn(col, COL.MFARM_EN * mf.lvl) * COL.TOKEN_PER_EN : 0;
+    col.crypto = Math.max(0, col.crypto + minted - paid * COL.WAGE);
+
+    // 6. планетарная единица (§8.5): по 10 ед. сырья 1, 2 и 3 уровня ИЗ РАЗНЫХ ГРУПП
+    const pr = L.find(b => b.kind === 'prod' && manned.has(b));
+    if (pr) {
+      col.prodClock = (col.prodClock || 0) + pr.lvl;
+      const pick = uniqPick(col);
+      if (pick && col.prodClock >= COL.PROD_TICKS) {
+        col.prodClock -= COL.PROD_TICKS;
+        for (const k of pick) col.stock[k] -= COL.UNIQ_RAW;
+        col.uniq++;
+        note(col, 'Планетарная единица готова (' + pick.length + ' вида сырья)');
+      }
+    }
+    col.t++;
+  }
+
+  // Сырьё под планетарную единицу: сначала САМЫЙ РЕДКИЙ, 3 уровень — иначе жадность занимает
+  // единственную группу с третьим уровнем под первый, и производство встаёт навсегда.
+  function uniqPick(col) {
+    const pick = [], used = new Set();
+    for (const tier of [2, 1, 0]) {
+      let best = null, bv = 0;
+      for (const g in COL_GROUPS) {
+        if (used.has(g)) continue;
+        const k = COL_GROUPS[g][tier], have = col.stock[k] || 0;
+        if (have >= COL.UNIQ_RAW && have > bv) { bv = have; best = [g, k]; }
+      }
+      if (!best) return null;
+      used.add(best[0]); pick.push(best[1]);
+    }
+    return pick;
+  }
+
+  function note(col, text) {
+    col.log = col.log || [];
+    col.log.unshift({ t: col.t, text });
+    if (col.log.length > 40) col.log.length = 40;
+  }
+
+  // ---------- догнать время ----------
+  // Сколько тактов прошло с прошлого визита — столько и считаем. Предел на случай, когда игрок
+  // не заходил неделями: больше 4032 тактов (четыре недели) за раз не отматываем.
+  function advance(col, surf, now) {
+    const target = tickAt(now);
+    let n = Math.min(Math.max(0, target - col.t), 4032);
+    while (n-- > 0) step(col, surf);
+    col.t = target;
+    return col;
+  }
+
+  // ---------- стройка по приказу игрока ----------
+  function canBuild(col, key, hex) {
+    const B = COL_BUILDING[key];
+    if (!B) return 'нет такой постройки';
+    if (col.site) return 'уже идёт стройка: ' + COL_BUILDING[col.site.kind].name;
+    if (!hex) return 'выберите гекс';
+    if (col.buildings.some(b => !b.dead && b.q === hex.q && b.r === hex.r)) return 'гекс занят';
+    if (B.group && !COL_GROUPS[B.group].some(k => (hex.res[k] || 0) > 0))
+      return 'на этом гексе нет ' + COL_GROUP_NAME[B.group].toLowerCase();
+    if (inGroup(col, 's') < (B.cost.s || 0)) return 'мало структурного сырья';
+    if (inGroup(col, 'c') < (B.cost.c || 0)) return 'мало вычислительного сырья';
+    if (col.uniq < (B.cost.uniq || 0)) return 'нужна планетарная единица';
+    return null;
+  }
+  function build(col, key, hex) {
+    const err = canBuild(col, key, hex); if (err) return err;
+    const B = COL_BUILDING[key];
+    spendIn(col, 's', B.cost.s || 0); spendIn(col, 'c', B.cost.c || 0);
+    col.uniq -= B.cost.uniq || 0;
+    col.site = { kind: key, q: hex.q, r: hex.r, left: COL.BUILD_TICKS };
+    note(col, 'Начата стройка: ' + B.name);
+    return null;
+  }
+
+  // ---------- сводка для интерфейса ----------
+  function summary(col, surf) {
+    const L = live(col);
+    const need = L.filter(b => COL_BUILDING[b.kind].work).sort((a, b) => COL_PRIO[a.kind] - COL_PRIO[b.kind]);
+    const paid = Math.min(col.pop, Math.floor(col.crypto / COL.WAGE), need.length);
+    const rate = {};
+    const hexAt = (q, r) => surf.hexes.find(h => h.q === q && h.r === r);
+    need.slice(0, paid).forEach(b => {
+      if (!COL_BUILDING[b.kind].group) return;
+      const h = hexAt(b.q, b.r); if (!h) return;
+      const out = mineOutput(h, b.kind, b.lvl);
+      for (const k in out) add(rate, k, out[k]);
+    });
+    return { live: L, workers: paid, jobs: need.length, rate, yard: col.yard,
+      upkeep: L.length * COL.UPKEEP_RAW, port: has(col, 'port'),
+      stock: col.stock, food: col.food, crypto: col.crypto, pop: col.pop, uniq: col.uniq,
+      cap: domeCap(col), site: col.site };
+  }
+
+  return { blank, advance, step, build, canBuild, summary, live, has, inGroup, spendIn, add,
+    shipOutput, mineOutput, tickAt, note, domeCap, uniqPick };
+})();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Корабль: трюм, добыча с гекса, жизнеобеспечение на пище.
+//
+// Правила пользователя:
+//   - корабельная добыча ВДВОЕ слабее шахты 1 уровня, зато берёт все ресурсы гекса сразу и
+//     может привезти колонии то, чего ей критически не хватает;
+//   - системы жизнеобеспечения пополняются ПИЩЕЙ;
+//   - экипаж корабля эквивалентен одному колонисту и ест пищу так же;
+//   - стандартного блока жизнеобеспечения хватает на СУТКИ (144 такта);
+//   - везёшь колонистов или армию — высаживай быстрее, ставь больше блоков или вези пищу
+//     в трюме: каждый пассажир ест как колонист, и запас тает во столько же раз быстрее.
+const Ship = (() => {
+  // Сколько пищи вмещает единица параметра «запас жизнеобеспечения». Выводится из СТАНДАРТНОГО
+  // блока 1 уровня, чтобы правило «блока хватает на сутки» держалось при любых числах
+  // пользователя в таблице компонентов.
+  function foodPerUnit(tbl) {
+    const one = partParam(tbl, 'life_support', 'lifeSup', 1);
+    return one > 0 ? COL.DAY_TICKS / one : COL.DAY_TICKS / 6;
+  }
+  // Корабль считается ВСЕГДА на компонентах 1 уровня с базовыми настройками (этап игры).
+  const stats = (tbl, ship) => shipTotals(tbl, findDesign(ship.design), 1, null, 1, 1);
+  const crew = ship => 1 + (ship.pax || 0);                 // экипаж + пассажиры
+  const lifeCap = (tbl, st) => Math.round(st.lifeSupport * foodPerUnit(tbl));
+  const lifeLeft = (tbl, ship, st) => ship.food == null ? lifeCap(tbl, st) : Math.max(0, ship.food);
+  const lifeShare = (tbl, ship, st) => { const c = lifeCap(tbl, st); return c > 0 ? lifeLeft(tbl, ship, st) / c : 0; };
+  // На сколько тактов хватит запаса при нынешнем экипаже (с пассажирами — меньше).
+  const lifeTicks = (tbl, ship, st) => Math.floor(lifeLeft(tbl, ship, st) / (crew(ship) * COL.FOOD_PER_POP));
+
+  const cargoUsed = ship => Object.values(ship.cargo || {}).reduce((a, v) => a + v, 0);
+  const cargoFree = (tbl, ship, st) => Math.max(0, st.capacity - cargoUsed(ship));
+  const hasMiner = ship => designModules(findDesign(ship.design)).includes('miner');
+
+  // Догнать время. Пища расходуется непрерывно (экипаж и пассажиры едят всегда), добыча —
+  // тактами: корабль, ОСТАВЛЕННЫЙ НА ДОБЫЧЕ (ship.mine), каждые 10 минут снимает с гекса норму
+  // и не улетает, пока не кончится пища, не кончится топливо или не забьётся трюм (решение
+  // пользователя). Если игрока не было, выдаём всё, что он накопил бы за это время.
+  function advance(tbl, ship, surf, now) {
+    const st = stats(tbl, ship);
+    if (ship.food == null) ship.food = lifeCap(tbl, st);
+    const wasLow = lifeShare(tbl, ship, st) <= COL.ALERT_LIFE;
+    const last = ship.at || now;
+    const dt = Math.max(0, Math.min(now - last, 28 * 24 * 3600 * 1000)); // больше четырёх недель за раз не отматываем
+    const ticks = dt / COL.TICK_MS;
+    const foodTicks = Math.floor(lifeLeft(tbl, ship, st) / (crew(ship) * COL.FOOD_PER_POP));
+    ship.at = now;
+    if (ticks > 0) ship.food = Math.max(0, ship.food - ticks * crew(ship) * COL.FOOD_PER_POP);
+
+    let auto = 0, got = null, stop = null;
+    const h = ship.mine && ship.landed && surf
+      ? surf.hexes.find(x => x.q === ship.mine.q && x.r === ship.mine.r) : null;
+    if (h && hasMiner(ship)) {
+      const t0 = Colony.tickAt(last), t1 = Colony.tickAt(now);
+      const lastH = hvOf(ship, ship.star, ship.planet);
+      let n = Math.max(0, t1 - Math.max(t0, lastH ? lastH.t : -1));
+      const per = Object.values(Colony.shipOutput(h)).reduce((a, v) => a + v, 0);
+      const byFuel = Math.floor(World.fuel() / HARVEST_FUEL);
+      const byCargo = per > 0 ? Math.ceil(cargoFree(tbl, ship, st) / per) : 0;
+      if (n > foodTicks) { n = Math.max(0, foodTicks); stop = 'пища'; }
+      if (n > byFuel) { n = byFuel; stop = 'топливо'; }
+      if (n > byCargo) { n = byCargo; stop = 'трюм'; }
+      for (let i = 0; i < n; i++) {
+        const r = harvest(tbl, ship, h, ship.star, ship.planet, now, true);
+        if (r.err) { stop = r.err; break; }
+        auto++; got = got || {};
+        for (const k in r.got) got[k] = (got[k] || 0) + r.got[k];
+      }
+      
+    }
+    const full = cargoFree(tbl, ship, st) <= 0, low = lifeShare(tbl, ship, st) <= COL.ALERT_LIFE;
+    if (full || ship.food <= 0 || World.fuel() < HARVEST_FUEL) ship.mine = null; // добывать больше нечем
+    return { st, ticks, full, low, justLow: low && !wasLow, auto, got, stop };
+  }
+
+  // МГНОВЕННЫЙ СЪЁМ ДОБЫЧИ С ГЕКСА (решение пользователя: «чтоб игроку всегда было чем
+  // заняться»). Корабль забирает с гекса ровно десятиминутную норму — вдвое меньше, чем взяла
+  // бы шахта 1 уровня, — и тратит на это только ТОПЛИВО (оно же энергия, ТЗ §7.3).
+  //
+  // ЛИМИТ У ГЕКСА, А НЕ У КОРАБЛЯ И НЕ У ПЛАНЕТЫ: гекс отдаёт раз в 10 минут, и другим кораблём
+  // с ТОГО ЖЕ гекса снова не снять — а с соседнего можно. Прилетел на другую планету — там свои
+  // гексы со своими лимитами. Отсюда и смысл флота: пока один корабль в пути, другим дают
+  // приказы, и чем больше игрок играет, тем быстрее растёт колония (ТЗ §1, автосимулятор).
+  const HARVEST_FUEL = 0.01;   // ДОПУЩЕНИЕ: доля бака за один съём
+  // ЛИМИТ ХРАНИТСЯ В ПАМЯТИ КОРАБЛЯ (решение пользователя): ship.hv — по одной записи на
+  // планету, {t: номер такта, q, r: откуда брали}. Один корабль снимает с ОДНОЙ планеты один
+  // гекс за 10 минут; прилетел на другую — там свой счёт.
+  //
+  // ПОЧЕМУ НА КОРАБЛЕ, А НЕ НА ПЛАНЕТЕ (вопрос про ММО). История не нужна ни там, ни там:
+  // запись старше текущего такта уже ничего не ограничивает, её сразу выбрасываем — поэтому
+  // у корабля остаются одна-две записи, то есть O(1). Главное же не память, а ЗАПИСЬ: лимит на
+  // корабле пишется только в собственную строку корабля — ни блокировок, ни гонок между
+  // игроками, шардится по игроку. Лимит на гексе пришлось бы писать в ОБЩЕЕ состояние планеты
+  // на самом горячем пути. Плата за выбор: два корабля могут снять с одного гекса в один такт.
+  // Понадобится ограничить толпу на гексе — добавим хекс-лимит ПОВЕРХ, не убирая корабельный.
+  const hvKey = (star, planet) => star + ':' + planet;
+  const hvOf = (ship, star, planet) => (ship.hv || {})[hvKey(star, planet)] || null;
+  function harvestReady(ship, star, planet, now) {
+    const h = hvOf(ship, star, planet);
+    return !h || Colony.tickAt(now) > h.t;
+  }
+  function harvestWait(ship, star, planet, now) { // секунд до следующего съёма на этой планете
+    if (harvestReady(ship, star, planet, now)) return 0;
+    return Math.ceil((COL.TICK_MS - (now % COL.TICK_MS)) / 1000);
+  }
+  function harvest(tbl, ship, hex, star, planet, now, auto) {
+    if (!hasMiner(ship)) return { err: 'нет модуля «Шахтёр»' };
+    if (!auto && !harvestReady(ship, star, planet, now)) return { err: 'на этой планете корабль уже брал добычу в этом такте' };
+    const st = stats(tbl, ship);
+    const free = cargoFree(tbl, ship, st);
+    if (free <= 0) return { err: 'трюм полон' };
+    if (World.fuel() < HARVEST_FUEL) return { err: 'нет топлива на съём' };
+    const out = Colony.shipOutput(hex);
+    const want = Object.values(out).reduce((a, v) => a + v, 0);
+    if (want <= 0) return { err: 'на гексе нечего брать' };
+    // Не влезает — режем ВСЕ ресурсы одной долей, иначе редкое вытесняется водородом.
+    const k = want > free ? free / want : 1;
+    const got = {};
+    ship.cargo = ship.cargo || {};
+    for (const key in out) { const q = out[key] * k; if (q > 0) { ship.cargo[key] = (ship.cargo[key] || 0) + q; got[key] = q; } }
+    const nowT = Colony.tickAt(now);
+    ship.hv = ship.hv || {};
+    for (const k in ship.hv) if (ship.hv[k].t < nowT) delete ship.hv[k]; // мёртвые записи не храним
+    ship.hv[hvKey(star, planet)] = { t: nowT, q: hex.q, r: hex.r };
+    World.setFuel(World.fuel() - HARVEST_FUEL);
+    return { got, total: want * k, full: cargoFree(tbl, ship, st) <= 0 };
+  }
+
+  // Выгрузить трюм на склад колонии.
+  function unload(ship, col) {
+    let n = 0;
+    for (const k in ship.cargo || {}) { Colony.add(col.stock, k, ship.cargo[k]); n += ship.cargo[k]; }
+    ship.cargo = {};
+    if (n > 0) Colony.note(col, 'Корабль выгрузил ' + Math.round(n) + ' ед. сырья');
+    return n;
+  }
+  // Зарядить жизнеобеспечение пищей колонии.
+  function recharge(tbl, ship, col) {
+    const st = stats(tbl, ship), cap = lifeCap(tbl, st);
+    const need = Math.max(0, cap - lifeLeft(tbl, ship, st));
+    const got = Math.min(need, col.food);
+    col.food -= got; ship.food = lifeLeft(tbl, ship, st) + got;
+    return got;
+  }
+  // Положить пищу в трюм — ею потом заряжают жизнеобеспечение в полёте.
+  function loadFood(tbl, ship, col, qty) {
+    const st = stats(tbl, ship);
+    const got = Math.min(qty, col.food, cargoFree(tbl, ship, st));
+    col.food -= got; ship.cargo = ship.cargo || {};
+    ship.cargo.food = (ship.cargo.food || 0) + got;
+    return got;
+  }
+  // Зарядить жизнеобеспечение пищей ИЗ ТРЮМА (в полёте колонии под рукой нет).
+  function rechargeFromHold(tbl, ship) {
+    const st = stats(tbl, ship), cap = lifeCap(tbl, st);
+    const need = Math.max(0, cap - lifeLeft(tbl, ship, st));
+    const got = Math.min(need, (ship.cargo && ship.cargo.food) || 0);
+    if (got <= 0) return 0;
+    ship.cargo.food -= got; if (ship.cargo.food <= 0) delete ship.cargo.food;
+    ship.food = lifeLeft(tbl, ship, st) + got;
+    return got;
+  }
+
+  return { stats, crew, lifeCap, lifeLeft, lifeShare, lifeTicks, cargoUsed, cargoFree, hasMiner,
+    advance, harvest, harvestReady, harvestWait, HARVEST_FUEL, unload, recharge, loadFood, rechargeFromHold, foodPerUnit,
+    cost: shipCost, costTotal: shipCostTotal, paxCap, ensureStart };
+})();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Стоимость корабля в сырье и стартовая загрузка.
+//
+// Корабль собирается из компонентов 1 уровня (базовые настройки этого этапа игры), а компонент
+// 1 уровня — это 3 единицы сырья 1 уровня СВОЕГО типа (CRAFT в components.js). Состав предметов
+// берётся из таблицы пользователя (data/parts.json) — своих чисел здесь нет.
+function shipCost(tbl, design) {
+  const out = {};
+  const mods = designModules(design).concat(design.decks.map(() => 'frame'));
+  for (const key of mods) {
+    const comp = (tbl.comp || {})[key]; if (!comp) continue;
+    const per = rawPerItem(comp, 1);                  // {тип: [1ур, 2ур, 3ур]}
+    for (const m of MAT_TYPES) for (let i = 0; i < 3; i++) {
+      const q = per[m.key][i] * SHIP_SCALE; if (q) Colony.add(out, m.res[i], q);
+    }
+  }
+  return out;
+}
+function shipCostTotal(cost) { return Object.values(cost).reduce((a, v) => a + v, 0); }
+
+// ДОПУЩЕНИЕ: один колониальный модуль возит 10 пассажиров (колонистов или солдат). Каждый ест
+// пищу как колонист, поэтому с полным модулем стандартный блок жизнеобеспечения кончается не
+// за сутки, а за два с небольшим часа — высаживать надо быстро либо ставить блоки и возить пищу.
+const PAX_PER_MODULE = 10;
+function paxCap(design) { return designModules(design).filter(k => k === 'colonist').length * PAX_PER_MODULE; }
+
+// Стартовая загрузка первого корабля — ровно та, что в прогоне tools/colony.js: сырьё на первую
+// шахту, водород на первые часы, пища на колонистов. Делается один раз на новую игру.
+const START_LOAD = { silicates: 400, silicon: 260, hydrogen: 440, food: 1100, pax: 10 };
+function ensureStart(ship) {
+  if (ship.seeded || ship.id !== 1) return false;
+  ship.seeded = true;
+  ship.cargo = ship.cargo || {};
+  for (const k in START_LOAD) if (k !== 'pax') Colony.add(ship.cargo, k, START_LOAD[k]);
+  ship.pax = START_LOAD.pax;
+  World.save();
+  return true;
+}
+
+// МАСШТАБ КОРАБЛЯ ×10 (решение пользователя: «корабль просто умножь на 10 все компоненты и
+// тягу — так как масса вырастет тоже в 10 раз — и корабль будет эквивалентен шахте»).
+// Один предмет оборудования — это десять наборов компонентов из таблицы, а не один: стартовый
+// шаттл стоит 930 единиц сырья вместо 93, то есть примерно как шахта (1000). Масса и тяга
+// растут тем же множителем, поэтому ускорение, время разгона и все полётные числа НЕ меняются —
+// в ships.js и components.js править нечего, множитель нужен только там, где платят сырьём.
+const SHIP_SCALE = 10;
+function shipBuildTicks(design) {
+  // Время сборки: час на каждые четыре модуля (ДОПУЩЕНИЕ).
+  return COL.BUILD_TICKS * Math.max(1, Math.ceil((designModules(design).length + design.decks.length) / 4));
+}
