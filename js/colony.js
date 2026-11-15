@@ -34,7 +34,8 @@ const COL = {
   TOKEN_PER_EN: 0.0004,  // крипты за единицу энергии
 
   UNIQ_RAW: 10,          // планетарная единица: по 10 ед. сырья 1, 2 и 3 уровня разных типов (§8.5)
-  PROD_TICKS: 144,       // производство уровня L выдаёт одну единицу раз в 144 / L тактов
+  PROD_TICKS: 144,       // производство уровня L выдаёт одну планетарную единицу раз в 144 / L тактов
+  PROD_COMP: 10,         // ДОПУЩЕНИЕ: или столько компонентов за такт (× уровень), если задан такой заказ
 
   DAY_TICKS: 144,        // реальные сутки
   ALERT_LIFE: 0.5,       // оповещение, когда жизнеобеспечение истощено больше чем наполовину
@@ -73,6 +74,11 @@ const COL_BUILDINGS = [
     desc: 'Жильё: предел населения 10 на уровень' },
   { key: 'port', name: 'Космодром', cost: { s: 2000, c: 1000, uniq: 1 }, upkeep: 's', work: true,
     desc: 'Строит корабли из сырья колонии' },
+  // Газовый гигант: поверхности нет, корабль висит на низкой орбите и черпает газ с верхних
+  // слоёв. Строить там можно только станцию, и эта ветка пока НЕ РАЗВИВАЕТСЯ (решение
+  // пользователя) — кнопка есть, постройка отказывает.
+  { key: 'station', name: 'Орбитальная станция', cost: { s: 3000, c: 2000, uniq: 1 }, upkeep: 's', work: true,
+    orbital: true, todo: true, desc: 'Единственная постройка газового гиганта. Ветка пока не развивается' },
 ];
 const COL_BUILDING = Object.fromEntries(COL_BUILDINGS.map(b => [b.key, b]));
 // Кого укомплектовывают первым, если населения или крипты не хватает на всех (правило v2).
@@ -110,6 +116,41 @@ const Colony = (() => {
   }
   const add = (store, k, q) => { if (q) store[k] = (store[k] || 0) + q; };
 
+  // ---------- СКЛАД ПЛАНЕТЫ ----------
+  // Решение пользователя: «каждой планете, где есть хоть одна постройка, нужен свой склад;
+  // каждая постройка — это как два трюма на корабле, это и задаёт лимит хранения».
+  // Трюм — грузовой отсек 1 уровня из таблицы компонентов (2000 ед.), значит постройка даёт
+  // 4000. Число берётся из таблицы пользователя, не выдумывается: holdUnit ставит экран, когда
+  // таблица загрузилась (setHoldUnit).
+  //
+  // ДОПУЩЕНИЕ: у колонии без построек склад считается как за ОДНУ постройку — иначе высаженный
+  // груз некуда деть и первую шахту (1000 ед.) не на что построить.
+  let holdUnit = 2000;
+  const setHoldUnit = n => { if (n > 0) holdUnit = n; };
+  const capacity = col => Math.max(1, live(col).length) * 2 * holdUnit;
+  const used = col => Object.values(col.stock).reduce((a, v) => a + v, 0) + (col.food || 0) + compTotal(col);
+  const roomLeft = col => Math.max(0, capacity(col) - used(col));
+  // Положить на склад, сколько влезет; вернуть, сколько легло.
+  function store(col, key, qty) {
+    const q = Math.min(qty, roomLeft(col));
+    if (q > 0) add(col.stock, key, q);
+    return q;
+  }
+
+  // ---------- КОМПОНЕНТЫ НА СКЛАДЕ ----------
+  // Производство делает из сырья либо КОМПОНЕНТЫ (они идут на склад и из них потом собирают
+  // оборудование и корабли), либо УНИКАЛЬНЫЙ РЕСУРС планеты (§8.5). Что именно — задаёт игрок
+  // заказом (col.order). Рецепт компонента — CRAFT из components.js, числа пользователя.
+  const compKey = (mat, tier) => mat + tier;
+  const compName = (mat, tier) => (MAT_TYPE[mat] ? MAT_TYPE[mat].name : mat) + ' ' + tier + ' ур.';
+  const compTotal = col => Object.values(col.comp || {}).reduce((a, v) => a + v, 0);
+  // Сколько сырья уходит на один компонент: CRAFT[tier-1].need — по уровням сырья СВОЕГО типа.
+  function compCost(mat, tier) {
+    const need = CRAFT[tier - 1].need, res = MAT_TYPE[mat].res, out = {};
+    need.forEach((n, i) => { if (n) out[res[i]] = n; });
+    return out;
+  }
+
   // ---------- что колония умеет ----------
   const live = col => col.buildings.filter(b => !b.dead);
   const has = (col, key) => live(col).some(b => b.kind === key);
@@ -139,12 +180,23 @@ const Colony = (() => {
     const manned = new Set(need.slice(0, paid));
 
     // 1. добыча
+    // Добыча кладётся на склад РЕДКИМ ВПЕРЁД (по средней распространённости в галактике,
+    // RESOURCE_STATS). Иначе склад забивается дешёвым водородом, сырьё 3 уровня на него уже не
+    // попадает — и планетарная единица (§8.5) не делается никогда: колония встаёт навсегда,
+    // имея полный склад. Проверено прогоном: без этого 0 единиц за 160 тактов.
+    let spill = 0;
+    const mined = {};
     for (const b of L) {
       if (!COL_BUILDING[b.kind].group || !manned.has(b)) continue;
       const h = hexAt(b.q, b.r); if (!h) continue;
       const out = mineOutput(h, b.kind, b.lvl);
-      for (const k in out) add(col.stock, k, out[k]);
+      for (const k in out) mined[k] = (mined[k] || 0) + out[k];
     }
+    const rare = k => (RESOURCE_STATS[k] ? RESOURCE_STATS[k].avg : 1);
+    for (const k of Object.keys(mined).sort((a, b) => rare(a) - rare(b)))
+      spill += mined[k] - store(col, k, mined[k]);
+    if (spill > 0 && !col.fullWarned) { col.fullWarned = true; note(col, 'Склад полон — добыча пропадает'); }
+    if (spill <= 0) col.fullWarned = false;
 
     // 2. стройка
     if (col.site && --col.site.left <= 0) {
@@ -182,7 +234,7 @@ const Colony = (() => {
       art = Math.min(art, Math.floor(spendIn(col, 's', art * COL.FOOD_ART_RAW) / COL.FOOD_ART_RAW));
     }
     if (bio > 0) spendIn(col, 'b', bio);
-    col.food += bio + art;
+    col.food += Math.min(bio + art, roomLeft(col)); // место, которое освободили биомасса и сырьё, уже учтено
     const eaten = Math.min(col.food, eaters * COL.FOOD_PER_POP);
     col.food -= eaten;
     const hungry = eaten < eaters * COL.FOOD_PER_POP - 1e-9;
@@ -198,16 +250,29 @@ const Colony = (() => {
     const minted = mf ? burn(col, COL.MFARM_EN * mf.lvl) * COL.TOKEN_PER_EN : 0;
     col.crypto = Math.max(0, col.crypto + minted - paid * COL.WAGE);
 
-    // 6. планетарная единица (§8.5): по 10 ед. сырья 1, 2 и 3 уровня ИЗ РАЗНЫХ ГРУПП
+    // 6. производство: заказ игрока — компоненты на склад или уникальный ресурс планеты
     const pr = L.find(b => b.kind === 'prod' && manned.has(b));
     if (pr) {
-      col.prodClock = (col.prodClock || 0) + pr.lvl;
-      const pick = uniqPick(col);
-      if (pick && col.prodClock >= COL.PROD_TICKS) {
-        col.prodClock -= COL.PROD_TICKS;
-        for (const k of pick) col.stock[k] -= COL.UNIQ_RAW;
-        col.uniq++;
-        note(col, 'Планетарная единица готова (' + pick.length + ' вида сырья)');
+      const order = col.order || { kind: 'uniq' };
+      if (order.kind === 'comp') {
+        const cost = compCost(order.mat, order.tier);
+        let n = COL.PROD_COMP * pr.lvl;
+        for (const k in cost) n = Math.min(n, Math.floor((col.stock[k] || 0) / cost[k]));
+        if (n > 0) {
+          for (const k in cost) col.stock[k] -= cost[k] * n;
+          col.comp = col.comp || {};
+          const key = compKey(order.mat, order.tier);
+          col.comp[key] = (col.comp[key] || 0) + n;
+        }
+      } else {
+        col.prodClock = (col.prodClock || 0) + pr.lvl;
+        const pick = uniqPick(col);
+        if (pick && col.prodClock >= COL.PROD_TICKS) {
+          col.prodClock -= COL.PROD_TICKS;
+          for (const k of pick) col.stock[k] -= COL.UNIQ_RAW;
+          col.uniq++;
+          note(col, 'Планетарная единица готова (' + pick.length + ' вида сырья)');
+        }
       }
     }
     col.t++;
@@ -248,9 +313,11 @@ const Colony = (() => {
   }
 
   // ---------- стройка по приказу игрока ----------
-  function canBuild(col, key, hex) {
+  function canBuild(col, key, hex, lowOrbit) {
     const B = COL_BUILDING[key];
     if (!B) return 'нет такой постройки';
+    if (B.todo) return 'эта ветка пока не развивается';
+    if (!!B.orbital !== !!lowOrbit) return B.orbital ? 'только на низкой орбите газового гиганта' : 'нужна твёрдая поверхность';
     if (col.site) return 'уже идёт стройка: ' + COL_BUILDING[col.site.kind].name;
     if (!hex) return 'выберите гекс';
     if (col.buildings.some(b => !b.dead && b.q === hex.q && b.r === hex.r)) return 'гекс занят';
@@ -261,8 +328,8 @@ const Colony = (() => {
     if (col.uniq < (B.cost.uniq || 0)) return 'нужна планетарная единица';
     return null;
   }
-  function build(col, key, hex) {
-    const err = canBuild(col, key, hex); if (err) return err;
+  function build(col, key, hex, lowOrbit) {
+    const err = canBuild(col, key, hex, lowOrbit); if (err) return err;
     const B = COL_BUILDING[key];
     spendIn(col, 's', B.cost.s || 0); spendIn(col, 'c', B.cost.c || 0);
     col.uniq -= B.cost.uniq || 0;
@@ -284,13 +351,15 @@ const Colony = (() => {
       const out = mineOutput(h, b.kind, b.lvl);
       for (const k in out) add(rate, k, out[k]);
     });
-    return { live: L, workers: paid, jobs: need.length, rate, yard: col.yard,
+    return { live: L, workers: paid, jobs: need.length, rate, yard: col.yard, order: col.order || { kind: 'uniq' },
+      cap: capacity(col), used: used(col), room: roomLeft(col),
       upkeep: L.length * COL.UPKEEP_RAW, port: has(col, 'port'),
       stock: col.stock, food: col.food, crypto: col.crypto, pop: col.pop, uniq: col.uniq,
-      cap: domeCap(col), site: col.site };
+      popCap: domeCap(col), site: col.site };
   }
 
   return { blank, advance, step, build, canBuild, summary, live, has, inGroup, spendIn, add,
+    capacity, used, roomLeft, store, setHoldUnit, compKey, compName, compCost, compTotal,
     shipOutput, mineOutput, tickAt, note, domeCap, uniqPick };
 })();
 
@@ -421,13 +490,54 @@ const Ship = (() => {
   }
 
   // Выгрузить трюм на склад колонии.
+  // Выгрузка на склад планеты: что не влезло — остаётся в трюме (склад планеты ограничен,
+  // ТЗ §8.12: постройка = два трюма).
   function unload(ship, col) {
-    let n = 0;
-    for (const k in ship.cargo || {}) { Colony.add(col.stock, k, ship.cargo[k]); n += ship.cargo[k]; }
-    ship.cargo = {};
-    if (n > 0) Colony.note(col, 'Корабль выгрузил ' + Math.round(n) + ' ед. сырья');
+    let n = 0, left = 0;
+    for (const k of Object.keys(ship.cargo || {})) {
+      if (k === 'food') continue; // пища идёт в запас колонии, а не в сырьё
+      const isComp = !RESOURCES.some(r => r.key === k);
+      const room = Colony.roomLeft(col);
+      const got = isComp ? Math.min(ship.cargo[k], room) : Colony.store(col, k, ship.cargo[k]);
+      if (isComp && got > 0) { col.comp = col.comp || {}; col.comp[k] = (col.comp[k] || 0) + got; }
+      n += got;
+      if (got < ship.cargo[k]) { ship.cargo[k] -= got; left += ship.cargo[k]; } else delete ship.cargo[k];
+    }
+    if (ship.cargo && ship.cargo.food > 0) {
+      const room = Colony.roomLeft(col), got = Math.min(ship.cargo.food, room);
+      col.food += got; n += got;
+      if (got < ship.cargo.food) { ship.cargo.food -= got; left += ship.cargo.food; } else delete ship.cargo.food;
+    }
+    if (n > 0) Colony.note(col, 'Корабль выгрузил ' + Math.round(n) + ' ед.' + (left > 0 ? ', ' + Math.round(left) + ' не влезло' : ''));
     return n;
   }
+  // Что лежит на складе колонии одной таблицей: сырьё, компоненты и пища. Ключ компонента —
+  // 'struct1', 'compute2' и т. д., пищи — 'food'; по нему же добро кладётся в трюм.
+  function colonyGoods(col) {
+    const out = [];
+    for (const r of RESOURCES) if ((col.stock[r.key] || 0) > 0.5) out.push({ key: r.key, name: r.name, qty: col.stock[r.key] });
+    for (const k in col.comp || {}) if (col.comp[k] > 0.5)
+      out.push({ key: k, name: Colony.compName(k.slice(0, -1), +k.slice(-1)), qty: col.comp[k] });
+    if (col.food > 0.5) out.push({ key: 'food', name: 'Пища', qty: col.food });
+    return out;
+  }
+  const takeFromColony = (col, key, q) => {
+    if (key === 'food') { col.food -= q; return; }
+    if (col.stock[key] != null) { col.stock[key] -= q; return; }
+    col.comp[key] -= q;
+  };
+  // Склад → трюм: сколько влезет в трюм и сколько есть на складе.
+  function load(tbl, ship, col, key, qty) {
+    const st = stats(tbl, ship);
+    const have = key === 'food' ? col.food : (col.stock[key] != null ? col.stock[key] : (col.comp || {})[key] || 0);
+    const q = Math.min(qty, have, cargoFree(tbl, ship, st));
+    if (q <= 0) return 0;
+    takeFromColony(col, key, q);
+    ship.cargo = ship.cargo || {};
+    ship.cargo[key] = (ship.cargo[key] || 0) + q;
+    return q;
+  }
+
   // Зарядить жизнеобеспечение пищей колонии.
   function recharge(tbl, ship, col) {
     const st = stats(tbl, ship), cap = lifeCap(tbl, st);
@@ -456,7 +566,7 @@ const Ship = (() => {
   }
 
   return { stats, crew, lifeCap, lifeLeft, lifeShare, lifeTicks, cargoUsed, cargoFree, hasMiner,
-    advance, harvest, harvestReady, harvestWait, HARVEST_FUEL, unload, recharge, loadFood, rechargeFromHold, foodPerUnit,
+    advance, harvest, harvestReady, harvestWait, HARVEST_FUEL, unload, load, colonyGoods, recharge, loadFood, rechargeFromHold, foodPerUnit,
     cost: shipCost, costTotal: shipCostTotal, paxCap, ensureStart };
 })();
 

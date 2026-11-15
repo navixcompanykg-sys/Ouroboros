@@ -10,7 +10,10 @@
   const sys = generateSystem(gstar);
   const planet = sys.planets[Math.min(sys.planets.length - 1, Math.max(0, parseInt(qs.get('p'), 10) || 0))];
   const surf = generateSurface(planet, gstar);
-  if (!surf) { location.href = World.systemUrl(gstar.id); return; } // газовый гигант — поверхности нет
+  if (!surf) { location.href = World.systemUrl(gstar.id); return; } // поверхности нет вовсе
+  // У газового гиганта твёрдой поверхности нет: корабль висит на НИЗКОЙ ОРБИТЕ и черпает газ
+  // с гексов верхних слоёв атмосферы (ТЗ §8.13).
+  const lowOrbit = !!PLANET_TYPES[planet.type].lowOrbit;
   // Оповещение «к кораблю» приводит сюда с ?pick= — сначала делаем этот корабль активным.
   const pick = parseInt(qs.get('pick'), 10);
   if (pick > 0 && World.fleet().some(s => s.id === pick)) World.setActive(pick);
@@ -118,8 +121,11 @@
     const T = PLANET_TYPES[planet.type], e = surf.env;
     $('h-name').textContent = planet.name;
     $('h-dot').style.background = T.colors[1];
-    $('h-type').textContent = `${T.name} · ${SIZE_NAMES[planet.hexRadius]} · ${surf.hexes.length} гексов`;
-    $('h-env').textContent = `Вода ${Math.round(e.water * 100)}% · атмосфера ${e.atmo ? 'есть' : 'нет'} · жизнь: ${LIFE_STATES[planet.life].name.toLowerCase()} · ${planet.tempK} K`;
+    $('h-type').textContent = `${T.name} · ${SIZE_NAMES[planet.hexRadius]} · ${surf.hexes.length} гексов`
+      + (lowOrbit ? ' · корабль на низкой орбите' : '');
+    $('h-env').textContent = lowOrbit
+      ? `Верхние слои атмосферы · твёрдой поверхности нет · ${planet.tempK} K`
+      : `Вода ${Math.round(e.water * 100)}% · атмосфера ${e.atmo ? 'есть' : 'нет'} · жизнь: ${LIFE_STATES[planet.life].name.toLowerCase()} · ${planet.tempK} K`;
     $('h-bh').hidden = !gstar.bh;
     if (gstar.bh) $('h-bh').textContent = `Донор чёрной дыры · индекс ${String(gstar.bh.index).replace('.', ',')} — мир нестабилен`;
   }
@@ -161,6 +167,7 @@
   $('c-close').onclick = () => { selected = null; renderCard(); };
   $('b-system').onclick = () => { location.href = World.systemUrl(gstar.id); };
   $('b-takeoff').onclick = () => { location.href = World.systemUrl(gstar.id) + '&takeoff=1'; };
+  if (lowOrbit) $('b-takeoff').textContent = 'Уйти с орбиты';
 
   // Панель колонии и флота: добыча кораблём, стройка, космодром, переключение кораблей.
   $('b-colony').onclick = () => {

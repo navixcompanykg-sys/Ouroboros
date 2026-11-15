@@ -15,6 +15,10 @@ const SURFACE_TYPES = {
   desert:    { name: 'Пустыня',       color: '#cc9944' },
   forest:    { name: 'Леса',          color: '#336633' },
   jungle:    { name: 'Джунгли',       color: '#1f7a3d' },
+  // Газовый гигант: «поверхность» — верхние слои атмосферы, корабль берёт газ с них.
+  clouds:    { name: 'Светлая зона',  color: '#d9c9a6' },
+  belt:      { name: 'Тёмный пояс',   color: '#9a7850' },
+  storm:     { name: 'Вихрь',         color: '#c96a4a' },
 };
 
 // Радиус гекс-карты по диаметру — как v2 planetHexRadius: шкала 1–3 по общему диапазону
@@ -33,7 +37,9 @@ const hexCount = R => 3 * R * R + 3 * R + 1;
 const HEX_DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
 
 function generateSurface(planet, gstar) {
-  if (planet.type === 'gas') return null; // твёрдой поверхности нет
+  // У газового гиганта твёрдой поверхности нет, но гексы есть: это верхние слои атмосферы,
+  // с них корабль и забирает газ (решение пользователя). Садиться на него нельзя — корабль
+  // встаёт на НИЗКУЮ ОРБИТУ, см. planet.js.
   const rng = mulberry32(hashSeed((gstar.seed ^ Math.imul(planet.index + 1, 0x9e3779b1)) >>> 0));
   const R = planet.hexRadius, t = planet.type;
   const env = surfaceEnv(planet, rng);
@@ -53,11 +59,12 @@ function generateSurface(planet, gstar) {
 // берём из типа планеты (диапазоны воды — как v2 waterRange) и температуры.
 function surfaceEnv(p, rng) {
   const rand = (a, b) => a + (b - a) * rng();
-  const water = { core: 0, hot: rand(0, 0.02), rocky: rand(0.05, 0.6), cold: rand(0.5, 0.9), asteroid: 0 }[p.type];
+  const water = { core: 0, hot: rand(0, 0.02), rocky: rand(0.05, 0.6), cold: rand(0.5, 0.9), asteroid: 0, gas: 0 }[p.type];
   const life = p.life !== 'none';
-  const atmo = p.type === 'core' || p.type === 'asteroid' ? false
+  const atmo = p.type === 'gas' ? true
+    : p.type === 'core' || p.type === 'asteroid' ? false
     : life || rng() < ({ rocky: 0.75, cold: 0.45, hot: 0.55 }[p.type] || 0);
-  const tectonic = { hot: rand(0.3, 0.8), rocky: rand(0.05, 0.35), cold: rand(0.02, 0.2), core: 0.05, asteroid: 0 }[p.type];
+  const tectonic = { hot: rand(0.3, 0.8), rocky: rand(0.05, 0.35), cold: rand(0.02, 0.2), core: 0.05, asteroid: 0, gas: 0 }[p.type];
   // −1 холодная целиком, 0 нейтрально, +1 жаркая (по температуре планеты, 288 K — земная).
   const heatBias = Math.min(1, Math.max(-1, (p.tempK - 288) / 250));
   return { water, life, atmo, tectonic, heatBias };
@@ -67,6 +74,13 @@ function surfaceEnv(p, rng) {
 // горы/холмы растут с тектоникой, лес/джунгли/степь — только при жизни и атмосфере).
 function terrainAt(t, env, lat, rng) {
   const { water: w, atmo, tectonic, heatBias, life } = env;
+  if (t === 'gas') { // полосы по широте: светлые зоны, тёмные пояса, редкие вихри
+    if (rng() < 0.05) return { type: 'storm', crater: false };
+    // Полосы через синус, а не делением широты: широта квантуется радиусом карты, и
+    // при делении на целые полосы почти всё сваливалось в один тип.
+    const band = Math.sin(lat * Math.PI * 3.5 + (rng() - 0.5) * 0.5);
+    return { type: band > 0 ? 'clouds' : 'belt', crater: false };
+  }
   const effLat = Math.min(1, Math.max(0, lat - heatBias * 0.32 + (rng() - 0.5) * 0.22));
   const heat = 1 - effLat;
   const icecapThreshold = 0.85 - Math.max(0, -heatBias) * 0.35;
@@ -143,6 +157,9 @@ const HEX_RULES = {
 // Во сколько раз гекс данного типа богаче среднего — v2 hexBioWeight для аналога.
 function hexWeight(key, h) {
   const T = h.type;
+  // ДОПУЩЕНИЕ: у газового гиганта вихрь поднимает вещество из глубины, тёмный пояс беднее.
+  // Проверка идёт ДО switch: иначе биомные ресурсы ушли бы по весам твёрдой поверхности.
+  if (T === 'storm' || T === 'belt' || T === 'clouds') return { storm: 2, belt: 0.7, clouds: 1 }[T];
   switch (key) {
     case 'silicates':  return { mountains: 2.5, hills: 1.6, water: 0.3, icecap: 0.5 }[T] ?? 1; // v2 силикаты
     case 'silicon':    return { mountains: 2.0, hills: 1.3 }[T] ?? 1;                             // v2 железо

@@ -1278,7 +1278,7 @@
       `<div><span>Орбита</span>${(p.a / AU).toFixed(2)} а.е.</div>` +
       `<div><span>Год</span>${p.period < 120 ? Math.round(p.period) + ' с' : Math.round(p.period / 60) + ' мин'}</div>` +
       `<div><span>Температура</span>${p.tempK} K</div>` +
-      `<div><span>Посадка</span>${T.landable ? 'возможна' : 'нет'}</div>` +
+      `<div><span>Посадка</span>${T.lowOrbit ? 'низкая орбита' : T.landable ? 'возможна' : 'нет'}</div>` +
       `<div><span>Жизнь</span>${LIFE_STATES[p.life].name}</div>` +
       `<div><span>Масса</span>${p.massE < 10 ? p.massE.toFixed(2).replace('.', ',') : Math.round(p.massE)} M⊕</div>` +
       `<div><span>Радиус</span>${p.radiusKm.toLocaleString('ru-RU')} км · g ${p.gSurf.toFixed(1).replace('.', ',')} м/с²</div>` +
@@ -1304,6 +1304,9 @@
         `<div class="note">${ship.design} · ${isFinite(ship.fuelMax) ? 'в баке ' + fuelPct(ship.fuel) + ' (' + fmtDv(ship.fuel) + ' Δv)' : 'двигатели кормит реактор — топливо не тратится'}</div>`;
     }
     show('b-land', here && ship.state === 'orbit' && T.landable);
+    // У газового гиганта садиться некуда: корабль уходит на НИЗКУЮ ОРБИТУ и черпает газ с
+    // верхних слоёв атмосферы (ТЗ §8.13) — кнопка та же, называется иначе.
+    $('b-land').textContent = T.lowOrbit ? 'Низкая орбита' : 'Посадка';
     show('b-takeoff', here && ship.state === 'landed');
     show('b-surface', here && ship.state === 'landed');
     const canScan = here && (ship.state === 'orbit' || ship.state === 'landed');

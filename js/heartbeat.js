@@ -38,6 +38,10 @@
     World.save();
   }
 
-  Store.load('parts').then(got => { tbl = loadParts(got.data); beat(); });
+  Store.load('parts').then(got => {
+    tbl = loadParts(got.data);
+    Colony.setHoldUnit(partParam(tbl, 'cargo', 'capSolid', 1) + partParam(tbl, 'cargo', 'capGas', 1));
+    beat();
+  });
   setInterval(beat, 5000);
 })();
