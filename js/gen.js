@@ -97,7 +97,7 @@ function generateSystem(gstar) {
       period,
       tempK: Math.round(278 * Math.pow(star.lum, 0.25) / Math.sqrt(a / AU)),
       habitable, life,
-      composition: composition(type, sc, zone, life, gstar.bh ? gstar.bh.index : 0),
+      composition: composition(type, sc, zone, life, gstar.bh ? gstar.bh.index : 0, gstar.r),
       // clearR — «зона» планеты для зазоров между орбитами и поясом (прежний радиус парковки;
       // не менять — от него зависят орбиты, а значит и весь мир). orbitR — низкая орбита парковки
       // корабля, ~1,3–1,4 радиуса нарисованной планеты (пользователь: «высоту орбиты снизить»).
@@ -218,10 +218,47 @@ function planetPhysics(type, diameter) {
 // Сумма ≤ 100 обеспечивается САМОЙ таблицей (база, поправки, множители), а не формулой:
 // перебор сумм по всем сочетаниям — страница table-check.html. Остаток до 100 — пустая порода.
 // Каждый ресурс возвращается вместе со слагаемыми — карточка показывает, откуда число.
-function composition(typeKey, starType, zone, lifeKey, bhIndex = 0) {
+// МНОЖИТЕЛЬ ЗОНЫ — НЕПРЕРЫВНАЯ ФУНКЦИЯ РАССТОЯНИЯ ДО ЦЕНТРА, а не пять ступенек.
+// Решение пользователя: «формула от центра галактики до звезды лучше, чем чёткие значения —
+// тогда каждая звезда по ресурсам станет уникальнее в силу разной удалённости».
+//
+// Числа пользователя (GALAXY_ZONES) становятся ОПОРНЫМИ ТОЧКАМИ в серединах своих колец:
+// зона 5 (центр) — на 1,5 кпк, зона 1 (край) — на 13,5 кпк. Между точками линейная
+// интерполяция, за крайними — крайнее значение. Поэтому в серединах колец всё ровно как в его
+// таблице, средние по зонам почти не меняются, а предел суммы 100 не нарушается: новых
+// экстремумов интерполяция не создаёт, значения лежат МЕЖДУ опорными.
+//
+// ZONE_GAIN — ручка «рост и падение»: 1 — ровно таблица пользователя, 0 — плоско (зоны не
+// влияют), 2 — вдвое круче. Считается как отклонение от среднего по ресурсу, поэтому нули
+// (ресурса в этой части галактики нет вовсе) остаются нулями.
+const ZONE_GAIN = 1;
+const ZONE_POINTS = GALAXY_ZONES
+  .map(z => ({ r: GALAXY_RADIUS_KPC * (GALAXY_ZONES.length - z.n + 0.5) / GALAXY_ZONES.length, mult: z.mult }))
+  .sort((a, b) => a.r - b.r); // от центра к краю
+const ZONE_MEAN = RESOURCES.map((r, i) => ZONE_POINTS.reduce((a, p) => a + p.mult[i], 0) / ZONE_POINTS.length);
+
+function zoneMultAt(rKpc, i) {
+  const P = ZONE_POINTS;
+  let v;
+  if (rKpc <= P[0].r) v = P[0].mult[i];
+  else if (rKpc >= P[P.length - 1].r) v = P[P.length - 1].mult[i];
+  else {
+    let k = 0;
+    while (k < P.length - 2 && rKpc > P[k + 1].r) k++;
+    const t = (rKpc - P[k].r) / (P[k + 1].r - P[k].r);
+    v = P[k].mult[i] + (P[k + 1].mult[i] - P[k].mult[i]) * t;
+  }
+  if (ZONE_GAIN !== 1) v = ZONE_MEAN[i] + (v - ZONE_MEAN[i]) * ZONE_GAIN;
+  return Math.max(0, v);
+}
+
+// rKpc — расстояние звезды от центра галактики. Если не передано (инструменты, что считают по
+// сочетаниям зон), берётся ступенчатый множитель зоны, как раньше.
+function composition(typeKey, starType, zone, lifeKey, bhIndex = 0, rKpc = null) {
   const T = PLANET_TYPES[typeKey], L = LIFE_STATES[lifeKey];
   return RESOURCES.map((r, i) => {
-    const base = T.base[i], mod = starType.mod[i], zm = zone.mult[i];
+    const base = T.base[i], mod = starType.mod[i];
+    const zm = rKpc == null ? zone.mult[i] : zoneMultAt(rKpc, i);
     const bi = BIOMASS.indexOf(r.key);
     const lm = bi >= 0 ? L.mult[bi] : 1;
     const bm = 1 + (BH_EFFECT[i] - 1) * bhIndex;

@@ -358,3 +358,4 @@ table.tt input[type=number] { width: 92px; text-align: right; font: inherit; col
 table.tt input[type=number]:focus { outline: none; border-color: var(--accent); }
 .doc-wrap input[type=number] { width: 80px; font: inherit; color: var(--text);
   background: rgba(10, 16, 28, .9); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
+.doc-head .s.warn, #where.warn { color: #ffbfae; }

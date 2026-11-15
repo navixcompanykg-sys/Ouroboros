@@ -16,13 +16,25 @@
 
   // ---------- хранилище ----------
   const BLANK = { v: 2, buildings: {}, parts: {} };
+  // Откуда взялись числа на экране — говорим прямо и всегда. Беда, которую это лечит: страницу
+  // открывали двойным щелчком по файлу, fetch к data/ браузер запрещал, и показывалось зеркало
+  // из localStorage, то есть СТАРЫЕ цены — молча, без единого намёка.
+  function showSource(from) {
+    const el = $('where');
+    const viaFile = location.protocol === 'file:';
+    el.classList.toggle('warn', from !== 'file');
+    el.textContent = from === 'file' ? 'данные из файла data/prices.json — то, что лежит в проекте'
+      : viaFile ? 'СТРАНИЦА ОТКРЫТА КАК ФАЙЛ: data/prices.json не читается, показано зеркало из браузера. Откройте http://localhost:8080/prices.html'
+      : from === 'local' ? 'serve.js не отвечает: файл не прочитан, показано зеркало из браузера'
+      : 'файла ещё нет — вбиты текущие значения кода, нажмите «Сохранить»';
+  }
+
   async function load() {
     const got = await Store.load('prices');
     prices = (got.data && got.data.v === 2) ? got.data : JSON.parse(JSON.stringify(BLANK));
     prices.buildings = prices.buildings || {};
     prices.parts = prices.parts || {};
-    $('where').textContent = got.from === 'file' ? 'из файла data/prices.json'
-      : got.from === 'local' ? 'из браузера (serve.js не отвечает)' : 'файла пока нет — вбиты текущие значения';
+    showSource(got.from);
     // Файла ещё нет — значит в нём только что вбиты текущие значения кода, и их надо сохранить:
     // показываем «Сохранить» активной, а не делаем вид, что всё уже записано.
     if (!got.from || !(got.data && got.data.v === 2)) dirty = true;
@@ -47,10 +59,23 @@
   async function save() {
     const r = await Store.save('prices', prices);
     dirty = false;
-    $('where').textContent = r.where === 'file' ? 'сохранено в data/prices.json'
-      : r.where === 'local' ? 'сохранено только в браузере (serve.js не отвечает)' : 'сохранить не удалось';
+    showSource(r.where === 'file' ? 'file' : r.where === 'local' ? 'local' : null);
+    if (r.where === 'file') $('where').textContent = 'сохранено в data/prices.json';
     render();
   }
+
+  // Перечитать файл: правил ли его кто-то снаружи, запускался ли инструмент. Если на экране
+  // есть несохранённые правки — спрашиваем, а не затираем молча.
+  async function reload(ask) {
+    if (dirty && ask && !confirm('На экране есть несохранённые правки. Перечитать файл и потерять их?')) return;
+    dirty = false;
+    await load();
+    render();
+    renderHex();
+  }
+  $('reload').onclick = () => reload(true);
+  // Вернулись на вкладку — подтягиваем файл сам, чтобы не смотреть в устаревшее.
+  window.addEventListener('focus', () => { if (!dirty) reload(false); });
 
   // ---------- расчёт по таблице компонентов ----------
   // Сколько сырья уходит на предмет по составу из data/parts.json, с масштабом корабля ×10
@@ -128,14 +153,23 @@
   }
 
   // ---------- 2. здания ----------
+  // Цена шахты — мера, с которой всё сравнивается на глаз (просьба пользователя «корабль
+  // небольшой примерно как шахта»). Пересчитывается на каждый ввод, как и всё остальное.
+  function mineValue() {
+    const v = prices.buildings.mine_s; if (!v) return 0;
+    return v.s * (RESOURCE_VALUE.silicates || 0) + v.c * (RESOURCE_VALUE.silicon || 0) +
+      MAT_TYPES.reduce((a, m) => a + ((v.comp || {})[m.key] || 0) * compValue(m.key), 0);
+  }
+  let mineRef = 0;
+
   function renderBuildings() {
+    mineRef = mineValue();
     $('bld-body').innerHTML = COL_BUILDINGS.map(B => {
       const v = prices.buildings[B.key];
       v.comp = v.comp || { struct: 0, compute: 0, bio: 0, energy: 0 };
       const num = (f, title) => `<td class="n"><input type="number" min="0" step="10" data-b="${B.key}" data-f="${f}" value="${v[f]}" title="${title}"></td>`;
       const cnum = m => `<td class="n"><input type="number" min="0" step="10" data-b="${B.key}" data-cf="${m}" value="${v.comp[m] || 0}" title="компонентов типа «${MAT_TYPE[m].name}»"></td>`;
-      const val = Ship.value({ silicates: 0 }) + // у.е.: сырьё + компоненты
-        v.s * (RESOURCE_VALUE.silicates || 0) + v.c * (RESOURCE_VALUE.silicon || 0) +
+      const val = v.s * (RESOURCE_VALUE.silicates || 0) + v.c * (RESOURCE_VALUE.silicon || 0) +
         MAT_TYPES.reduce((a, m) => a + (v.comp[m.key] || 0) * compValue(m.key), 0);
       return `<tr><td>${B.name}<i>${B.desc}</i></td>` +
         `<td class="g">${COL_GROUP_NAME[B.upkeep]}</td>` +
@@ -143,7 +177,7 @@
         cnum('struct') + cnum('compute') +
         `<td class="n"><input type="number" min="0" step="1" data-b="${B.key}" data-f="uniq" value="${v.uniq}" title="планетарных единиц"></td>` +
         num('up', 'содержание за час, сырьём своего типа') +
-        `<td class="n"><b>${n0(val)}</b></td></tr>`;
+        `<td class="n" data-bval="${B.key}"><b>${n0(val)}</b><i>${mineRef ? (val / mineRef).toFixed(1) + ' шахты' : ''}</i></td></tr>`;
     }).join('');
   }
 
@@ -164,8 +198,8 @@
       const calcTotal = MAT_TYPES.reduce((a, m) => a + (calc[m.key] || 0), 0);
       out += `<tr><td>${P.name}<i>состав: ${compTxt}</i></td>` +
         MAT_TYPES.map(m => num(m.key)).join('') +
-        `<td class="n"><b>${n0(total)}</b>${total !== calcTotal ? `<i>расчёт ${n0(calcTotal)}</i>` : ''}</td>` +
-        `<td class="n">${n0(partValue(v))}</td></tr>`;
+        `<td class="n" data-ptot="${P.key}"><b>${n0(total)}</b>${total !== calcTotal ? `<i>расчёт ${n0(calcTotal)}</i>` : ''}</td>` +
+        `<td class="n" data-pval="${P.key}">${n0(partValue(v))}</td></tr>`;
     }
     $('part-body').innerHTML = out;
   }
@@ -179,10 +213,54 @@
     $('val-body').innerHTML = rows + comps;
   }
 
+  // Готовые корабли из библиотеки: цена в компонентах и в шахтах — чтобы правку цены предмета
+  // было видно сразу на итоге, а не считать в уме.
+  function renderShips() {
+    const rows = loadDesigns().map(d => {
+      const cost = {}, mods = designModules(d).concat(d.decks.map(() => 'frame'));
+      for (const key of mods) {
+        const v = prices.parts[key]; if (!v) continue;
+        for (const m of MAT_TYPES) cost[m.key] = (cost[m.key] || 0) + (v[m.key] || 0);
+      }
+      const tot = MAT_TYPES.reduce((a, m) => a + (cost[m.key] || 0), 0);
+      const val = MAT_TYPES.reduce((a, m) => a + (cost[m.key] || 0) * compValue(m.key), 0);
+      return { name: d.name, mods: designModules(d).length, tot, val };
+    }).sort((a, b) => a.val - b.val);
+    $('ship-body').innerHTML = rows.map(r =>
+      `<tr><td>${r.name}</td><td class="g">${r.mods} модулей</td><td class="n">${n0(r.tot)}</td>` +
+      `<td class="n">${n0(r.val)}</td><td class="n">${mineRef ? (r.val / mineRef).toFixed(1) : '—'}</td></tr>`).join('');
+  }
+
+  // Пересчитать ТОЛЬКО производные числа: итоги строк, «в шахтах» и таблицу кораблей.
+  // Поля ввода не трогаем — иначе при наборе слетает фокус и каретка.
+  function refreshDerived() {
+    mineRef = mineValue();
+    for (const B of COL_BUILDINGS) {
+      const v = prices.buildings[B.key]; if (!v) continue;
+      v.comp = v.comp || {};
+      const val = v.s * (RESOURCE_VALUE.silicates || 0) + v.c * (RESOURCE_VALUE.silicon || 0) +
+        MAT_TYPES.reduce((a, m) => a + (v.comp[m.key] || 0) * compValue(m.key), 0);
+      const cell = document.querySelector('[data-bval="' + B.key + '"]');
+      if (cell) cell.innerHTML = '<b>' + n0(val) + '</b><i>' + (mineRef ? (val / mineRef).toFixed(1) + ' шахты' : '') + '</i>';
+    }
+    for (const P of PARTS) {
+      const v = prices.parts[P.key]; if (!v) continue;
+      const calc = computedPart(P.key);
+      const total = MAT_TYPES.reduce((a, m) => a + (v[m.key] || 0), 0);
+      const calcTotal = MAT_TYPES.reduce((a, m) => a + (calc[m.key] || 0), 0);
+      const t = document.querySelector('[data-ptot="' + P.key + '"]');
+      const w = document.querySelector('[data-pval="' + P.key + '"]');
+      if (t) t.innerHTML = '<b>' + n0(total) + '</b>' + (total !== calcTotal ? '<i>расчёт ' + n0(calcTotal) + '</i>' : '');
+      if (w) w.textContent = n0(partValue(v));
+    }
+    renderShips();
+  }
+
   function render() {
     renderValue();
     renderBuildings();
     renderParts();
+    renderShips();
     $('save').disabled = !dirty;
     $('save').textContent = dirty ? 'Сохранить' : 'Сохранено';
   }
@@ -198,6 +276,7 @@
     dirty = true;
     $('save').disabled = false;
     $('save').textContent = 'Сохранить';
+    refreshDerived(); // изменения видны сразу, без пересборки полей
   });
   $('save').onclick = save;
   $('hex-go').onclick = renderHex;
