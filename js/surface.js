@@ -181,6 +181,14 @@ function distributeHexResources(rng, hexes, planet, env) {
     let rule = HEX_RULES[r.key];
     if (planet.type === 'core' && r.key === 'superdense') rule = { kind: 'deposits', bg: 1, n: 0, mtn: false }; // ядро однородно
     if (r.key === 'tritium' && !env.atmo) rule = { kind: 'deposits', bg: 0.08, n: 2, mtn: true }; // реголит копит локально
+    // ГАЗОВЫЙ ГИГАНТ — БЕЗ МЕСТОРОЖДЕНИЙ: в облаках не бывает жил, вещество рассеяно самой
+    // атмосферой. В v2 это решали радикально — гекс-карты у газовых гигантов не было вовсе, а
+    // газ был одним числом на планету («рассеян по смыслу самого источника»). В v3 карта есть
+    // (с неё черпает корабль, ТЗ §8.13), но правило «фон + 2-4 жилы» перенеслось механически и
+    // давало дичь: на Даннис-680 i один гекс пояса держал 26 % всего водорода планеты —
+    // рекорд 12 870 против среднего 82. Теперь по облакам ровно, с лёгким перекосом по полосам
+    // (вихрь богаче, тёмный пояс беднее — hexWeight).
+    if (planet.type === 'gas') rule = { kind: 'biome' };
     if (rule.kind === 'biome') {
       const amt = largestRemainderAllocate(total, hexes.map(h => hexWeight(r.key, h) * (0.85 + rng() * 0.3)));
       hexes.forEach((h, k) => { if (amt[k]) h.res[r.key] = (h.res[r.key] || 0) + amt[k]; });
