@@ -46,6 +46,13 @@ function saveData(req, res, name) {
 
 http.createServer((req, res) => {
   let p = decodeURIComponent(req.url.split('?')[0]);
+  // Отметка «сервер жив» для js/serve-guard.js: страница, открытая как файл, грузит её
+  // <script>-ом (fetch из file:// браузер не пускает) и по успеху сама перебрасывается сюда.
+  if (p === '/ping.js') {
+    res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8',
+      'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
+    return res.end('window.__ouroboros = true;\n');
+  }
   if (req.method === 'POST' && p.startsWith('/data/')) return saveData(req, res, p.slice('/data/'.length));
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); return res.end(); }
   if (p === '/') p = '/menu.html'; // вход — меню игры
