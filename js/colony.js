@@ -116,6 +116,19 @@ const Colony = (() => {
   }
   const add = (store, k, q) => { if (q) store[k] = (store[k] || 0) + q; };
 
+  // ---------- ЦЕНЫ ПОЛЬЗОВАТЕЛЯ ----------
+  // Расценки зданий ведёт пользователь на странице prices.html, хранятся в data/prices.json.
+  // Числа в COL_BUILDINGS — только значение по умолчанию на случай, когда файла ещё нет.
+  function setPrices(pr) {
+    if (!pr || !pr.buildings) return;
+    for (const key in pr.buildings) {
+      const B = COL_BUILDING[key], v = pr.buildings[key];
+      if (!B || !v) continue;
+      B.cost = { s: +v.s || 0, c: +v.c || 0, uniq: +v.uniq || 0 };
+      B.up = +v.up || COL.UPKEEP_RAW;
+    }
+  }
+
   // ---------- СКЛАД ПЛАНЕТЫ ----------
   // Решение пользователя: «каждой планете, где есть хоть одна постройка, нужен свой склад;
   // каждая постройка — это как два трюма на корабле, это и задаёт лимит хранения».
@@ -215,7 +228,7 @@ const Colony = (() => {
 
     // 3. содержание — раз в час, сырьём своего типа (§8.8, 1 уровень)
     if (col.t % COL.UPKEEP_EVERY === 0) for (const b of L) {
-      const g = COL_BUILDING[b.kind].upkeep, q = COL.UPKEEP_RAW * b.lvl;
+      const B = COL_BUILDING[b.kind], g = B.upkeep, q = (B.up || COL.UPKEEP_RAW) * b.lvl;
       if (inGroup(col, g) >= q) { spendIn(col, g, q); b.missed = 0; }
       else if (++b.missed >= COL.GRACE) {
         b.dead = true;
@@ -353,13 +366,13 @@ const Colony = (() => {
     });
     return { live: L, workers: paid, jobs: need.length, rate, yard: col.yard, order: col.order || { kind: 'uniq' },
       cap: capacity(col), used: used(col), room: roomLeft(col),
-      upkeep: L.length * COL.UPKEEP_RAW, port: has(col, 'port'),
+      upkeep: L.reduce((a, b) => a + (COL_BUILDING[b.kind].up || COL.UPKEEP_RAW) * b.lvl, 0), port: has(col, 'port'),
       stock: col.stock, food: col.food, crypto: col.crypto, pop: col.pop, uniq: col.uniq,
       popCap: domeCap(col), site: col.site };
   }
 
   return { blank, advance, step, build, canBuild, summary, live, has, inGroup, spendIn, add,
-    capacity, used, roomLeft, store, setHoldUnit, compKey, compName, compCost, compTotal,
+    capacity, used, roomLeft, store, setHoldUnit, setPrices, compKey, compName, compCost, compTotal,
     shipOutput, mineOutput, tickAt, note, domeCap, uniqPick };
 })();
 

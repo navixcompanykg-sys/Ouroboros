@@ -170,6 +170,8 @@ function hexWeight(key, h) {
   return 1;
 }
 
+const DEPOSIT_SPREAD = [0.6, 1.8]; // разброс богатства месторождений между собой
+
 function distributeHexResources(rng, hexes, planet, env) {
   // Запас — в сотых долях единицы (у ресурсов v3 дробные значения): целые сотые
   // делятся без потерь, сумма по гексам точно равна составу планеты.
@@ -188,7 +190,13 @@ function distributeHexResources(rng, hexes, planet, env) {
     const bg = largestRemainderAllocate(bgPool, hexes.map(() => 0.65 + rng() * 0.7));
     hexes.forEach((h, k) => { if (bg[k]) h.res[r.key] = (h.res[r.key] || 0) + bg[k]; });
     if (!rule.n || depPool <= 0) return;
-    const dep = largestRemainderAllocate(depPool, Array.from({ length: rule.n }, () => -Math.log(rng() + 1e-9)));
+    // ОТСТУПЛЕНИЕ ОТ ПРАВИЛ v2 (решение пользователя: «даже если берётся максимум по всей
+    // выборке, гекс с 4000 — это очень много и дисбаланс»). В v2 доли месторождений делились по
+    // ЭКСПОНЕНТЕ (-log(u)) — хвост неограничен, и одно месторождение забирало почти весь запас:
+    // на рекордных планетах в одном гексе оказывалось до 60-70 %% всего ресурса планеты, то есть
+    // полсотни средних гексов. Делим тем же разбросом, что и фон: 0,6…1,8, то есть богатейшее
+    // месторождение вдвое-втрое богаче бедного, но не в полсотни раз. DEPOSIT_SPREAD — ручка.
+    const dep = largestRemainderAllocate(depPool, Array.from({ length: rule.n }, () => DEPOSIT_SPREAD[0] + rng() * (DEPOSIT_SPREAD[1] - DEPOSIT_SPREAD[0])));
     const used = new Set();
     for (let d = 0; d < rule.n; d++) {
       const k = pickHex(rng, hexes, rule.mtn, used);

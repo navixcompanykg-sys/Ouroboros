@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#04060c">
+<title>Уроборос · Расценки</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="doc">
+
+<div class="doc-wrap">
+  <header class="doc-head">
+    <h1>Расценки</h1>
+    <div class="s">Цены вводит пользователь. Хранятся в файле проекта <code>data/prices.json</code> —
+      <span id="where">загружаю…</span></div>
+    <div class="actions">
+      <button id="save" class="primary" disabled>Сохранено</button>
+      <button id="reset">Вернуть значения кода</button>
+      <a class="btn" href="menu.html">Меню</a>
+      <a class="btn" href="components.html">Компоненты</a>
+    </div>
+  </header>
+
+  <section>
+    <h2>1. Сколько ресурсов в гексе</h2>
+    <p class="s">Считается из генератора, не вводится. Числа — <b>добыча за 10 минут</b>: столько
+      возьмёт с гекса шахта 1 уровня за один такт, корабль берёт вдвое меньше.</p>
+    <div class="actions">
+      <label class="s">Планет в выборке <input id="hex-n" type="number" min="10" max="600" step="10" value="150"></label>
+      <button id="hex-go">Пересчитать</button>
+    </div>
+    <table class="tt">
+      <thead><tr><th>Ресурс</th><th>Группа</th><th class="n">Средний гекс</th>
+        <th class="n">Лучший на планете</th><th class="n">Рекорд выборки</th><th class="n">Лучший кораблём</th></tr></thead>
+      <tbody id="hex-body"><tr><td colspan="6" class="s">считаю…</td></tr></tbody>
+    </table>
+    <p class="s" id="hex-note"></p>
+  </section>
+
+  <section>
+    <h2>2. Здания 1 уровня</h2>
+    <p class="s">Цена постройки и содержание за час. Содержание списывается сырьём своего типа —
+      любым внутри типа (ТЗ §8.8).</p>
+    <table class="tt">
+      <thead><tr><th>Здание</th><th>Содержится</th><th class="n">Структурного</th><th class="n">Вычислительного</th>
+        <th class="n">Планет. единиц</th><th class="n">Содержание/час</th></tr></thead>
+      <tbody id="bld-body"></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>3. Оборудование корабля</h2>
+    <p class="s">Сколько сырья уходит на один предмет. Под названием — его состав из таблицы
+      компонентов; в итоге, если цена отличается от расчёта по составу (× масштаб корабля 10,
+      ТЗ §8.10), показан и расчёт.</p>
+    <table class="tt">
+      <thead><tr><th>Оборудование</th><th class="n">Структурное</th><th class="n">Вычислительное</th>
+        <th class="n">Биомасса</th><th class="n">Энергоносители</th><th class="n">Всего</th></tr></thead>
+      <tbody id="part-body"></tbody>
+    </table>
+  </section>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/gen.js"></script>
+<script src="js/galaxy-gen.js"></script>
+<script src="js/surface.js"></script>
+<script src="js/ships.js"></script>
+<script src="js/store.js"></script>
+<script src="js/components.js"></script>
+<script src="js/parts-preset.js"></script>
+<script src="js/world.js"></script>
+<script src="js/colony.js"></script>
+<script src="js/prices.js"></script>
+</body>
+</html>

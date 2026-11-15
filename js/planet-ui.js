@@ -21,6 +21,8 @@ const PlanetUI = (() => {
     tbl = loadParts(got.data);
     // «постройка = два трюма»: размер трюма берём из таблицы пользователя, а не из головы
     Colony.setHoldUnit(partParam(tbl, 'cargo', 'capSolid', 1) + partParam(tbl, 'cargo', 'capGas', 1));
+    // Расценки зданий ведёт пользователь (prices.html → data/prices.json).
+    Store.load('prices').then(r => Colony.setPrices(r.data));
     col = World.colony(ctxRef.gstar.id, ctxRef.planet.index);
     Ship.ensureStart(World.active());
     bind();
@@ -228,7 +230,7 @@ const PlanetUI = (() => {
     const cost = [B.cost.s ? B.cost.s + ' структурного' : '', B.cost.c ? B.cost.c + ' вычислительного' : '',
       B.cost.uniq ? B.cost.uniq + ' планетарная единица' : ''].filter(Boolean).join(' · ');
     $('con-modal').innerHTML = '<div class="cm-t">' + B.name + '</div>' +
-      '<div class="sub">1 уровень · содержание ' + COL.UPKEEP_RAW + ' ед. (' +
+      '<div class="sub">1 уровень · содержание ' + (B.up || COL.UPKEEP_RAW) + ' ед. (' +
       COL_GROUP_NAME[B.upkeep].toLowerCase() + ') в час · ' + (B.work ? 'нужен рабочий' : 'рабочий не нужен') +
       ' · стройка ' + hrs(COL.BUILD_TICKS) + '</div>' +
       '<div class="cm-c">Цена: ' + cost + '</div><div class="cm-d">' + B.desc + '</div>' +

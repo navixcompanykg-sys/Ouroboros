@@ -327,3 +327,34 @@ body.planet #layers { position: static; inset: auto; padding: 0; background: tra
   body.planet #tb-stats::-webkit-scrollbar { display: none; }
   body.planet .st { flex: 0 0 auto; }
 }
+
+/* ---------- Страницы-документы (расценки, справочник) ---------- */
+/* Базовые html,body высотой 100% не дают документу прокручиваться — страницам-документам
+   высота нужна по содержимому. */
+html:has(body.doc), body.doc { height: auto; min-height: 100%; overflow: auto; }
+.doc-wrap { max-width: 1040px; margin: 0 auto; padding: 16px 16px 60px; }
+.doc-head h1 { margin: 0 0 4px; font-size: 22px; }
+.doc-head .s { color: var(--muted); font-size: 12.5px; }
+.doc-head .actions { margin: 10px 0 18px; align-items: center; }
+.doc-wrap section { margin-bottom: 26px; }
+.doc-wrap h2 { font-size: 16px; margin: 0 0 4px; }
+.doc-wrap p.s { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; }
+.doc-wrap label.s { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; }
+.doc-wrap code { color: #ffd9a0; }
+a.btn { display: inline-flex; align-items: center; min-height: 32px; padding: 4px 12px; border-radius: 8px;
+  border: 1px solid var(--line); background: rgba(30, 44, 74, .9); color: var(--text); text-decoration: none; }
+a.btn:hover { border-color: var(--accent); }
+table.tt { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.tt th { text-align: left; color: var(--accent); font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: .05em; font-weight: 600; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+table.tt td { padding: 3px 6px; border-bottom: 1px solid rgba(255, 255, 255, .05); vertical-align: middle; }
+table.tt td i { display: block; font-style: normal; color: var(--muted); font-size: 11px; }
+table.tt .n { text-align: right; font-variant-numeric: tabular-nums; }
+table.tt .g { color: var(--muted); }
+table.tt tr.hd td { color: var(--accent); font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em;
+  padding-top: 10px; border-bottom: 1px solid var(--line); }
+table.tt input[type=number] { width: 92px; text-align: right; font: inherit; color: var(--text);
+  background: rgba(10, 16, 28, .9); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
+table.tt input[type=number]:focus { outline: none; border-color: var(--accent); }
+.doc-wrap input[type=number] { width: 80px; font: inherit; color: var(--text);
+  background: rgba(10, 16, 28, .9); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
