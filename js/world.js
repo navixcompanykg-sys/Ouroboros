@@ -126,6 +126,7 @@ const World = (() => {
     currentStarId,
     currentStar: () => galaxy().stars[currentStarId()],
     fleet, active, addShip, setActive, activeId: () => active().id,
+    startStarId,   // где игрок начал: там его стартовая колония
     colony, putColony, colonyList, save,
     galaxyUrl: () => `index.html?g=${seed}`,
     systemUrl: id => `system.html?g=${seed}&star=${id}`,

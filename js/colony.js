@@ -14,6 +14,11 @@ const COL = {
   SHIP_MINE_K: 5,        // корабль ВДВОЕ слабее шахты 1 уровня (решение пользователя), зато берёт
                          // все ресурсы гекса сразу и может привезти то, чего колонии не хватает
 
+  H2_TICK: 100,          // ЭНЕРГИЯ: столько водорода (или его эквивалента) ест шахта за такт.
+                         // Решение пользователя: «потребление шахты порядка 100 водорода в
+                         // 10 минут, такая же цена добычи и у шахтёра на корабле».
+  H2_PER_UNIT: { hydrogen: 1, tritium: 3, antimatter: 8 }, // во сколько водородов идёт единица
+                         // (из энергоёмкости 100/300/800, ТЗ §7.3)
   UPKEEP_RAW: 700,       // содержание здания 1 уровня за ЧАС, сырьём своего типа (любым внутри типа)
   UPKEEP_EVERY: 6,       // содержание раз в час, добыча раз в 10 минут
   GRACE: 3,              // три часа подряд без оплаты → здание разбирают
@@ -29,6 +34,8 @@ const COL = {
   DOME_CAP: 10,          // купол уровня L держит 10 × L жителей
   POP_TICKS: 144,        // ±1 житель раз в реальные сутки
 
+  CRYPTO_START: 20000,   // крипта, с которой начинает высаженная колония: деньги игрока,
+                         // вложенные в высадку. Без неё рабочие не выходят с первой же минуты.
   WAGE: 6,               // крипты рабочему за такт
   MFARM_EN: 200000,      // майнинг-ферма жжёт до 200 000 × уровень энергии за такт
   TOKEN_PER_EN: 0.0004,  // крипты за единицу энергии
@@ -53,42 +60,65 @@ const COL_KEY_GROUP = {};
 for (const g in COL_GROUPS) COL_GROUPS[g].forEach(k => { COL_KEY_GROUP[k] = g; });
 
 // Постройки 1 уровня.
-//   cost  — цена в СЫРЬЕ (s — структурное, c — вычислительное) и планетарных единицах (§8.6);
-//   comp  — цена в КОМПОНЕНТАХ 1 уровня по типам. Решение пользователя: «здания тоже собираются
-//           из компонентов, кроме шахт, купола, производства и ФЕРМЫ 1 уровня» — эти три исключения и
-//           есть то, с чего колония начинается, компоненты делать ещё нечем.
-//   uniq  — планетарных единиц: у шахт и производства 0, иначе колонию не с чего начать.
-//   upkeep — тип сырья, которым здание содержится (ДОПУЩЕНИЕ: то, с чем оно работает);
-//   work  — нужен ли рабочий (§8.8).
+//   cost — цена в СЫРЬЕ (s — структурное, c — вычислительное) и планетарных единицах (§8.6);
+//   comp — цена в КОМПОНЕНТАХ 1 уровня по типам (шахты, купол, производство и ферма — из сырья:
+//          с них колония начинается, компоненты делать ещё нечем);
+//   up   — содержание СЫРЬЁМ за час, типа `upkeep`; 0 — содержания нет;
+//   h2   — ЭНЕРГИЯ за такт, в водородах (его же эквивалент из трития и антиматерии);
+//   work — нужен ли рабочий (§8.8).
+//
+// РЕШЕНИЯ ПОЛЬЗОВАТЕЛЯ ПО ЭКОНОМИКЕ:
+//   «Шахты делаем бесплатными для содержания, они потребляют только водород для самостоятельной
+//    выработки энергии» — у шахт up = 0, только h2.
+//   «Купола для содержания требуют силикатов и водород для энергии», потребление водорода
+//    такое же, как у шахты — 100 за такт.
+//   «Карьер убрать и сделать генератор: генератор сжигает энергоресурсы и превращает их в
+//    энергию, которая питает всё, шахты» — без генератора колония умеет жечь только ВОДОРОД,
+//    с генератором — ещё тритий и антиматерию, а они втрое и вдесятеро плотнее.
+//   «Шахты 1 уровня — безубыточная инвестиция, но долго окупаются, порядка 10 000 силикатов».
+//   «Купол в 3 раза дешевле шахты, ферма в 2 раза дешевле, производство эквивалентно цене
+//    шахты; для них нужны ресурсы всех трёх видов (кроме энергетических — это цена
+//    поддержания)». Энергоносители в цену не входят вовсе — они идут только на содержание.
+//    Берётся ТОЛЬКО сырьё 1 уровня: силикаты, кремний, микробиота.
+//   «Биоресурсы должны требовать только купола и фермы, производство больше требует
+//    вычислительных ресурсов» — поэтому у производства биомассы нет совсем, зато вычислительного
+//    семь десятых цены; у фермы биомассы больше всего (она живая), у купола — поровну.
+//   «Производство тоже по содержанию требует только водород» — у него, как у шахт, up = 0.
+//
+//   Расчёт: шахта 10 000 → производство 10 000 (3000 структ + 7000 выч), ферма 5 000
+//   (1500 + 1500 + 2000 биомассы), купол 3 300 (поровну). Три шахты разных групп добывают три
+//   вида сырья параллельно, поэтому набор окупается примерно за то же время, что одна шахта.
 const COL_BUILDINGS = [
-  { key: 'mine_s', name: 'Шахта структурная', group: 's', cost: { s: 800, c: 200 }, upkeep: 's', work: true,
+  { key: 'mine_s', name: 'Шахта структурная', group: 's', cost: { s: 10000 }, upkeep: 's', up: 0, h2: 100, work: true,
     desc: 'Силикаты, редкоземельные металлы, сверхплотные минералы с гекса' },
-  { key: 'mine_c', name: 'Шахта вычислительная', group: 'c', cost: { s: 800, c: 200 }, upkeep: 'c', work: true,
+  { key: 'mine_c', name: 'Шахта вычислительная', group: 'c', cost: { s: 10000 }, upkeep: 'c', up: 0, h2: 100, work: true,
     desc: 'Кремний, ниобий, изотопы с гекса' },
-  { key: 'mine_e', name: 'Шахта энергетическая', group: 'e', cost: { s: 800, c: 200 }, upkeep: 'e', work: true,
+  { key: 'mine_e', name: 'Шахта энергетическая', group: 'e', cost: { s: 10000 }, upkeep: 'e', up: 0, h2: 100, work: true,
     desc: 'Водород, тритий, антиматерия с гекса' },
-  { key: 'mine_b', name: 'Шахта биохимическая', group: 'b', cost: { s: 800, c: 200 }, upkeep: 'b', work: true,
+  { key: 'mine_b', name: 'Шахта биохимическая', group: 'b', cost: { s: 10000 }, upkeep: 'b', up: 0, h2: 100, work: true,
     desc: 'Микробиота, дикая флора, битумы с гекса' },
-  { key: 'prod', name: 'Производство', cost: { s: 1500, c: 600 }, upkeep: 's', work: true,
-    desc: 'Делает планетарную единицу: 10 + 10 + 10 сырья трёх уровней разных типов' },
-  { key: 'farm', name: 'Фермы', cost: { s: 900, c: 500, uniq: 1 }, upkeep: 'e', work: true,
+  { key: 'gen', name: 'Генератор', cost: { s: 8000, c: 2000 }, upkeep: 's', up: 200, h2: 0, work: true,
+    desc: 'Сжигает тритий и антиматерию, а не только водород: единица трития идёт за три водорода, антиматерии — за восемь' },
+  { key: 'prod', name: 'Производство', cost: { s: 3000, c: 7000 }, upkeep: 's', up: 0, h2: 100, work: true,
+    desc: 'Делает компоненты из сырья или планетарную единицу (§8.14)' },
+  { key: 'farm', name: 'Фермы', cost: { s: 1500, c: 1500, b: 2000, uniq: 1 }, upkeep: 'e', up: 700, h2: 30, work: true,
     desc: 'Пища: из биомассы 1 к 1 либо искусственно за сырьё и энергию' },
-  { key: 'mfarm', name: 'Майнинг-ферма', cost: { uniq: 1 }, comp: { struct: 133, compute: 400 }, upkeep: 'c', work: true,
+  { key: 'mfarm', name: 'Майнинг-ферма', cost: { uniq: 1 }, comp: { struct: 80, compute: 240 }, upkeep: 'c', up: 700, h2: 0, work: true,
     desc: 'Жжёт энергию в крипту — ею платят рабочим' },
-  { key: 'dome', name: 'Купол', cost: { s: 1200, c: 300, uniq: 1 }, upkeep: 's', work: false,
-    desc: 'Жильё: предел населения 10 на уровень' },
-  { key: 'port', name: 'Космодром', cost: { uniq: 1 }, comp: { struct: 667, compute: 333 }, upkeep: 's', work: true,
+  { key: 'dome', name: 'Купол', cost: { s: 1100, c: 1100, b: 1100, uniq: 1 }, upkeep: 's', up: 500, h2: 100, work: false,
+    desc: 'Жильё: предел населения 10 на уровень. Содержится силикатами и водородом' },
+  { key: 'port', name: 'Космодром', cost: { uniq: 1 }, comp: { struct: 400, compute: 200 }, upkeep: 's', up: 700, h2: 40, work: true,
     desc: 'Собирает корабли из компонентов колонии' },
   // Газовый гигант: поверхности нет, корабль висит на низкой орбите и черпает газ с верхних
   // слоёв. Строить там можно только станцию, и эта ветка пока НЕ РАЗВИВАЕТСЯ (решение
   // пользователя) — кнопка есть, постройка отказывает.
-  { key: 'station', name: 'Орбитальная станция', cost: { uniq: 1 }, comp: { struct: 1000, compute: 667 },
-    upkeep: 's', work: true, orbital: true, todo: true,
+  { key: 'station', name: 'Орбитальная станция', cost: { uniq: 1 }, comp: { struct: 600, compute: 400 },
+    upkeep: 's', up: 700, h2: 50, work: true, orbital: true, todo: true,
     desc: 'Единственная постройка газового гиганта. Ветка пока не развивается' },
 ];
 const COL_BUILDING = Object.fromEntries(COL_BUILDINGS.map(b => [b.key, b]));
 // Кого укомплектовывают первым, если населения или крипты не хватает на всех (правило v2).
-const COL_PRIO = { mine_s: 0, mine_c: 0, mine_e: 0, mine_b: 0, farm: 1, mfarm: 2, prod: 3, port: 4, dome: 99 };
+const COL_PRIO = { gen: 0, mine_s: 1, mine_c: 1, mine_e: 1, mine_b: 1, farm: 2, mfarm: 3, prod: 4, port: 5, station: 5, dome: 99 };
 
 const Colony = (() => {
   const tickAt = ms => Math.floor(ms / COL.TICK_MS);
@@ -96,7 +126,7 @@ const Colony = (() => {
   // star/planet колония помнит сама: по ним космодром знает, где появится собранный корабль.
   function blank(now, star, planet) {
     return { t: tickAt(now), star, planet, stock: {}, food: 0, crypto: 0, pop: 0, uniq: 0,
-      buildings: [], site: null, yard: null, log: [] };
+      buildings: [], site: null, yard: null, powered: true, log: [] };
   }
 
   // ---------- склад ----------
@@ -120,6 +150,23 @@ const Colony = (() => {
     }
     return en - Math.max(0, need);
   }
+
+  // ЭНЕРГИЯ ЗДАНИЙ — в «водородах»: шахта и купол едят по 100 за такт (решение пользователя).
+  // Без ГЕНЕРАТОРА колония умеет жечь только водород: сжечь тритий или антиматерию нечем.
+  // С генератором идут и они, и идут выгодно — единица трития стоит трёх водородов, антиматерии
+  // восьми (их энергоёмкость 300 и 800 против 100). В этом и смысл постройки.
+  function burnH2(col, units, hasGen) {
+    let need = units;
+    const keys = hasGen ? ['hydrogen', 'tritium', 'antimatter'] : ['hydrogen'];
+    for (const k of keys) {
+      if (need <= 1e-9) break;
+      const per = COL.H2_PER_UNIT[k] || 1;
+      const take = Math.min(col.stock[k] || 0, need / per);
+      col.stock[k] = (col.stock[k] || 0) - take;
+      need -= take * per;
+    }
+    return units - Math.max(0, need);
+  }
   const add = (store, k, q) => { if (q) store[k] = (store[k] || 0) + q; };
 
   // ---------- ЦЕНЫ ПОЛЬЗОВАТЕЛЯ ----------
@@ -140,6 +187,25 @@ const Colony = (() => {
     }
   }
 
+  // ---------- МАССА ----------
+  // Трюм и склад меряются МАССОЙ, а не числом единиц (решение пользователя: «мерим по массе
+  // предельную вместимость»). У сырья масса своя — от 1 у водорода до 10 у сверхплотных
+  // (RESOURCES.mass), поэтому десять тысяч силикатов (масса 4) — это сорок тысяч массы, то есть
+  // два-три грузовых отсека, а не «десять тысяч чего-то».
+  let compMass = {};           // масса компонента по ключу вида 'struct1'
+  function setMasses(tbl) {    // вызывает экран, когда загрузил таблицу компонентов
+    compMass = {};
+    for (const m of MAT_TYPES) for (const t of TIERS) compMass[m.key + t] = influence(tbl, m.key, 'mass', t);
+  }
+  const FOOD_MASS = 1;         // ДОПУЩЕНИЕ: пища лёгкая, как водород
+  function massOf(key) {
+    if (key === 'food') return FOOD_MASS;
+    const r = RESOURCES.find(x => x.key === key);
+    if (r) return r.mass;
+    return compMass[key] || 1;
+  }
+  const massSum = store => Object.keys(store || {}).reduce((a, k) => a + store[k] * massOf(k), 0);
+
   // ---------- СКЛАД ПЛАНЕТЫ ----------
   // Решение пользователя: «каждой планете, где есть хоть одна постройка, нужен свой склад;
   // каждая постройка — это как два трюма на корабле, это и задаёт лимит хранения».
@@ -152,11 +218,11 @@ const Colony = (() => {
   let holdUnit = 2000;
   const setHoldUnit = n => { if (n > 0) holdUnit = n; };
   const capacity = col => Math.max(1, live(col).length) * 2 * holdUnit;
-  const used = col => Object.values(col.stock).reduce((a, v) => a + v, 0) + (col.food || 0) + compTotal(col);
+  const used = col => massSum(col.stock) + (col.food || 0) * FOOD_MASS + massSum(col.comp);
   const roomLeft = col => Math.max(0, capacity(col) - used(col));
   // Положить на склад, сколько влезет; вернуть, сколько легло.
   function store(col, key, qty) {
-    const q = Math.min(qty, roomLeft(col));
+    const q = Math.min(qty, roomLeft(col) / massOf(key));   // место считается массой
     if (q > 0) add(col.stock, key, q);
     return q;
   }
@@ -211,7 +277,7 @@ const Colony = (() => {
     let spill = 0;
     const mined = {};
     for (const b of L) {
-      if (!COL_BUILDING[b.kind].group || !manned.has(b)) continue;
+      if (!COL_BUILDING[b.kind].group || !manned.has(b) || !col.powered) continue;
       const h = hexAt(b.q, b.r); if (!h) continue;
       const out = mineOutput(h, b.kind, b.lvl);
       for (const k in out) mined[k] = (mined[k] || 0) + out[k];
@@ -237,9 +303,22 @@ const Colony = (() => {
       col.yard = null;
     }
 
-    // 3. содержание — раз в час, сырьём своего типа (§8.8, 1 уровень)
+    // 3а. ЭНЕРГИЯ — каждый такт. Шахта и купол едят по 100 водородов, остальные меньше.
+    // Не хватило — здание в этот такт просто не работает (шахта не добывает), но не рушится:
+    // кончившийся водород это беда на час, а не повод разбирать постройку.
+    const hasGen = L.some(b => b.kind === 'gen' && manned.has(b));
+    const h2Need = L.reduce((a, b) => a + (COL_BUILDING[b.kind].h2 || 0) * b.lvl, 0);
+    const h2Got = h2Need > 0 ? burnH2(col, h2Need, hasGen) : 0;
+    const powered = h2Need <= 0 || h2Got >= h2Need - 1e-9;
+    if (!powered && !col.h2Warned) { col.h2Warned = true; note(col, 'Не хватает водорода: колония стоит'); }
+    if (powered) col.h2Warned = false;
+    col.powered = powered;   // добыча следующего такта идёт, только если энергия была
+
+    // 3б. СОДЕРЖАНИЕ СЫРЬЁМ — раз в час, своим типом. У шахт его нет вовсе (решение
+    // пользователя: «шахты делаем бесплатными для содержания»).
     if (col.t % COL.UPKEEP_EVERY === 0) for (const b of L) {
-      const B = COL_BUILDING[b.kind], g = B.upkeep, q = (B.up || COL.UPKEEP_RAW) * b.lvl;
+      const B = COL_BUILDING[b.kind], g = B.upkeep, q = (B.up || 0) * b.lvl;
+      if (q <= 0) { b.missed = 0; continue; }
       if (inGroup(col, g) >= q) { spendIn(col, g, q); b.missed = 0; }
       else if (++b.missed >= COL.GRACE) {
         b.dead = true;
@@ -336,8 +415,35 @@ const Colony = (() => {
     return col;
   }
 
+  // СТАРТОВЫЙ КОЛОНИАЛЬНЫЙ НАБОР (решение пользователя): на планете, где игрок начал, сразу
+  // стоят купол, генератор и ферма, а на складе лежит 10 000 силикатов — ровно на первую шахту.
+  // Без этого первый час уходит на то, чтобы наскрести на что угодно: шахта стоит 10 000, а
+  // купол и ферма ещё и требуют биомассы, которой на стартовой планете может не быть вовсе.
+  // Даётся ОДИН раз, первой колонии игрока.
+  const START_KIT = ['dome', 'gen', 'farm'];
+  const START_KIT_SILICATES = 10000;
+  function startKit(col, surf) {
+    const taken = new Set(col.buildings.map(b => b.q + ',' + b.r));
+    // Ставим у центра карты: там же, где обычно садится корабль.
+    const spots = surf.hexes.slice().sort((a, b) =>
+      (Math.abs(a.q) + Math.abs(a.r) + Math.abs(a.q + a.r)) - (Math.abs(b.q) + Math.abs(b.r) + Math.abs(b.q + b.r)));
+    for (const kind of START_KIT) {
+      const h = spots.find(x => !taken.has(x.q + ',' + x.r));
+      if (!h) break;
+      taken.add(h.q + ',' + h.r);
+      col.buildings.push({ kind, q: h.q, r: h.r, lvl: 1, missed: 0 });
+    }
+    add(col.stock, 'silicates', START_KIT_SILICATES);
+    note(col, 'Стартовый набор: купол, генератор, ферма и ' + START_KIT_SILICATES + ' силикатов');
+  }
+
   // ---------- стройка по приказу игрока ----------
-  function canBuild(col, key, hex, lowOrbit) {
+  // Стройка берёт сырьё СО СКЛАДА и, если корабль стоит тут же, из его ТРЮМА. Иначе первую
+  // шахту за 10 000 силикатов не построить: столько сразу на склад молодой колонии не влезает.
+  const withShip = (col, ship, g) => inGroup(col, g) +
+    (ship ? COL_GROUPS[g].reduce((a, k) => a + ((ship.cargo || {})[k] || 0), 0) : 0);
+
+  function canBuild(col, key, hex, lowOrbit, ship) {
     const B = COL_BUILDING[key];
     if (!B) return 'нет такой постройки';
     if (B.todo) return 'эта ветка пока не развивается';
@@ -347,8 +453,9 @@ const Colony = (() => {
     if (col.buildings.some(b => !b.dead && b.q === hex.q && b.r === hex.r)) return 'гекс занят';
     if (B.group && !COL_GROUPS[B.group].some(k => (hex.res[k] || 0) > 0))
       return 'на этом гексе нет ' + COL_GROUP_NAME[B.group].toLowerCase();
-    if (inGroup(col, 's') < (B.cost.s || 0)) return 'мало структурного сырья';
-    if (inGroup(col, 'c') < (B.cost.c || 0)) return 'мало вычислительного сырья';
+    if (withShip(col, ship, 's') < (B.cost.s || 0)) return 'мало структурного сырья';
+    if (withShip(col, ship, 'c') < (B.cost.c || 0)) return 'мало вычислительного сырья';
+    if (withShip(col, ship, 'b') < (B.cost.b || 0)) return 'мало биомассы';
     if (col.uniq < (B.cost.uniq || 0)) return 'нужна планетарная единица';
     for (const m in B.comp || {}) {
       const key = m + '1';
@@ -357,10 +464,25 @@ const Colony = (() => {
     }
     return null;
   }
-  function build(col, key, hex, lowOrbit) {
-    const err = canBuild(col, key, hex, lowOrbit); if (err) return err;
+  // Списываем сперва со склада, остаток — из трюма корабля.
+  function spendBoth(col, ship, g, q) {
+    const got = spendIn(col, g, q);
+    let left = q - got;
+    if (left > 1e-9 && ship && ship.cargo)
+      for (const k of COL_GROUPS[g]) {
+        if (left <= 1e-9) break;
+        const take = Math.min(left, ship.cargo[k] || 0);
+        ship.cargo[k] -= take; if (ship.cargo[k] <= 0) delete ship.cargo[k];
+        left -= take;
+      }
+    return q - Math.max(0, left);
+  }
+
+  function build(col, key, hex, lowOrbit, ship) {
+    const err = canBuild(col, key, hex, lowOrbit, ship); if (err) return err;
     const B = COL_BUILDING[key];
-    spendIn(col, 's', B.cost.s || 0); spendIn(col, 'c', B.cost.c || 0);
+    spendBoth(col, ship, 's', B.cost.s || 0); spendBoth(col, ship, 'c', B.cost.c || 0);
+    spendBoth(col, ship, 'b', B.cost.b || 0);
     col.uniq -= B.cost.uniq || 0;
     col.comp = col.comp || {};
     for (const m in B.comp || {}) col.comp[m + '1'] -= B.comp[m];
@@ -384,13 +506,16 @@ const Colony = (() => {
     });
     return { live: L, workers: paid, jobs: need.length, rate, yard: col.yard, order: col.order || { kind: 'uniq' },
       cap: capacity(col), used: used(col), room: roomLeft(col),
-      upkeep: L.reduce((a, b) => a + (COL_BUILDING[b.kind].up || COL.UPKEEP_RAW) * b.lvl, 0), port: has(col, 'port'),
+      upkeep: L.reduce((a, b) => a + (COL_BUILDING[b.kind].up || 0) * b.lvl, 0),
+      h2: L.reduce((a, b) => a + (COL_BUILDING[b.kind].h2 || 0) * b.lvl, 0),
+      gen: L.some(b => b.kind === 'gen'), powered: col.powered !== false, port: has(col, 'port'),
       stock: col.stock, food: col.food, crypto: col.crypto, pop: col.pop, uniq: col.uniq,
       popCap: domeCap(col), site: col.site };
   }
 
-  return { blank, advance, step, build, canBuild, summary, live, has, inGroup, spendIn, add,
-    capacity, used, roomLeft, store, setHoldUnit, setPrices, compKey, compName, compCost, compTotal,
+  return { blank, advance, step, build, canBuild, summary, live, has, inGroup, spendIn, add, startKit,
+    capacity, used, roomLeft, store, setHoldUnit, setPrices, setMasses, massOf, massSum,
+    compKey, compName, compCost, compTotal,
     shipOutput, mineOutput, tickAt, note, domeCap, uniqPick };
 })();
 
@@ -422,7 +547,7 @@ const Ship = (() => {
   // На сколько тактов хватит запаса при нынешнем экипаже (с пассажирами — меньше).
   const lifeTicks = (tbl, ship, st) => Math.floor(lifeLeft(tbl, ship, st) / (crew(ship) * COL.FOOD_PER_POP));
 
-  const cargoUsed = ship => Object.values(ship.cargo || {}).reduce((a, v) => a + v, 0);
+  const cargoUsed = ship => Colony.massSum(ship.cargo);   // трюм меряется массой
   const cargoFree = (tbl, ship, st) => Math.max(0, st.capacity - cargoUsed(ship));
   const hasMiner = ship => designModules(findDesign(ship.design)).includes('miner');
 
@@ -449,7 +574,7 @@ const Ship = (() => {
       const lastH = hvOf(ship, ship.star, ship.planet);
       let n = Math.max(0, t1 - Math.max(t0, lastH ? lastH.t : -1));
       const per = Object.values(Colony.shipOutput(h)).reduce((a, v) => a + v, 0);
-      const byFuel = Math.floor(World.fuel() / HARVEST_FUEL);
+      const byFuel = Math.floor(((ship.cargo || {}).hydrogen || 0) / HARVEST_H2);
       const byCargo = per > 0 ? Math.ceil(cargoFree(tbl, ship, st) / per) : 0;
       if (n > foodTicks) { n = Math.max(0, foodTicks); stop = 'пища'; }
       if (n > byFuel) { n = byFuel; stop = 'топливо'; }
@@ -463,7 +588,7 @@ const Ship = (() => {
       
     }
     const full = cargoFree(tbl, ship, st) <= 0, low = lifeShare(tbl, ship, st) <= COL.ALERT_LIFE;
-    if (full || ship.food <= 0 || World.fuel() < HARVEST_FUEL) ship.mine = null; // добывать больше нечем
+    if (full || ship.food <= 0 || ((ship.cargo || {}).hydrogen || 0) < HARVEST_H2) ship.mine = null;
     return { st, ticks, full, low, justLow: low && !wasLow, auto, got, stop };
   }
 
@@ -475,7 +600,10 @@ const Ship = (() => {
   // с ТОГО ЖЕ гекса снова не снять — а с соседнего можно. Прилетел на другую планету — там свои
   // гексы со своими лимитами. Отсюда и смысл флота: пока один корабль в пути, другим дают
   // приказы, и чем больше игрок играет, тем быстрее растёт колония (ТЗ §1, автосимулятор).
-  const HARVEST_FUEL = 0.01;   // ДОПУЩЕНИЕ: доля бака за один съём
+  // Съём с гекса стоит столько же, сколько такт работы шахты — 100 водорода (решение
+  // пользователя: «такая же цена добычи и у шахтёра на корабле»). Водород берётся ИЗ ТРЮМА:
+  // корабль должен возить топливо, чтобы копать.
+  const HARVEST_H2 = 100;
   // ЛИМИТ ХРАНИТСЯ В ПАМЯТИ КОРАБЛЯ (решение пользователя): ship.hv — по одной записи на
   // планету, {t: номер такта, q, r: откуда брали}. Один корабль снимает с ОДНОЙ планеты один
   // гекс за 10 минут; прилетел на другую — там свой счёт.
@@ -503,7 +631,7 @@ const Ship = (() => {
     const st = stats(tbl, ship);
     const free = cargoFree(tbl, ship, st);
     if (free <= 0) return { err: 'трюм полон' };
-    if (World.fuel() < HARVEST_FUEL) return { err: 'нет топлива на съём' };
+    if (((ship.cargo || {}).hydrogen || 0) < HARVEST_H2) return { err: 'в трюме нет водорода на съём (нужно ' + HARVEST_H2 + ')' };
     const out = Colony.shipOutput(hex);
     const want = Object.values(out).reduce((a, v) => a + v, 0);
     if (want <= 0) return { err: 'на гексе нечего брать' };
@@ -516,7 +644,8 @@ const Ship = (() => {
     ship.hv = ship.hv || {};
     for (const k in ship.hv) if (ship.hv[k].t < nowT) delete ship.hv[k]; // мёртвые записи не храним
     ship.hv[hvKey(star, planet)] = { t: nowT, q: hex.q, r: hex.r };
-    World.setFuel(World.fuel() - HARVEST_FUEL);
+    ship.cargo.hydrogen -= HARVEST_H2;
+    if (ship.cargo.hydrogen <= 0) delete ship.cargo.hydrogen;
     return { got, total: want * k, full: cargoFree(tbl, ship, st) <= 0 };
   }
 
@@ -597,7 +726,7 @@ const Ship = (() => {
   }
 
   return { stats, crew, lifeCap, lifeLeft, lifeShare, lifeTicks, cargoUsed, cargoFree, hasMiner,
-    advance, harvest, harvestReady, harvestWait, HARVEST_FUEL, unload, load, colonyGoods, recharge, loadFood, rechargeFromHold, foodPerUnit,
+    advance, harvest, harvestReady, harvestWait, HARVEST_H2, unload, load, colonyGoods, recharge, loadFood, rechargeFromHold, foodPerUnit,
     cost: shipCost, costRaw: shipCostRaw, costTotal: shipCostTotal, paxCap, ensureStart,
     value: valueOfRaw, valueComp: valueOfComp, valueComps: valueOfComps };
 })();
@@ -662,7 +791,9 @@ function paxCap(design) { return designModules(design).filter(k => k === 'coloni
 
 // Стартовая загрузка первого корабля — ровно та, что в прогоне tools/colony.js: сырьё на первую
 // шахту, водород на первые часы, пища на колонистов. Делается один раз на новую игру.
-const START_LOAD = { silicates: 400, silicon: 260, hydrogen: 440, food: 1100, pax: 10 };
+// Трюм стартового шаттла — 40 000 массы (2,5 грузовых отсека). Грузим так, чтобы хватило на
+// первые часы: водород нужен и на съём кораблём (100 за раз), и на содержание первой шахты.
+const START_LOAD = { silicates: 2000, silicon: 1000, hydrogen: 6000, food: 2000, pax: 10 };
 function ensureStart(ship) {
   if (ship.seeded || ship.id !== 1) return false;
   ship.seeded = true;
@@ -673,13 +804,20 @@ function ensureStart(ship) {
   return true;
 }
 
-// МАСШТАБ КОРАБЛЯ ×10 (решение пользователя: «корабль просто умножь на 10 все компоненты и
+// МАСШТАБ КОРАБЛЯ ×3 (решение пользователя: «корабль просто умножь на 10 все компоненты и
 // тягу — так как масса вырастет тоже в 10 раз — и корабль будет эквивалентен шахте»).
 // Один предмет оборудования — это десять наборов компонентов из таблицы, а не один: стартовый
 // шаттл стоит 930 единиц сырья вместо 93, то есть примерно как шахта (1000). Масса и тяга
 // растут тем же множителем, поэтому ускорение, время разгона и все полётные числа НЕ меняются —
 // в ships.js и components.js править нечего, множитель нужен только там, где платят сырьём.
-const SHIP_SCALE = 10;
+//
+// Сперва множитель был 10 — тогда компонент стоил 3 единицы сырья. Когда компонент подорожал
+// до 50/30/20, корабль стал дороже шахты, и пользователь поправил: «можешь снизить число
+// компонентов для кораблей, так как они стали дороже; корабль уровня корвет или шатл должен
+// в совокупности обходиться в 2 раза дешевле шахты, чтоб у игрока была развилка: построить одну
+// шахту для пассивной добычи или пару кораблей для активной». При ×3 укомплектованный шаттл
+// стоит 4 650 сырья против 10 000 за шахту — ровно вдвое дешевле.
+const SHIP_SCALE = 3;
 function shipBuildTicks(design) {
   // Время сборки: час на каждые четыре модуля (ДОПУЩЕНИЕ).
   return COL.BUILD_TICKS * Math.max(1, Math.ceil((designModules(design).length + design.decks.length) / 4));

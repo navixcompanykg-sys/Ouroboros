@@ -15,7 +15,7 @@
   let tbl = null, prices = null, dirty = false;
 
   // ---------- хранилище ----------
-  const BLANK = { v: 2, buildings: {}, parts: {} };
+  const BLANK = { v: 3, buildings: {}, parts: {} };
   // Откуда взялись числа на экране — говорим прямо и всегда. Беда, которую это лечит: страницу
   // открывали двойным щелчком по файлу, fetch к data/ браузер запрещал, и показывалось зеркало
   // из localStorage, то есть СТАРЫЕ цены — молча, без единого намёка.
@@ -31,13 +31,13 @@
 
   async function load() {
     const got = await Store.load('prices');
-    prices = (got.data && got.data.v === 2) ? got.data : JSON.parse(JSON.stringify(BLANK));
+    prices = (got.data && got.data.v === 3) ? got.data : JSON.parse(JSON.stringify(BLANK));
     prices.buildings = prices.buildings || {};
     prices.parts = prices.parts || {};
     showSource(got.from);
     // Файла ещё нет — значит в нём только что вбиты текущие значения кода, и их надо сохранить:
     // показываем «Сохранить» активной, а не делаем вид, что всё уже записано.
-    if (!got.from || !(got.data && got.data.v === 2)) dirty = true;
+    if (!got.from || !(got.data && got.data.v === 3)) dirty = true;
     seed();
   }
   // Пустое место заполняем ТЕКУЩИМИ значениями кода — просьба пользователя «вбей сейчас текущие
@@ -46,8 +46,8 @@
     for (const B of COL_BUILDINGS) {
       const cur = prices.buildings[B.key];
       if (cur) continue;
-      prices.buildings[B.key] = { s: B.cost.s || 0, c: B.cost.c || 0, uniq: B.cost.uniq || 0,
-        up: B.up || COL.UPKEEP_RAW,
+      prices.buildings[B.key] = { s: B.cost.s || 0, c: B.cost.c || 0, b: B.cost.b || 0, uniq: B.cost.uniq || 0,
+        up: B.up || 0, h2: B.h2 || 0,
         comp: { struct: (B.comp || {}).struct || 0, compute: (B.comp || {}).compute || 0,
           bio: (B.comp || {}).bio || 0, energy: (B.comp || {}).energy || 0 } };
     }
@@ -158,6 +158,7 @@
   function mineValue() {
     const v = prices.buildings.mine_s; if (!v) return 0;
     return v.s * (RESOURCE_VALUE.silicates || 0) + v.c * (RESOURCE_VALUE.silicon || 0) +
+        (v.b || 0) * (RESOURCE_VALUE.microbiota || 0) +
       MAT_TYPES.reduce((a, m) => a + ((v.comp || {})[m.key] || 0) * compValue(m.key), 0);
   }
   let mineRef = 0;
@@ -167,16 +168,19 @@
     $('bld-body').innerHTML = COL_BUILDINGS.map(B => {
       const v = prices.buildings[B.key];
       v.comp = v.comp || { struct: 0, compute: 0, bio: 0, energy: 0 };
-      const num = (f, title) => `<td class="n"><input type="number" min="0" step="10" data-b="${B.key}" data-f="${f}" value="${v[f]}" title="${title}"></td>`;
+      const num = (f, title) => `<td class="n"><input type="number" min="0" step="10" data-b="${B.key}" data-f="${f}" value="${v[f] || 0}" title="${title}"></td>`;
       const cnum = m => `<td class="n"><input type="number" min="0" step="10" data-b="${B.key}" data-cf="${m}" value="${v.comp[m] || 0}" title="компонентов типа «${MAT_TYPE[m].name}»"></td>`;
       const val = v.s * (RESOURCE_VALUE.silicates || 0) + v.c * (RESOURCE_VALUE.silicon || 0) +
+        (v.b || 0) * (RESOURCE_VALUE.microbiota || 0) +
         MAT_TYPES.reduce((a, m) => a + (v.comp[m.key] || 0) * compValue(m.key), 0);
       return `<tr><td>${B.name}<i>${B.desc}</i></td>` +
         `<td class="g">${COL_GROUP_NAME[B.upkeep]}</td>` +
         num('s', 'структурного сырья на постройку') + num('c', 'вычислительного сырья на постройку') +
+        num('b', 'биомассы на постройку — нужна только куполу и ферме') +
         cnum('struct') + cnum('compute') +
         `<td class="n"><input type="number" min="0" step="1" data-b="${B.key}" data-f="uniq" value="${v.uniq}" title="планетарных единиц"></td>` +
-        num('up', 'содержание за час, сырьём своего типа') +
+        num('up', 'содержание за час, сырьём своего типа; у шахт его нет') +
+        num('h2', 'водорода за такт на энергию') +
         `<td class="n" data-bval="${B.key}"><b>${n0(val)}</b><i>${mineRef ? (val / mineRef).toFixed(1) + ' шахты' : ''}</i></td></tr>`;
     }).join('');
   }
@@ -239,6 +243,7 @@
       const v = prices.buildings[B.key]; if (!v) continue;
       v.comp = v.comp || {};
       const val = v.s * (RESOURCE_VALUE.silicates || 0) + v.c * (RESOURCE_VALUE.silicon || 0) +
+        (v.b || 0) * (RESOURCE_VALUE.microbiota || 0) +
         MAT_TYPES.reduce((a, m) => a + (v.comp[m.key] || 0) * compValue(m.key), 0);
       const cell = document.querySelector('[data-bval="' + B.key + '"]');
       if (cell) cell.innerHTML = '<b>' + n0(val) + '</b><i>' + (mineRef ? (val / mineRef).toFixed(1) + ' шахты' : '') + '</i>';

@@ -41,6 +41,7 @@
   Store.load('parts').then(got => {
     tbl = loadParts(got.data);
     Colony.setHoldUnit(partParam(tbl, 'cargo', 'capSolid', 1) + partParam(tbl, 'cargo', 'capGas', 1));
+    Colony.setMasses(tbl);   // трюм и склад меряются массой
     // Расценки зданий ведёт пользователь (prices.html → data/prices.json).
     Store.load('prices').then(r => Colony.setPrices(r.data));
     beat();

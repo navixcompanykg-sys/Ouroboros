@@ -21,10 +21,18 @@ const PlanetUI = (() => {
     tbl = loadParts(got.data);
     // «постройка = два трюма»: размер трюма берём из таблицы пользователя, а не из головы
     Colony.setHoldUnit(partParam(tbl, 'cargo', 'capSolid', 1) + partParam(tbl, 'cargo', 'capGas', 1));
+    Colony.setMasses(tbl);   // трюм и склад меряются массой
     // Расценки зданий ведёт пользователь (prices.html → data/prices.json).
     Store.load('prices').then(r => Colony.setPrices(r.data));
     col = World.colony(ctxRef.gstar.id, ctxRef.planet.index);
     Ship.ensureStart(World.active());
+    // СТАРТОВАЯ КОЛОНИЯ (решение пользователя: «это как бы его стартовая колония»). На планете,
+    // где игрок начал, колония уже стоит: купол, генератор, ферма и 10 000 силикатов на первую
+    // шахту. Высаживать никого не надо — игрок приходит в готовое хозяйство.
+    if (!col && !World.colonyList().length && ctxRef.gstar.id === World.startStarId()
+        && ctxRef.planet.habitable && !lowOrbit) {
+      found(World.active(), true);
+    }
     bind();
     tick();
     setInterval(tick, 1000); // раз в секунду: пища расходуется непрерывно, такт — раз в 10 минут
@@ -89,7 +97,8 @@ const PlanetUI = (() => {
     const cell = (name, val, frac, warn) => '<div class="st"><u>' + name + '</u><b>' + val + '</b>' +
       (frac == null ? '' : bar(frac, warn)) + '</div>';
     let out = cell('Трюм', n0(used) + ' / ' + n0(st.capacity), used / st.capacity) +
-      cell('Топливо', Math.round(World.fuel() * 100) + ' %', World.fuel()) +
+      cell('Водород в трюме', n0(((ship.cargo || {}).hydrogen || 0)) + ' · ' + Math.floor(((ship.cargo || {}).hydrogen || 0) / Ship.HARVEST_H2) + ' съёмов',
+        Math.min(1, ((ship.cargo || {}).hydrogen || 0) / (Ship.HARVEST_H2 * 20)), ((ship.cargo || {}).hydrogen || 0) < Ship.HARVEST_H2) +
       cell('Жизнеобеспечение', hrs(Ship.lifeTicks(tbl, ship, st)), lifeF, lifeF <= COL.ALERT_LIFE);
     if (col) {
       const s = Colony.summary(col, ctxRef.surf);
@@ -120,14 +129,15 @@ const PlanetUI = (() => {
         (parked ? 'Снять с добычи' : 'Оставить на добыче') + '</button></div>' +
         (ship.mine ? '<div class="note">Стоит на гексе ' + ship.mine.q + ', ' + ship.mine.r +
           ' и берёт добычу каждые 10 минут, пока есть пища и топливо и не забит трюм.</div>' : '') +
-        '<div class="note">Вдвое меньше, чем взяла бы шахта. Стоит ' + Math.round(Ship.HARVEST_FUEL * 100) +
-        ' % бака. Один гекс на планету за 10 минут на каждый корабль; на другой планете свой счёт.</div>';
+        '<div class="note">Вдвое меньше, чем взяла бы шахта. Стоит ' + Ship.HARVEST_H2 +
+        ' водорода из трюма — столько же ест шахта за такт. Один гекс на планету за 10 минут на ' +
+        'каждый корабль; на другой планете свой счёт.</div>';
     }
     return '<h4>' + shipName(ship) + '<span class="tag">' + (st.cls ? st.cls.name : '') + '</span></h4>' +
       '<div class="sub">' + (here ? 'Корабль ' + (lowOrbit ? 'на низкой орбите' : 'на поверхности') : 'Корабль в другом месте') +
       ' · экипаж ' + Ship.crew(ship) + ' (' + (ship.pax || 0) + ' пассажиров), ест ' + Ship.crew(ship) + ' пищи за такт</div>' +
       kv('Трюм', n0(used) + ' / ' + n0(st.capacity)) + bar(used / st.capacity) +
-      kv('Топливо', Math.round(World.fuel() * 100) + ' % · ' + Math.floor(World.fuel() / Ship.HARVEST_FUEL) + ' съёмов') +
+      kv('Водород в трюме', n0(((ship.cargo || {}).hydrogen || 0)) + ' · ' + Math.floor(((ship.cargo || {}).hydrogen || 0) / Ship.HARVEST_H2) + ' съёмов') +
       kv('Жизнеобеспечение', n0(Ship.lifeLeft(tbl, ship, st)) + ' пищи · ' + hrs(lt)) + bar(lifeF, lifeF <= COL.ALERT_LIFE) +
       acts;
   }
@@ -210,10 +220,12 @@ const PlanetUI = (() => {
     const stats = kv('Население', s.pop + ' / ' + (s.popCap || 0)) +
       kv('Рабочих', s.workers + ' из ' + s.jobs) + kv('Крипта', n0(s.crypto)) +
       kv('Планетарные единицы', s.uniq) + kv('Добыча', n0(rateSum) + ' ед./такт') +
-      kv('Содержание', n0(s.upkeep) + ' ед./час') +
+      kv('Содержание', n0(s.upkeep) + ' ед. сырья/час') +
+      kv('Энергия', n0(s.h2) + ' водорода/такт' + (s.gen ? ' · генератор жжёт и тритий' : '') +
+        (s.powered ? '' : ' · НЕ ХВАТАЕТ')) +
       (s.site ? kv('Строится ' + COL_BUILDING[s.site.kind].name, hrs(s.site.left)) : '');
     const rows = COL_BUILDINGS.filter(B => !!B.orbital === lowOrbit).map(B => {
-      const err = Colony.canBuild(col, B.key, sel, lowOrbit);
+      const err = Colony.canBuild(col, B.key, sel, lowOrbit, here ? ship : null);
       const n = Colony.live(col).filter(b => b.kind === B.key).length;
       return '<button class="bl" data-open="' + B.key + '"><span>' + B.name + (n ? ' ×' + n : '') +
         '<i>' + (err || B.desc) + '</i></span><b>' + (err ? '—' : 'можно') + '</b></button>';
@@ -226,13 +238,17 @@ const PlanetUI = (() => {
   // Модалка постройки — как в v2: название, цена, описание, «Построить» и «Закрыть».
   function renderModal(sel) {
     const B = COL_BUILDING[modal];
-    const err = col ? Colony.canBuild(col, modal, sel, lowOrbit) : 'колонии нет';
-    const cost = [B.cost.s ? B.cost.s + ' структурного сырья' : '', B.cost.c ? B.cost.c + ' вычислительного сырья' : '']
+    const here = World.active().star === ctxRef.gstar.id && World.active().planet === ctxRef.planet.index && World.active().landed;
+    const err = col ? Colony.canBuild(col, modal, sel, lowOrbit, here ? World.active() : null) : 'колонии нет';
+    const cost = [B.cost.s ? n0(B.cost.s) + ' структурного сырья' : '', B.cost.c ? n0(B.cost.c) + ' вычислительного сырья' : '',
+      B.cost.b ? n0(B.cost.b) + ' биомассы' : '']
       .concat(Object.keys(B.comp || {}).map(m => n0(B.comp[m]) + ' × ' + Colony.compName(m, 1).toLowerCase()))
       .concat(B.cost.uniq ? [B.cost.uniq + ' планетарная единица'] : []).filter(Boolean).join(' · ');
     $('con-modal').innerHTML = '<div class="cm-t">' + B.name + '</div>' +
-      '<div class="sub">1 уровень · содержание ' + (B.up || COL.UPKEEP_RAW) + ' ед. (' +
-      COL_GROUP_NAME[B.upkeep].toLowerCase() + ') в час · ' + (B.work ? 'нужен рабочий' : 'рабочий не нужен') +
+      '<div class="sub">1 уровень · ' +
+      (B.up ? 'содержание ' + n0(B.up) + ' ед. (' + COL_GROUP_NAME[B.upkeep].toLowerCase() + ') в час' : 'содержания нет') +
+      (B.h2 ? ' · энергия ' + B.h2 + ' водорода за такт' : '') +
+      ' · ' + (B.work ? 'нужен рабочий' : 'рабочий не нужен') +
       ' · стройка ' + hrs(COL.BUILD_TICKS) + '</div>' +
       '<div class="cm-c">Цена: ' + cost + '</div><div class="cm-d">' + B.desc + '</div>' +
       (err ? '<div class="note bad">' + err + '</div>' : '<div class="note">Гекс ' + sel.q + ', ' + sel.r + '</div>') +
@@ -278,7 +294,9 @@ const PlanetUI = (() => {
   // ---------- действия ----------
   function bind() {
     document.addEventListener('click', e => {
-      const b = e.target.closest('#colony [data-view],#colony [data-act],#colony [data-open],' +
+      // Вкладки живут в НИЖНЕЙ ЛЕНТЕ (#vtabs), а не в панели: после переноса их перестало
+      // ловить, и разделы не переключались.
+      const b = e.target.closest('#vtabs [data-view],#colony [data-act],#colony [data-open],' +
         '#colony [data-ship],#colony [data-pick],#colony [data-order],#colony [data-take],' +
         '#colony [data-put],#con-modal [data-act]');
       if (!b || b.disabled) return;
@@ -325,20 +343,33 @@ const PlanetUI = (() => {
     if (a === 'recharge' && col) Ship.recharge(tbl, ship, col);
     if (a === 'holdfood') Ship.rechargeFromHold(tbl, ship);
     if (a === 'found') found(ship);
-    if (a === 'dobuild' && modal) { const err = Colony.build(col, modal, sel, lowOrbit); if (err) alert(err); else modal = null; }
+    if (a === 'dobuild' && modal) {
+      const here = ship.star === ctxRef.gstar.id && ship.planet === ctxRef.planet.index && ship.landed;
+      const err = Colony.build(col, modal, sel, lowOrbit, here ? ship : null);
+      if (err) alert(err); else modal = null;
+    }
     if (a === 'closemodal') modal = null;
     World.save();
   }
 
   // Высадка колонистов: они становятся населением, трюм — складом, пища — запасом колонии.
   // База населения по дикой флоре (ТЗ §8.3) — ниже неё население само не опускается.
-  function found(ship) {
+  function found(ship, isStart) {
     const c = Colony.blank(Date.now(), ctxRef.gstar.id, ctxRef.planet.index);
     c.floraBase = Math.round((ctxRef.planet.composition.find(x => x.key === 'flora') || {}).value || 0);
     c.pop = ship.pax || 0;
+    // Стартовый капитал колонии: без крипты рабочие не выходят, шахта стоит и колония мертва
+    // с первой минуты. Это деньги игрока, вложенные в высадку (ТЗ §8.8).
+    c.crypto = COL.CRYPTO_START;
     ship.pax = 0;
+    // Стартовая колония строится раньше выгрузки: склад у неё уже есть под постройки набора.
+    if (isStart) Colony.startKit(c, ctxRef.surf);
     Ship.unload(ship, c);
-    Colony.note(c, 'Колония основана, высажено ' + c.pop + ' колонистов');
+    // Корабль выгружает всё, включая водород, — а без водорода он не может снять добычу
+    // (100 за съём). Возвращаем ему топливо, чтобы с первой минуты было чем копать.
+    if (isStart) Ship.load(tbl, ship, c, 'hydrogen', 3000);
+    Colony.note(c, isStart ? 'Стартовая колония: высажено ' + c.pop + ' колонистов'
+      : 'Колония основана, высажено ' + c.pop + ' колонистов');
     col = c;
     World.putColony(ctxRef.gstar.id, ctxRef.planet.index, c);
   }
