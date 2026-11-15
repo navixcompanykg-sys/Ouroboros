@@ -52,9 +52,14 @@ const COL_GROUP_NAME = { s: 'Структурные', c: 'Вычислитель
 const COL_KEY_GROUP = {};
 for (const g in COL_GROUPS) COL_GROUPS[g].forEach(k => { COL_KEY_GROUP[k] = g; });
 
-// Постройки 1 уровня. uniq — планетарных единиц (§8.6); у шахт и производства 0 — решение
-// пользователя, иначе колонию не с чего начать. upkeep — тип сырья, которым здание содержится
-// (ДОПУЩЕНИЕ: то, с чем здание работает); work — нужен ли рабочий (§8.8).
+// Постройки 1 уровня.
+//   cost  — цена в СЫРЬЕ (s — структурное, c — вычислительное) и планетарных единицах (§8.6);
+//   comp  — цена в КОМПОНЕНТАХ 1 уровня по типам. Решение пользователя: «здания тоже собираются
+//           из компонентов, кроме шахт, купола, производства и ФЕРМЫ 1 уровня» — эти три исключения и
+//           есть то, с чего колония начинается, компоненты делать ещё нечем.
+//   uniq  — планетарных единиц: у шахт и производства 0, иначе колонию не с чего начать.
+//   upkeep — тип сырья, которым здание содержится (ДОПУЩЕНИЕ: то, с чем оно работает);
+//   work  — нужен ли рабочий (§8.8).
 const COL_BUILDINGS = [
   { key: 'mine_s', name: 'Шахта структурная', group: 's', cost: { s: 800, c: 200 }, upkeep: 's', work: true,
     desc: 'Силикаты, редкоземельные металлы, сверхплотные минералы с гекса' },
@@ -68,17 +73,18 @@ const COL_BUILDINGS = [
     desc: 'Делает планетарную единицу: 10 + 10 + 10 сырья трёх уровней разных типов' },
   { key: 'farm', name: 'Фермы', cost: { s: 900, c: 500, uniq: 1 }, upkeep: 'e', work: true,
     desc: 'Пища: из биомассы 1 к 1 либо искусственно за сырьё и энергию' },
-  { key: 'mfarm', name: 'Майнинг-ферма', cost: { s: 400, c: 1200, uniq: 1 }, upkeep: 'c', work: true,
+  { key: 'mfarm', name: 'Майнинг-ферма', cost: { uniq: 1 }, comp: { struct: 133, compute: 400 }, upkeep: 'c', work: true,
     desc: 'Жжёт энергию в крипту — ею платят рабочим' },
   { key: 'dome', name: 'Купол', cost: { s: 1200, c: 300, uniq: 1 }, upkeep: 's', work: false,
     desc: 'Жильё: предел населения 10 на уровень' },
-  { key: 'port', name: 'Космодром', cost: { s: 2000, c: 1000, uniq: 1 }, upkeep: 's', work: true,
-    desc: 'Строит корабли из сырья колонии' },
+  { key: 'port', name: 'Космодром', cost: { uniq: 1 }, comp: { struct: 667, compute: 333 }, upkeep: 's', work: true,
+    desc: 'Собирает корабли из компонентов колонии' },
   // Газовый гигант: поверхности нет, корабль висит на низкой орбите и черпает газ с верхних
   // слоёв. Строить там можно только станцию, и эта ветка пока НЕ РАЗВИВАЕТСЯ (решение
   // пользователя) — кнопка есть, постройка отказывает.
-  { key: 'station', name: 'Орбитальная станция', cost: { s: 3000, c: 2000, uniq: 1 }, upkeep: 's', work: true,
-    orbital: true, todo: true, desc: 'Единственная постройка газового гиганта. Ветка пока не развивается' },
+  { key: 'station', name: 'Орбитальная станция', cost: { uniq: 1 }, comp: { struct: 1000, compute: 667 },
+    upkeep: 's', work: true, orbital: true, todo: true,
+    desc: 'Единственная постройка газового гиганта. Ветка пока не развивается' },
 ];
 const COL_BUILDING = Object.fromEntries(COL_BUILDINGS.map(b => [b.key, b]));
 // Кого укомплектовывают первым, если населения или крипты не хватает на всех (правило v2).
@@ -126,6 +132,11 @@ const Colony = (() => {
       if (!B || !v) continue;
       B.cost = { s: +v.s || 0, c: +v.c || 0, uniq: +v.uniq || 0 };
       B.up = +v.up || COL.UPKEEP_RAW;
+      if (v.comp) { // цена в компонентах, если она задана
+        B.comp = {};
+        for (const m in v.comp) if (+v.comp[m] > 0) B.comp[m] = +v.comp[m];
+        if (!Object.keys(B.comp).length) delete B.comp;
+      }
     }
   }
 
@@ -339,6 +350,11 @@ const Colony = (() => {
     if (inGroup(col, 's') < (B.cost.s || 0)) return 'мало структурного сырья';
     if (inGroup(col, 'c') < (B.cost.c || 0)) return 'мало вычислительного сырья';
     if (col.uniq < (B.cost.uniq || 0)) return 'нужна планетарная единица';
+    for (const m in B.comp || {}) {
+      const key = m + '1';
+      if (((col.comp || {})[key] || 0) < B.comp[m])
+        return 'мало компонентов: ' + compName(m, 1).toLowerCase();
+    }
     return null;
   }
   function build(col, key, hex, lowOrbit) {
@@ -346,6 +362,8 @@ const Colony = (() => {
     const B = COL_BUILDING[key];
     spendIn(col, 's', B.cost.s || 0); spendIn(col, 'c', B.cost.c || 0);
     col.uniq -= B.cost.uniq || 0;
+    col.comp = col.comp || {};
+    for (const m in B.comp || {}) col.comp[m + '1'] -= B.comp[m];
     col.site = { kind: key, q: hex.q, r: hex.r, left: COL.BUILD_TICKS };
     note(col, 'Начата стройка: ' + B.name);
     return null;
@@ -580,24 +598,57 @@ const Ship = (() => {
 
   return { stats, crew, lifeCap, lifeLeft, lifeShare, lifeTicks, cargoUsed, cargoFree, hasMiner,
     advance, harvest, harvestReady, harvestWait, HARVEST_FUEL, unload, load, colonyGoods, recharge, loadFood, rechargeFromHold, foodPerUnit,
-    cost: shipCost, costTotal: shipCostTotal, paxCap, ensureStart };
+    cost: shipCost, costRaw: shipCostRaw, costTotal: shipCostTotal, paxCap, ensureStart,
+    value: valueOfRaw, valueComp: valueOfComp, valueComps: valueOfComps };
 })();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Стоимость корабля в сырье и стартовая загрузка.
 //
-// Корабль собирается из компонентов 1 уровня (базовые настройки этого этапа игры), а компонент
-// 1 уровня — это 3 единицы сырья 1 уровня СВОЕГО типа (CRAFT в components.js). Состав предметов
-// берётся из таблицы пользователя (data/parts.json) — своих чисел здесь нет.
+// ---------- единый эталон стоимости (у.е.) ----------
+// Любую цену — сырья, компонента, постройки, корабля — можно свести к одному числу через
+// RESOURCE_VALUE (data.js, формула v2). Это и есть «универсальный эталон»: сравнивать шахту с
+// кораблём иначе нечем, у них разные валюты.
+function valueOfRaw(raw) {
+  let v = 0;
+  for (const k in raw) v += raw[k] * (RESOURCE_VALUE[k] || 0);
+  return v;
+}
+// Компонент стоит столько, сколько стоит ушедшее на него сырьё (CRAFT).
+function valueOfComp(mat, tier) { return valueOfRaw(Colony.compCost(mat, tier)); }
+function valueOfComps(comps) {
+  let v = 0;
+  for (const k in comps) v += comps[k] * valueOfComp(k.slice(0, -1), +k.slice(-1));
+  return v;
+}
+
+// ЧАСТИ КОРАБЛЯ СОБИРАЮТСЯ ИЗ КОМПОНЕНТОВ, А НЕ ИЗ СЫРЬЯ (решение пользователя). Состав предмета
+// в таблице пользователя (data/parts.json) — это сколько компонентов каждого типа в него идёт;
+// с масштабом корабля ×10 (см. SHIP_SCALE) это и есть цена сборки. Сырьё в компоненты превращает
+// постройка «Производство» (ТЗ §8.14), поэтому верфь без производства бесполезна.
+//
+// Ключ компонента — 'struct1', 'compute1' и т. д.: на этом этапе игры всё оборудование 1 уровня
+// с базовыми настройками, значит и компоненты первого уровня.
 function shipCost(tbl, design) {
   const out = {};
   const mods = designModules(design).concat(design.decks.map(() => 'frame'));
   for (const key of mods) {
     const comp = (tbl.comp || {})[key]; if (!comp) continue;
-    const per = rawPerItem(comp, 1);                  // {тип: [1ур, 2ур, 3ур]}
-    for (const m of MAT_TYPES) for (let i = 0; i < 3; i++) {
-      const q = per[m.key][i] * SHIP_SCALE; if (q) Colony.add(out, m.res[i], q);
+    for (const m of MAT_TYPES) {
+      const n = (+comp[m.key] || 0) * SHIP_SCALE;
+      if (n) Colony.add(out, m.key + '1', n);
     }
+  }
+  return out;
+}
+// Во что эти компоненты обошлись бы сырьём — справка для расценок: компонент 1 уровня стоит
+// 3 единицы сырья 1 уровня своего типа (CRAFT).
+function shipCostRaw(tbl, design) {
+  const out = {}, cost = shipCost(tbl, design);
+  for (const key in cost) {
+    const mat = key.slice(0, -1), tier = +key.slice(-1);
+    const need = Colony.compCost(mat, tier);
+    for (const k in need) Colony.add(out, k, need[k] * cost[key]);
   }
   return out;
 }

@@ -1,211 +1,271 @@
 {
- "v": 1,
+ "v": 2,
  "buildings": {
   "mine_s": {
    "s": 800,
    "c": 200,
    "uniq": 0,
-   "up": 700
+   "up": 700,
+   "comp": {
+    "struct": 0,
+    "compute": 0,
+    "bio": 0,
+    "energy": 0
+   }
   },
   "mine_c": {
    "s": 800,
    "c": 200,
    "uniq": 0,
-   "up": 700
+   "up": 700,
+   "comp": {
+    "struct": 0,
+    "compute": 0,
+    "bio": 0,
+    "energy": 0
+   }
   },
   "mine_e": {
    "s": 800,
    "c": 200,
    "uniq": 0,
-   "up": 700
+   "up": 700,
+   "comp": {
+    "struct": 0,
+    "compute": 0,
+    "bio": 0,
+    "energy": 0
+   }
   },
   "mine_b": {
    "s": 800,
    "c": 200,
    "uniq": 0,
-   "up": 700
+   "up": 700,
+   "comp": {
+    "struct": 0,
+    "compute": 0,
+    "bio": 0,
+    "energy": 0
+   }
   },
   "prod": {
    "s": 1500,
    "c": 600,
    "uniq": 0,
-   "up": 700
+   "up": 700,
+   "comp": {
+    "struct": 0,
+    "compute": 0,
+    "bio": 0,
+    "energy": 0
+   }
   },
   "farm": {
    "s": 900,
    "c": 500,
    "uniq": 1,
-   "up": 700
+   "up": 700,
+   "comp": {
+    "struct": 0,
+    "compute": 0,
+    "bio": 0,
+    "energy": 0
+   }
   },
   "mfarm": {
-   "s": 400,
-   "c": 1200,
+   "s": 0,
+   "c": 0,
    "uniq": 1,
-   "up": 700
+   "up": 700,
+   "comp": {
+    "struct": 133,
+    "compute": 400,
+    "bio": 0,
+    "energy": 0
+   }
   },
   "dome": {
    "s": 1200,
    "c": 300,
    "uniq": 1,
-   "up": 700
+   "up": 700,
+   "comp": {
+    "struct": 0,
+    "compute": 0,
+    "bio": 0,
+    "energy": 0
+   }
   },
   "port": {
-   "s": 2000,
-   "c": 1000,
+   "s": 0,
+   "c": 0,
    "uniq": 1,
-   "up": 700
+   "up": 700,
+   "comp": {
+    "struct": 667,
+    "compute": 333,
+    "bio": 0,
+    "energy": 0
+   }
   },
   "station": {
-   "s": 3000,
-   "c": 2000,
+   "s": 0,
+   "c": 0,
    "uniq": 1,
-   "up": 700
+   "up": 700,
+   "comp": {
+    "struct": 1000,
+    "compute": 667,
+    "bio": 0,
+    "energy": 0
+   }
   }
  },
  "parts": {
   "weapon_mount": {
-   "s": 30,
-   "c": 30,
-   "b": 0,
-   "e": 0
+   "struct": 10,
+   "compute": 10,
+   "bio": 0,
+   "energy": 0
   },
   "frame": {
-   "s": 60,
-   "c": 0,
-   "b": 0,
-   "e": 0
+   "struct": 20,
+   "compute": 0,
+   "bio": 0,
+   "energy": 0
   },
   "ecm": {
-   "s": 30,
-   "c": 60,
-   "b": 30,
-   "e": 30
+   "struct": 10,
+   "compute": 20,
+   "bio": 10,
+   "energy": 10
   },
   "engine": {
-   "s": 60,
-   "c": 30,
-   "b": 30,
-   "e": 0
+   "struct": 20,
+   "compute": 10,
+   "bio": 10,
+   "energy": 0
   },
   "engine_ion": {
-   "s": 60,
-   "c": 60,
-   "b": 0,
-   "e": 30
+   "struct": 20,
+   "compute": 20,
+   "bio": 0,
+   "energy": 10
   },
   "solar_sail": {
-   "s": 30,
-   "c": 30,
-   "b": 30,
-   "e": 0
+   "struct": 10,
+   "compute": 10,
+   "bio": 10,
+   "energy": 0
   },
   "reactor": {
-   "s": 30,
-   "c": 60,
-   "b": 30,
-   "e": 30
+   "struct": 10,
+   "compute": 20,
+   "bio": 10,
+   "energy": 10
   },
   "gas_storage": {
-   "s": 60,
-   "c": 0,
-   "b": 0,
-   "e": 0
+   "struct": 20,
+   "compute": 0,
+   "bio": 0,
+   "energy": 0
   },
   "battery": {
-   "s": 30,
-   "c": 30,
-   "b": 30,
-   "e": 30
+   "struct": 10,
+   "compute": 10,
+   "bio": 10,
+   "energy": 10
   },
   "gun_autocannon": {
-   "s": 30,
-   "c": 30,
-   "b": 0,
-   "e": 0
+   "struct": 10,
+   "compute": 10,
+   "bio": 0,
+   "energy": 0
   },
   "gun_railgun": {
-   "s": 90,
-   "c": 0,
-   "b": 0,
-   "e": 0
+   "struct": 30,
+   "compute": 0,
+   "bio": 0,
+   "energy": 0
   },
   "gun_laser": {
-   "s": 0,
-   "c": 90,
-   "b": 0,
-   "e": 0
+   "struct": 0,
+   "compute": 30,
+   "bio": 0,
+   "energy": 0
   },
   "gun_plasma": {
-   "s": 30,
-   "c": 0,
-   "b": 30,
-   "e": 60
+   "struct": 10,
+   "compute": 0,
+   "bio": 10,
+   "energy": 20
   },
   "gun_missile": {
-   "s": 60,
-   "c": 0,
-   "b": 30,
-   "e": 0
+   "struct": 20,
+   "compute": 0,
+   "bio": 10,
+   "energy": 0
   },
   "gun_torpedo": {
-   "s": 90,
-   "c": 30,
-   "b": 0,
-   "e": 0
+   "struct": 30,
+   "compute": 10,
+   "bio": 0,
+   "energy": 0
   },
   "life_support": {
-   "s": 30,
-   "c": 30,
-   "b": 60,
-   "e": 0
+   "struct": 10,
+   "compute": 10,
+   "bio": 20,
+   "energy": 0
   },
   "colonist": {
-   "s": 30,
-   "c": 30,
-   "b": 60,
-   "e": 0
+   "struct": 10,
+   "compute": 10,
+   "bio": 20,
+   "energy": 0
   },
   "radar": {
-   "s": 30,
-   "c": 30,
-   "b": 30,
-   "e": 30
+   "struct": 10,
+   "compute": 10,
+   "bio": 10,
+   "energy": 10
   },
   "computer": {
-   "s": 30,
-   "c": 90,
-   "b": 30,
-   "e": 0
+   "struct": 10,
+   "compute": 30,
+   "bio": 10,
+   "energy": 0
   },
   "teleport": {
-   "s": 30,
-   "c": 90,
-   "b": 0,
-   "e": 30
+   "struct": 10,
+   "compute": 30,
+   "bio": 0,
+   "energy": 10
   },
   "miner": {
-   "s": 60,
-   "c": 30,
-   "b": 0,
-   "e": 0
+   "struct": 20,
+   "compute": 10,
+   "bio": 0,
+   "energy": 0
   },
   "repair": {
-   "s": 30,
-   "c": 30,
-   "b": 30,
-   "e": 0
+   "struct": 10,
+   "compute": 10,
+   "bio": 10,
+   "energy": 0
   },
   "cargo": {
-   "s": 60,
-   "c": 0,
-   "b": 0,
-   "e": 0
+   "struct": 20,
+   "compute": 0,
+   "bio": 0,
+   "energy": 0
   },
   "hangar": {
-   "s": 60,
-   "c": 30,
-   "b": 0,
-   "e": 0
+   "struct": 20,
+   "compute": 10,
+   "bio": 0,
+   "energy": 0
   }
  }
 }

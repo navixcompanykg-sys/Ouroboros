@@ -227,8 +227,9 @@ const PlanetUI = (() => {
   function renderModal(sel) {
     const B = COL_BUILDING[modal];
     const err = col ? Colony.canBuild(col, modal, sel, lowOrbit) : 'колонии нет';
-    const cost = [B.cost.s ? B.cost.s + ' структурного' : '', B.cost.c ? B.cost.c + ' вычислительного' : '',
-      B.cost.uniq ? B.cost.uniq + ' планетарная единица' : ''].filter(Boolean).join(' · ');
+    const cost = [B.cost.s ? B.cost.s + ' структурного сырья' : '', B.cost.c ? B.cost.c + ' вычислительного сырья' : '']
+      .concat(Object.keys(B.comp || {}).map(m => n0(B.comp[m]) + ' × ' + Colony.compName(m, 1).toLowerCase()))
+      .concat(B.cost.uniq ? [B.cost.uniq + ' планетарная единица'] : []).filter(Boolean).join(' · ');
     $('con-modal').innerHTML = '<div class="cm-t">' + B.name + '</div>' +
       '<div class="sub">1 уровень · содержание ' + (B.up || COL.UPKEEP_RAW) + ' ед. (' +
       COL_GROUP_NAME[B.upkeep].toLowerCase() + ') в час · ' + (B.work ? 'нужен рабочий' : 'рабочий не нужен') +
@@ -246,13 +247,14 @@ const PlanetUI = (() => {
     const busy = col.yard ? kv('Собирается ' + col.yard.name, hrs(col.yard.left)) : '';
     const rows = loadDesigns().map(d => {
       const cost = Ship.cost(tbl, d), tot = Ship.costTotal(cost);
-      const ok = !col.yard && Object.keys(cost).every(k => (col.stock[k] || 0) >= cost[k]);
-      return '<button class="bl" data-ship="' + d.name + '" ' + (ok ? '' : 'disabled') + ' title="' +
-        Object.keys(cost).map(k => resName(k) + ' ' + cost[k]).join(', ') + '"><span>' + d.name +
-        '<i>' + designModules(d).length + ' модулей · ' + hrs(shipBuildTicks(d)) + '</i></span><b>' +
-        n0(tot) + ' сырья</b></button>';
+      const have = k => (col.comp || {})[k] || 0;
+      const ok = !col.yard && Object.keys(cost).every(k => have(k) >= cost[k]);
+      const txt = Object.keys(cost).map(k => resName(k) + ' ' + n0(cost[k]) + ' (есть ' + n0(have(k)) + ')').join(' · ');
+      return '<button class="bl" data-ship="' + d.name + '" ' + (ok ? '' : 'disabled') + '><span>' + d.name +
+        '<i>' + txt + '</i></span><b>' + n0(tot) + ' комп. · ' + hrs(shipBuildTicks(d)) + '</b></button>';
     }).join('');
-    return '<h4>Верфь</h4><div class="sub">Всё оборудование 1 уровня, базовые настройки</div>' + busy + rows;
+    return '<h4>Верфь</h4><div class="sub">Корабль собирается ИЗ КОМПОНЕНТОВ со склада — их делает ' +
+      'производство. Всё оборудование 1 уровня, базовые настройки.</div>' + busy + rows;
   }
 
   // ---------- раздел «Флот» ----------
@@ -345,8 +347,9 @@ const PlanetUI = (() => {
     const d = loadDesigns().find(x => x.name === name); if (!d || !col) return;
     if (col.yard) return alert('Космодром уже собирает ' + col.yard.name);
     const cost = Ship.cost(tbl, d);
-    for (const k in cost) if ((col.stock[k] || 0) < cost[k]) return alert('Мало сырья: ' + resName(k));
-    for (const k in cost) col.stock[k] -= cost[k];
+    col.comp = col.comp || {};
+    for (const k in cost) if ((col.comp[k] || 0) < cost[k]) return alert('Мало компонентов: ' + resName(k));
+    for (const k in cost) col.comp[k] -= cost[k];
     col.yard = { name, left: shipBuildTicks(d) };
     Colony.note(col, 'Космодром начал сборку: ' + name);
     World.save();

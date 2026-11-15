@@ -15,17 +15,17 @@
   let tbl = null, prices = null, dirty = false;
 
   // ---------- хранилище ----------
-  const BLANK = { v: 1, buildings: {}, parts: {} };
+  const BLANK = { v: 2, buildings: {}, parts: {} };
   async function load() {
     const got = await Store.load('prices');
-    prices = (got.data && got.data.v === 1) ? got.data : JSON.parse(JSON.stringify(BLANK));
+    prices = (got.data && got.data.v === 2) ? got.data : JSON.parse(JSON.stringify(BLANK));
     prices.buildings = prices.buildings || {};
     prices.parts = prices.parts || {};
     $('where').textContent = got.from === 'file' ? 'из файла data/prices.json'
       : got.from === 'local' ? 'из браузера (serve.js не отвечает)' : 'файла пока нет — вбиты текущие значения';
     // Файла ещё нет — значит в нём только что вбиты текущие значения кода, и их надо сохранить:
     // показываем «Сохранить» активной, а не делаем вид, что всё уже записано.
-    if (!got.from) dirty = true;
+    if (!got.from || !(got.data && got.data.v === 2)) dirty = true;
     seed();
   }
   // Пустое место заполняем ТЕКУЩИМИ значениями кода — просьба пользователя «вбей сейчас текущие
@@ -34,7 +34,10 @@
     for (const B of COL_BUILDINGS) {
       const cur = prices.buildings[B.key];
       if (cur) continue;
-      prices.buildings[B.key] = { s: B.cost.s || 0, c: B.cost.c || 0, uniq: B.cost.uniq || 0, up: COL.UPKEEP_RAW };
+      prices.buildings[B.key] = { s: B.cost.s || 0, c: B.cost.c || 0, uniq: B.cost.uniq || 0,
+        up: B.up || COL.UPKEEP_RAW,
+        comp: { struct: (B.comp || {}).struct || 0, compute: (B.comp || {}).compute || 0,
+          bio: (B.comp || {}).bio || 0, energy: (B.comp || {}).energy || 0 } };
     }
     for (const P of PARTS) {
       if (prices.parts[P.key]) continue;
@@ -52,16 +55,17 @@
   // ---------- расчёт по таблице компонентов ----------
   // Сколько сырья уходит на предмет по составу из data/parts.json, с масштабом корабля ×10
   // (ТЗ §8.10). Это справка: цена может быть назначена и другая.
+  // Части корабля собираются ИЗ КОМПОНЕНТОВ (решение пользователя): состав предмета из таблицы
+  // компонентов × масштаб корабля ×10 (ТЗ §8.10).
   function computedPart(key) {
     const comp = (tbl.comp || {})[key] || {};
-    const out = { s: 0, c: 0, b: 0, e: 0 };
-    const map = { struct: 's', compute: 'c', bio: 'b', energy: 'e' };
-    for (const m of MAT_TYPES) {
-      const per = rawPerItem(comp, 1)[m.key];
-      out[map[m.key]] += (per[0] + per[1] + per[2]) * SHIP_SCALE;
-    }
+    const out = {};
+    for (const m of MAT_TYPES) out[m.key] = (+comp[m.key] || 0) * SHIP_SCALE;
     return out;
   }
+  // Один компонент 1 уровня в условных единицах (RESOURCE_VALUE, data.js).
+  const compValue = mat => Ship.valueComp(mat, 1);
+  const partValue = v => MAT_TYPES.reduce((a, m) => a + (v[m.key] || 0) * compValue(m.key), 0);
 
   // ---------- 1. сколько ресурсов в гексе ----------
   function hexStats(limit) {
@@ -127,12 +131,19 @@
   function renderBuildings() {
     $('bld-body').innerHTML = COL_BUILDINGS.map(B => {
       const v = prices.buildings[B.key];
+      v.comp = v.comp || { struct: 0, compute: 0, bio: 0, energy: 0 };
       const num = (f, title) => `<td class="n"><input type="number" min="0" step="10" data-b="${B.key}" data-f="${f}" value="${v[f]}" title="${title}"></td>`;
+      const cnum = m => `<td class="n"><input type="number" min="0" step="10" data-b="${B.key}" data-cf="${m}" value="${v.comp[m] || 0}" title="компонентов типа «${MAT_TYPE[m].name}»"></td>`;
+      const val = Ship.value({ silicates: 0 }) + // у.е.: сырьё + компоненты
+        v.s * (RESOURCE_VALUE.silicates || 0) + v.c * (RESOURCE_VALUE.silicon || 0) +
+        MAT_TYPES.reduce((a, m) => a + (v.comp[m.key] || 0) * compValue(m.key), 0);
       return `<tr><td>${B.name}<i>${B.desc}</i></td>` +
         `<td class="g">${COL_GROUP_NAME[B.upkeep]}</td>` +
         num('s', 'структурного сырья на постройку') + num('c', 'вычислительного сырья на постройку') +
+        cnum('struct') + cnum('compute') +
         `<td class="n"><input type="number" min="0" step="1" data-b="${B.key}" data-f="uniq" value="${v.uniq}" title="планетарных единиц"></td>` +
-        num('up', 'содержание за час, сырьём своего типа') + `</tr>`;
+        num('up', 'содержание за час, сырьём своего типа') +
+        `<td class="n"><b>${n0(val)}</b></td></tr>`;
     }).join('');
   }
 
@@ -143,20 +154,33 @@
       if (P.group !== group) {
         group = P.group;
         const G = PART_GROUPS.find(x => x.key === group);
-        out += `<tr class="hd"><td colspan="6">${G ? G.name : group}</td></tr>`;
+        out += `<tr class="hd"><td colspan="7">${G ? G.name : group}</td></tr>`;
       }
       const v = prices.parts[P.key], calc = computedPart(P.key);
       const comp = (tbl.comp || {})[P.key] || {};
       const compTxt = MAT_TYPES.filter(m => comp[m.key]).map(m => m.name.toLowerCase() + ' ' + comp[m.key]).join(', ') || '—';
-      const num = f => `<td class="n"><input type="number" min="0" step="10" data-p="${P.key}" data-f="${f}" value="${v[f]}"></td>`;
-      const total = v.s + v.c + v.b + v.e, calcTotal = calc.s + calc.c + calc.b + calc.e;
-      out += `<tr><td>${P.name}<i>${compTxt}</i></td>` + num('s') + num('c') + num('b') + num('e') +
-        `<td class="n"><b>${n0(total)}</b>${total !== calcTotal ? `<i>расчёт ${n0(calcTotal)}</i>` : ''}</td></tr>`;
+      const num = m => `<td class="n"><input type="number" min="0" step="10" data-p="${P.key}" data-f="${m}" value="${v[m] || 0}"></td>`;
+      const total = MAT_TYPES.reduce((a, m) => a + (v[m.key] || 0), 0);
+      const calcTotal = MAT_TYPES.reduce((a, m) => a + (calc[m.key] || 0), 0);
+      out += `<tr><td>${P.name}<i>состав: ${compTxt}</i></td>` +
+        MAT_TYPES.map(m => num(m.key)).join('') +
+        `<td class="n"><b>${n0(total)}</b>${total !== calcTotal ? `<i>расчёт ${n0(calcTotal)}</i>` : ''}</td>` +
+        `<td class="n">${n0(partValue(v))}</td></tr>`;
     }
     $('part-body').innerHTML = out;
   }
 
+  // ---------- эталон стоимости ----------
+  function renderValue() {
+    const rows = RESOURCES.map(r => `<tr><td>${r.name}</td><td class="g">${COL_GROUP_NAME[COL_KEY_GROUP[r.key]]}</td>` +
+      `<td class="n">${n0(RESOURCE_VALUE[r.key])}</td><td class="n">${RESOURCE_STATS[r.key].avg}</td></tr>`).join('');
+    const comps = MAT_TYPES.map(m => `<tr><td>Компонент: ${m.name}</td><td class="g">1 уровень</td>` +
+      `<td class="n">${n0(compValue(m.key))}</td><td class="n g">3 × ${RESOURCES.find(r => r.key === m.res[0]).name.toLowerCase()}</td></tr>`).join('');
+    $('val-body').innerHTML = rows + comps;
+  }
+
   function render() {
+    renderValue();
     renderBuildings();
     renderParts();
     $('save').disabled = !dirty;
@@ -168,7 +192,8 @@
     const el = e.target;
     if (!el.matches('input[type=number]')) return;
     const val = Math.max(0, Math.round(+el.value || 0));
-    if (el.dataset.b) prices.buildings[el.dataset.b][el.dataset.f] = val;
+    if (el.dataset.b && el.dataset.cf) prices.buildings[el.dataset.b].comp[el.dataset.cf] = val;
+    else if (el.dataset.b) prices.buildings[el.dataset.b][el.dataset.f] = val;
     else if (el.dataset.p) prices.parts[el.dataset.p][el.dataset.f] = val;
     dirty = true;
     $('save').disabled = false;
