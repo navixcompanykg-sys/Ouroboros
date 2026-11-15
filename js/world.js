@@ -17,10 +17,17 @@ const World = (() => {
   let gal = null;
   const galaxy = () => gal || (gal = generateGalaxy(seed));
 
-  // Стартовая звезда: первая жёлтая в зоне 2–3 — спокойное место для начала.
+  // Стартовая звезда — жёлтая на ОКРАИНЕ галактики (решение пользователя: «первоначальный
+  // корабль нужно размещать на внешних звёздах вселенной на окраине, а не ближе к центру»).
+  // Зона 1 — самый край (data.js GALAXY_ZONES), внутри неё берём самую дальнюю от центра: так
+  // игрок начинает в бедном спокойном углу и растёт к центру, а не наоборот.
   function startStarId() {
-    const s = galaxy().stars.find(st => st.type.key === 'yellow' && (st.zone === 2 || st.zone === 3));
-    return s ? s.id : 0;
+    const far = galaxy().stars
+      .filter(st => st.type.key === 'yellow' && st.zone === 1)
+      .sort((x, y) => (y.x * y.x + y.y * y.y) - (x.x * x.x + x.y * x.y))[0];
+    if (far) return far.id;
+    const any = galaxy().stars.find(st => st.type.key === 'yellow');
+    return any ? any.id : 0;
   }
 
   // ---------- ФЛОТ ----------

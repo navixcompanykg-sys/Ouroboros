@@ -200,3 +200,130 @@ button:disabled { opacity: .55; cursor: default; }
 .cm-t { font-size: 16px; font-weight: 600; margin-bottom: 2px; }
 .cm-c { margin: 8px 0 4px; font-size: 13px; color: #ffd9a0; }
 .cm-d { font-size: 12.5px; color: #b4c1d9; margin-bottom: 8px; }
+
+/* ============================================================================
+   ЭКРАН ПЛАНЕТЫ — раскладка по docs/Интерфейс.md (правила из MiniCiV6x6).
+   Карта по центру окна, панели по краям НАСТОЯЩИМИ соседями по сетке: карта
+   пересчитывает масштаб, когда панель свернули (viewport.js ResizeObserver),
+   и под панелями ничего не прячется.
+   ============================================================================ */
+body.planet #scr {
+  position: fixed; inset: 0;
+  display: grid;
+  grid-template-columns: auto auto 1fr auto auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "top  top   top  top  top"
+    "rl   tgl   map  tgr  rr"
+    "bot  bot   bot  bot  bot";
+  gap: 0;
+}
+body.planet #view { position: static; inset: auto; width: 100%; height: 100%; display: block; }
+body.planet #maparea { grid-area: map; position: relative; min-width: 0; min-height: 0; }
+
+/* --- верхняя полоса: планета и три счётчика, видны всегда --- */
+body.planet #topbar {
+  grid-area: top; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px;
+  padding: 6px calc(10px + env(safe-area-inset-right)) 6px calc(10px + env(safe-area-inset-left));
+  padding-top: calc(6px + env(safe-area-inset-top));
+  background: var(--panel); border-bottom: 1px solid var(--line); z-index: 6;
+}
+body.planet .tb-name { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 15px; }
+body.planet .tb-name .s { font-weight: 400; }
+body.planet .tb-env { flex: 1 1 200px; min-width: 0; }
+body.planet #tb-stats { display: flex; gap: 12px; margin-left: auto; flex-wrap: wrap; }
+body.planet .st { min-width: 104px; }
+body.planet .st u { display: block; text-decoration: none; color: var(--muted); font-size: 10.5px;
+  text-transform: uppercase; letter-spacing: .05em; }
+body.planet .st b { font-size: 13px; font-variant-numeric: tabular-nums; }
+body.planet .st .bar { margin: 2px 0 0; }
+
+/* --- рельсы --- */
+body.planet #rail-l { grid-area: rl; }
+body.planet #rail-r { grid-area: rr; }
+body.planet #rail-l, body.planet #rail-r {
+  position: relative; width: 300px; min-width: 0; overflow-y: auto; overflow-x: hidden;
+  padding: 10px 12px; background: var(--panel); border-top: 0;
+  transition: width .18s ease, padding .18s ease;
+}
+body.planet #rail-l { border-right: 1px solid var(--line); }
+body.planet #rail-r { border-left: 1px solid var(--line); }
+body.planet #rail-l.off, body.planet #rail-r.off { width: 0; padding: 0; overflow: hidden; }
+/* Шеврон — СОСЕД рельсы, а не ребёнок: ребёнка обрезал бы overflow свёрнутой рельсы и развернуть
+   её стало бы нечем (docs/Интерфейс.md §2). */
+body.planet .rail-tg {
+  width: 18px; min-height: 0; padding: 0; border-radius: 0; font-size: 13px; line-height: 1;
+  color: var(--muted); background: rgba(20, 26, 36, .9); border-top: 0; border-bottom: 0;
+  align-self: stretch;
+}
+body.planet #tg-l { grid-area: tgl; }
+body.planet #tg-r { grid-area: tgr; }
+body.planet .rail-x { display: none; }
+
+/* --- нижняя лента: вкладки разделов и главные действия --- */
+body.planet #botbar {
+  grid-area: bot; display: flex; align-items: center; gap: 8px;
+  padding: 6px calc(10px + env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
+  background: var(--panel); border-top: 1px solid var(--line); z-index: 6;
+}
+/* Средняя колонка listается вбок, а не выталкивает главные кнопки за край (§7). */
+body.planet #vtabs { display: flex; gap: 4px; flex: 1 1 0; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+body.planet #vtabs::-webkit-scrollbar { display: none; }
+body.planet #vtabs .vt { flex: 0 0 auto; min-height: 34px; padding: 5px 12px; font-size: 12.5px; }
+body.planet .bb-acts { display: flex; gap: 6px; flex: 0 0 auto; }
+body.planet .bb-acts button { min-height: 34px; }
+
+/* --- содержимое рельс --- */
+body.planet #layers { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+body.planet #card { position: static; width: auto; max-height: none; padding: 0; margin-top: 8px;
+  background: transparent; border: 0; border-top: 1px solid var(--line); padding-top: 8px; }
+body.planet #colony h4 { margin: 0 0 4px; font-size: 14px; }
+body.planet #colony .sub { color: var(--muted); font-size: 11px; margin-bottom: 8px; }
+
+/* --- планшет: рельсы уже --- */
+@media (max-width: 1100px) {
+  body.planet #rail-l, body.planet #rail-r { width: 250px; }
+}
+
+/* --- компактная раскладка: рельсы становятся оверлеями поверх карты, карта во всю ширину.
+   База без классов здесь означает ЗАКРЫТО — это и есть состояние по умолчанию на телефоне,
+   поэтому при загрузке раскладка не мигает (docs/Интерфейс.md §4). --- */
+@media (max-width: 860px), (max-height: 480px) and (orientation: landscape) {
+  body.planet #scr { grid-template-columns: 1fr; grid-template-areas: "top" "map" "bot"; }
+  body.planet .rail-tg { display: none; }       /* их роль играют вкладки нижней ленты */
+  body.planet #rail-l, body.planet #rail-r {
+    position: fixed; top: auto; bottom: 0; height: 62vh; width: 100%; max-width: none;
+    border: 0; border-top: 1px solid var(--line); border-radius: 14px 14px 0 0;
+    box-shadow: 0 -8px 28px rgba(0, 0, 0, .5); z-index: 5;
+    transform: translateY(100%); transition: transform .2s ease;
+  }
+  body.planet #rail-l.on, body.planet #rail-r.on { transform: translateY(0); }
+  body.planet #rail-l.off, body.planet #rail-r.off { width: 100%; padding: 10px 12px; }
+  body.planet .rail-x { display: block; position: absolute; top: 8px; right: 8px;
+    width: 30px; height: 30px; min-height: 0; padding: 0; z-index: 1; }
+  body.planet #tb-stats { gap: 8px; }
+  body.planet .st { min-width: 88px; }
+  body.planet .tb-env { display: none; }
+}
+
+/* Старые правила панели колонии (фиксированная панель слева) на экране планеты не действуют:
+   теперь это содержимое правой рельсы сетки. Карточка гекса — содержимое левой рельсы. */
+body.planet #colony { position: static; inset: auto; width: auto; max-height: none;
+  overflow: visible; padding: 0; background: transparent; border: 0; border-radius: 0; }
+body.planet #colony[hidden] { display: block; }
+body.planet #card[hidden] { display: block; }
+body.planet #c-name { font-size: 14px; }
+body.planet #hint { display: none; }
+body.planet #layers { position: static; inset: auto; padding: 0; background: transparent;
+  border: 0; border-radius: 0; max-width: none; }
+
+/* На узком экране счётчики верхней полосы листаются вбок, а не уезжают за край (§7). */
+@media (max-width: 860px), (max-height: 480px) and (orientation: landscape) {
+  body.planet #topbar { flex-wrap: nowrap; gap: 8px; }
+  body.planet .tb-name { flex: 0 0 auto; max-width: 42vw; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  body.planet .tb-name .s { display: none; }
+  body.planet #tb-stats { flex: 1 1 0; min-width: 0; overflow-x: auto; flex-wrap: nowrap;
+    scrollbar-width: none; margin-left: 0; }
+  body.planet #tb-stats::-webkit-scrollbar { display: none; }
+  body.planet .st { flex: 0 0 auto; }
+}

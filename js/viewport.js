@@ -53,23 +53,34 @@ function createViewport(cvs, opts) {
 
   function resize() {
     vp.DPR = Math.min(window.devicePixelRatio || 1, 2);
-    vp.W = window.innerWidth; vp.H = window.innerHeight;
+    // Своя коробка, а не окно: на экране планеты канвас — ячейка сетки между панелями, и карта
+    // должна пересчитываться, когда панель свернули или развернули (docs/Интерфейс.md §1).
+    vp.W = cvs.clientWidth || window.innerWidth;
+    vp.H = cvs.clientHeight || window.innerHeight;
     cvs.width = Math.round(vp.W * vp.DPR); cvs.height = Math.round(vp.H * vp.DPR);
     cvs.style.width = vp.W + 'px'; cvs.style.height = vp.H + 'px';
     if (opts.onResize) opts.onResize();
   }
   window.addEventListener('resize', resize);
+  // Панель свернули/развернули — окно не менялось, а коробка канваса да; без наблюдателя карта
+  // осталась бы в старом масштабе и съехала бы с центра.
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(cvs);
   resize();
 
   const pointers = new Map();
   let drag = null, pinch = null;
 
+  // Канвас больше не обязан занимать весь экран (экран планеты — сетка с панелями по краям),
+  // поэтому экранные координаты события переводим в координаты КАНВАСА.
+  const px = e => e.clientX - cvs.getBoundingClientRect().left;
+  const py = e => e.clientY - cvs.getBoundingClientRect().top;
+
   cvs.addEventListener('pointerdown', e => {
     try { cvs.setPointerCapture(e.pointerId); } catch (_) { /* синтетические события */ }
     // Мышь — всегда один указатель: не даём «залипшему» указателю превратить клик в щипок.
     if (e.pointerType !== 'touch') { pointers.clear(); pinch = null; }
-    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pointers.size === 1) drag = { x: e.clientX, y: e.clientY, moved: false };
+    pointers.set(e.pointerId, { x: px(e), y: py(e) });
+    if (pointers.size === 1) drag = { x: px(e), y: py(e), moved: false };
     else if (pointers.size === 2) {
       const [a, b] = [...pointers.values()];
       pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) };
@@ -77,22 +88,22 @@ function createViewport(cvs, opts) {
     }
   });
   cvs.addEventListener('pointermove', e => {
-    if (!pointers.has(e.pointerId)) { if (opts.onHover) opts.onHover(e.clientX, e.clientY); return; }
+    if (!pointers.has(e.pointerId)) { if (opts.onHover) opts.onHover(px(e), py(e)); return; }
     const prev = pointers.get(e.pointerId);
-    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    pointers.set(e.pointerId, { x: px(e), y: py(e) });
     if (pinch && pointers.size === 2) {
       const [a, b] = [...pointers.values()];
       const d = Math.hypot(a.x - b.x, a.y - b.y);
       vp.zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, d / pinch.d);
       pinch.d = d;
     } else if (drag) {
-      if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 7) {
+      if (!drag.moved && Math.hypot(px(e) - drag.x, py(e) - drag.y) > 7) {
         drag.moved = true;
         if (opts.onPanStart) opts.onPanStart();
       }
       if (drag.moved) {
-        vp.x -= (e.clientX - prev.x) / vp.zoom;
-        vp.y -= (e.clientY - prev.y) / vp.zoom;
+        vp.x -= (px(e) - prev.x) / vp.zoom;
+        vp.y -= (py(e) - prev.y) / vp.zoom;
         vp.clampPan();
       }
     }
@@ -100,7 +111,7 @@ function createViewport(cvs, opts) {
   const endPointer = e => {
     if (!pointers.has(e.pointerId)) return;
     pointers.delete(e.pointerId);
-    if (drag && !drag.moved && e.type === 'pointerup') opts.onTap(e.clientX, e.clientY);
+    if (drag && !drag.moved && e.type === 'pointerup') opts.onTap(px(e), py(e));
     if (pointers.size < 2) pinch = null;
     drag = null;
   };
@@ -108,7 +119,7 @@ function createViewport(cvs, opts) {
   cvs.addEventListener('pointercancel', endPointer);
   cvs.addEventListener('wheel', e => {
     e.preventDefault();
-    vp.zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0015));
+    vp.zoomAt(px(e), py(e), Math.exp(-e.deltaY * 0.0015));
   }, { passive: false });
 
   return vp;

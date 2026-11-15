@@ -7,42 +7,57 @@
 <title>Уроборос · Планета</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
-<canvas id="view"></canvas>
+<!-- Экран планеты собран по docs/Интерфейс.md (правила из MiniCiV6x6): карта по центру окна,
+     панели по краям настоящими соседями по сетке, ничего частого не спрятано за кнопкой.
+       верх   — планета, трюм корабля, склад колонии, население;
+       слева  — слои карты (местность и ресурсы);
+       центр  — гекс-карта;
+       справа — раздел колонии (корабль / склад / стройка / производство / верфь / флот);
+       низ    — вкладки разделов и главные действия. -->
+<body class="planet">
 
-<div id="hud" class="glass">
-  <div>
-    <div class="t"><span id="h-dot"></span><span id="h-name"></span></div>
-    <div class="s" id="h-type"></div>
-    <div class="s" id="h-env"></div>
+<div id="scr">
+  <div id="topbar">
+    <div class="tb-name"><span id="h-dot"></span><span id="h-name"></span><span class="s" id="h-type"></span></div>
+    <div class="s tb-env" id="h-env"></div>
     <div class="s bhline" id="h-bh" hidden></div>
+    <div id="tb-stats"></div>
+  </div>
+
+  <button id="tg-l" class="rail-tg" title="Свернуть слои">‹</button>
+  <aside id="rail-l">
+    <div class="rg-h">Слои карты</div>
+    <div id="layers"></div>
+    <div id="card">
+      <div class="c-head">
+        <div id="c-swatch"></div>
+        <div><div id="c-name"></div><div id="c-type"></div></div>
+        <button id="c-close" aria-label="Закрыть" hidden>✕</button>
+      </div>
+      <div id="c-body"></div>
+    </div>
+  </aside>
+
+  <main id="maparea"><canvas id="view"></canvas></main>
+
+  <aside id="rail-r">
+    <button class="rail-x" id="rail-r-x" aria-label="Закрыть">✕</button>
+    <div id="colony"></div>
+  </aside>
+  <button id="tg-r" class="rail-tg" title="Свернуть панель колонии">›</button>
+
+  <div id="botbar">
+    <div id="vtabs"></div>
+    <div class="bb-acts">
+      <button id="b-system" title="Карта звёздной системы">Система</button>
+      <button id="b-takeoff" class="primary" title="Вернуться на орбиту">Взлёт</button>
+    </div>
   </div>
 </div>
-
-<div id="tools">
-  <button id="b-colony" title="Колония, добыча и флот">Колония</button>
-  <button id="b-system" title="Карта звёздной системы">Система</button>
-  <button id="b-takeoff" class="primary" title="Вернуться на орбиту">Взлёт</button>
-</div>
-
-<div id="layers" class="glass"></div>
-
-<div id="colony" class="glass" hidden></div>
 
 <div id="con-wrap" hidden>
   <div id="con-modal" class="glass"></div>
 </div>
-
-<div id="card" class="glass">
-  <div class="c-head">
-    <div id="c-swatch"></div>
-    <div><div id="c-name"></div><div id="c-type"></div></div>
-    <button id="c-close" aria-label="Закрыть" hidden>✕</button>
-  </div>
-  <div id="c-body"></div>
-</div>
-
-<div id="hint">Щелчок по гексу — его ресурсы · «Колония» — добыча кораблём, стройка и флот</div>
 
 <script src="js/data.js"></script>
 <script src="js/gen.js"></script>
@@ -58,6 +73,5 @@
 <script src="js/notify.js"></script>
 <script src="js/planet-ui.js"></script>
 <script src="js/planet.js"></script>
-<script>setTimeout(() => { const h = document.getElementById('hint'); if (h) h.style.opacity = 0; }, 8000);</script>
 </body>
 </html>

@@ -65,17 +65,37 @@ const PlanetUI = (() => {
     const st = Ship.stats(tbl, ship);
     const here = ship.star === ctxRef.gstar.id && ship.planet === ctxRef.planet.index && ship.landed;
     const sel = ctxRef.selected();
-    const tabs = VIEWS.map(v => '<button class="vt' + (view === v[0] ? ' on' : '') +
+    // Вкладки — в нижней ленте, счётчики — в верхней полосе, раздел — в правой рельсе
+    // (docs/Интерфейс.md §1: частое не прячем за кнопкой).
+    $('vtabs').innerHTML = VIEWS.map(v => '<button class="vt' + (view === v[0] ? ' on' : '') +
       '" data-view="' + v[0] + '">' + v[1] + '</button>').join('');
+    $('tb-stats').innerHTML = topStats(ship, st);
     const body = view === 'ship' ? shipView(ship, st, here, sel)
       : view === 'wh' ? whView(ship, st, here)
       : view === 'build' ? buildView(ship, here, sel)
       : view === 'prod' ? prodView()
       : view === 'yard' ? yardView()
       : fleetView(ship);
-    $('colony').innerHTML = '<div class="vtabs">' + tabs + '</div>' + body + logBlock();
+    $('colony').innerHTML = body + logBlock();
     $('con-wrap').hidden = !modal;
     if (modal) renderModal(sel);
+  }
+
+  // ---------- верхняя полоса: то, на что игрок смотрит постоянно ----------
+  function topStats(ship, st) {
+    const used = Ship.cargoUsed(ship), lifeF = Ship.lifeShare(tbl, ship, st);
+    const cell = (name, val, frac, warn) => '<div class="st"><u>' + name + '</u><b>' + val + '</b>' +
+      (frac == null ? '' : bar(frac, warn)) + '</div>';
+    let out = cell('Трюм', n0(used) + ' / ' + n0(st.capacity), used / st.capacity) +
+      cell('Топливо', Math.round(World.fuel() * 100) + ' %', World.fuel()) +
+      cell('Жизнеобеспечение', hrs(Ship.lifeTicks(tbl, ship, st)), lifeF, lifeF <= COL.ALERT_LIFE);
+    if (col) {
+      const s = Colony.summary(col, ctxRef.surf);
+      out += cell('Склад', n0(s.used) + ' / ' + n0(s.cap), s.used / s.cap, s.room <= 0) +
+        cell('Население', s.pop + ' / ' + (s.popCap || 0), s.popCap ? s.pop / s.popCap : 0) +
+        cell('Планет. единиц', s.uniq) + cell('Крипта', n0(s.crypto));
+    }
+    return out;
   }
 
   // ---------- раздел «Корабль» ----------

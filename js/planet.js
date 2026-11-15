@@ -116,7 +116,10 @@
   }
 
   // ---------- Интерфейс ----------
-  const f2 = v => (v / 100).toLocaleString('ru', { maximumFractionDigits: 2 });
+  // На гексе показываем не концентрацию, а ДОБЫЧУ ЗА 10 МИНУТ — столько возьмёт с него шахта
+  // 1 уровня за один такт (ТЗ §8.7: 10 × уровень × содержание). Корабль берёт вдвое меньше.
+  // Решение пользователя: «в гексах сразу отражай добычу за 10 минут».
+  const f2 = v => Math.round(v * COL.MINE_K).toLocaleString('ru');
   function renderHud() {
     const T = PLANET_TYPES[planet.type], e = surf.env;
     $('h-name').textContent = planet.name;
@@ -153,7 +156,7 @@
       $('c-swatch').style.background = ST.color;
       $('c-name').textContent = ST.name;
       $('c-type').textContent = `Гекс ${h.q}, ${h.r}` + (h.crater ? ' · кратеры' : '') + (h.fresh ? ' · пресная вода' : '') + (h.deposits ? ' · месторождение' : '');
-      $('c-body').innerHTML = resRows(h.res, h.deposits) + '<div class="note">Единиц массы на гекс. ◆ — месторождение.</div>';
+      $('c-body').innerHTML = resRows(h.res, h.deposits) + '<div class="note">Добыча за 10 минут: столько возьмёт шахта 1 уровня, корабль — вдвое меньше. ◆ — месторождение.</div>';
     } else {
       const T = PLANET_TYPES[planet.type];
       const total = {};
@@ -161,7 +164,7 @@
       $('c-swatch').style.background = `radial-gradient(circle at 35% 35%, ${T.colors[0]}, ${T.colors[1]} 60%, ${T.colors[2]})`;
       $('c-name').textContent = 'Вся планета';
       $('c-type').textContent = 'Сумма по всем гексам';
-      $('c-body').innerHTML = resRows(total) + '<div class="note">Сумма по гексам точно равна составу планеты. Выберите гекс — покажутся его ресурсы.</div>';
+      $('c-body').innerHTML = resRows(total) + '<div class="note">Сумма по всей планете в тех же единицах — добыча за 10 минут. Выберите гекс — покажутся его ресурсы.</div>';
     }
   }
   $('c-close').onclick = () => { selected = null; renderCard(); };
@@ -169,12 +172,33 @@
   $('b-takeoff').onclick = () => { location.href = World.systemUrl(gstar.id) + '&takeoff=1'; };
   if (lowOrbit) $('b-takeoff').textContent = 'Уйти с орбиты';
 
-  // Панель колонии и флота: добыча кораблём, стройка, космодром, переключение кораблей.
-  $('b-colony').onclick = () => {
-    const el = $('colony');
-    el.hidden = !el.hidden;
-    $('b-colony').classList.toggle('on', !el.hidden);
-  };
+  // Рельсы сворачиваются шевроном (ПК/планшет) и выезжают снизу (телефон) — docs/Интерфейс.md.
+  // Состояние запоминается, чтобы экран не пересобирался при каждом заходе.
+  const RAIL_KEY = 'ouro.v3.rails';
+  const rails = (() => { try { return JSON.parse(localStorage.getItem(RAIL_KEY)) || {}; } catch (_) { return {}; } })();
+  const compact = () => window.matchMedia('(max-width: 860px), (max-height: 480px) and (orientation: landscape)').matches;
+  function applyRails() {
+    for (const side of ['l', 'r']) {
+      const el = $('rail-' + side), open = rails[side] !== false;
+      el.classList.toggle('off', !open && !compact());
+      el.classList.toggle('on', !!rails['m' + side] && compact());
+      $('tg-' + side).textContent = side === 'l' ? (open ? '‹' : '›') : (open ? '›' : '‹');
+    }
+  }
+  function toggleRail(side) {
+    if (compact()) rails['m' + side] = !rails['m' + side];
+    else rails[side] = rails[side] === false;
+    try { localStorage.setItem(RAIL_KEY, JSON.stringify(rails)); } catch (_) {}
+    applyRails();
+  }
+  $('tg-l').onclick = () => toggleRail('l');
+  $('tg-r').onclick = () => toggleRail('r');
+  $('rail-r-x').onclick = () => { rails.mr = false; applyRails(); };
+  window.addEventListener('resize', applyRails);
+  applyRails();
+  document.getElementById('vtabs').addEventListener('click', () => {
+    if (compact() && !rails.mr) { rails.mr = true; applyRails(); }
+  });
   if (typeof PlanetUI !== 'undefined') PlanetUI.init({
     gstar, planet, surf, selected: () => selected, redraw: () => {},
   });
