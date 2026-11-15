@@ -177,8 +177,13 @@ const Colony = (() => {
     for (const key in pr.buildings) {
       const B = COL_BUILDING[key], v = pr.buildings[key];
       if (!B || !v) continue;
-      B.cost = { s: +v.s || 0, c: +v.c || 0, uniq: +v.uniq || 0 };
-      B.up = +v.up || COL.UPKEEP_RAW;
+      // Берём ВСЁ, что ведёт пользователь: сырьё трёх видов, планетарные единицы, содержание
+      // сырьём и энергию. Раньше здесь терялась биомасса (у купола и фермы она в цене), а
+      // содержание 0 подменялось на 700 — и шахты, которые пользователь сделал бесплатными,
+      // снова начинали требовать сырьё, едва в data/prices.json появлялась строка.
+      B.cost = { s: +v.s || 0, c: +v.c || 0, b: +v.b || 0, uniq: +v.uniq || 0 };
+      if (v.up != null) B.up = +v.up || 0;
+      if (v.h2 != null) B.h2 = +v.h2 || 0;
       if (v.comp) { // цена в компонентах, если она задана
         B.comp = {};
         for (const m in v.comp) if (+v.comp[m] > 0) B.comp[m] = +v.comp[m];
@@ -269,6 +274,44 @@ const Colony = (() => {
     const paid = Math.min(col.pop, Math.floor(col.crypto / COL.WAGE), need.length);
     const manned = new Set(need.slice(0, paid));
 
+    // 0. ЭНЕРГИЯ — в начале такта и ПО КАЖДОМУ ЗДАНИЮ ОТДЕЛЬНО, в порядке важности (COL_PRIO:
+    // генератор, шахты, фермы...). Кому водорода не досталось — тот этот такт не работает
+    // (b.off), но не рушится: кончившийся водород это беда на час, а не повод разбирать постройку.
+    //
+    // ПОЧЕМУ ПО ЗДАНИЮ, А НЕ ПО КОЛОНИИ. Раньше энергия считалась одной суммой на всю колонию и
+    // при нехватке гасила ВСЮ добычу (col.powered). Это запирало колонию навсегда: водород
+    // кончился → не работает и энергетическая шахта, которая его добывает → водорода не будет
+    // никогда. Прогон tools/colony.js на стартовой планете встал так на 58-м такте и дальше
+    // только разбирал постройки за долги. Теперь на себя шахте хватает своей же добычи: 100
+    // водорода за такт против 650 с гексa.
+    const hasGen = L.some(b => b.kind === 'gen' && manned.has(b));
+    const byPrio = L.slice().sort((a, b) => COL_PRIO[a.kind] - COL_PRIO[b.kind]);
+    let h2Need = 0, h2Got = 0;
+    for (const b of byPrio) {
+      const q = (COL_BUILDING[b.kind].h2 || 0) * b.lvl;
+      b.off = false;
+      if (q <= 0) continue;
+      h2Need += q;
+      // ЭНЕРГЕТИЧЕСКАЯ ШАХТА ПИТАЕТСЯ СВОЕЙ ЖЕ ДОБЫЧЕЙ. Слова пользователя: «шахты потребляют
+      // только водород для самостоятельной выработки энергии» — шахта, которая водород и копает,
+      // сжигает часть того, что достала этим же тактом. Иначе колония запирается навсегда:
+      // запас водорода кончился → шахта стоит → водорода не будет → ничего не работает. Прогон
+      // tools/colony.js вставал так на стартовой планете, где шахта даёт 650 за такт, а чтобы
+      // начать ей нужно было 100 из пустого склада.
+      const self = COL_BUILDING[b.kind].group === 'e' && manned.has(b)
+        ? (h => h ? Object.keys(mineOutput(h, b.kind, b.lvl))
+            .reduce((a2, k) => a2 + mineOutput(h, b.kind, b.lvl)[k] * (COL.H2_PER_UNIT[k] || 1), 0) : 0)(hexAt(b.q, b.r))
+        : 0;
+      if (self >= q) { h2Got += q; continue; }   // своей добычи хватает — со склада не берём
+      const got = self + burnH2(col, q - self, hasGen);
+      h2Got += got;
+      if (got < q - 1e-9) b.off = true;
+    }
+    const powered = h2Need <= 0 || h2Got >= h2Need - 1e-9;
+    if (!powered && !col.h2Warned) { col.h2Warned = true; note(col, 'Не хватает водорода: часть зданий стоит'); }
+    if (powered) col.h2Warned = false;
+    col.powered = powered;   // для интерфейса: хватило ли энергии всем
+
     // 1. добыча
     // Добыча кладётся на склад РЕДКИМ ВПЕРЁД (по средней распространённости в галактике,
     // RESOURCE_STATS). Иначе склад забивается дешёвым водородом, сырьё 3 уровня на него уже не
@@ -277,12 +320,33 @@ const Colony = (() => {
     let spill = 0;
     const mined = {};
     for (const b of L) {
-      if (!COL_BUILDING[b.kind].group || !manned.has(b) || !col.powered) continue;
+      if (!COL_BUILDING[b.kind].group || !manned.has(b) || b.off) continue;
       const h = hexAt(b.q, b.r); if (!h) continue;
       const out = mineOutput(h, b.kind, b.lvl);
       for (const k in out) mined[k] = (mined[k] || 0) + out[k];
     }
     const rare = k => (RESOURCE_STATS[k] ? RESOURCE_STATS[k].avg : 1);
+    // СНАЧАЛА ТОПЛИВО НА СВОЮ ЭНЕРГЕТИКУ, и только потом редкое. Водород — самый
+    // распространённый ресурс, поэтому по правилу «редким вперёд» он ложится последним, а когда
+    // склад полон — не ложится вовсе. Колония при этом глохнет, имея полный склад силикатов:
+    // шахты встают без энергии, добыча падает, и вытащить себя она уже не может. Бронь — запас
+    // на RESERVE_TICKS тактов работы всех зданий, не больше: остальное место по-прежнему
+    // достаётся редкому сырью, иначе на складе не окажется третьего уровня для планетарной
+    // единицы (§8.5).
+    const RESERVE_TICKS = 6;
+    const h2Res = L.reduce((a2, b) => a2 + (COL_BUILDING[b.kind].h2 || 0) * b.lvl, 0) * RESERVE_TICKS;
+    if (h2Res > 0) {
+      const have = inGroup(col, 'e');
+      let room = Math.max(0, h2Res - have);
+      for (const k of COL_GROUPS.e) {
+        if (room <= 1e-9 || !mined[k]) continue;
+        const per = COL.H2_PER_UNIT[k] || 1;
+        const want = Math.min(mined[k], room / per);
+        const got = store(col, k, want);
+        mined[k] -= got; room -= got * per;
+        if (mined[k] <= 1e-9) delete mined[k];
+      }
+    }
     for (const k of Object.keys(mined).sort((a, b) => rare(a) - rare(b)))
       spill += mined[k] - store(col, k, mined[k]);
     if (spill > 0 && !col.fullWarned) { col.fullWarned = true; note(col, 'Склад полон — добыча пропадает'); }
@@ -303,17 +367,6 @@ const Colony = (() => {
       col.yard = null;
     }
 
-    // 3а. ЭНЕРГИЯ — каждый такт. Шахта и купол едят по 100 водородов, остальные меньше.
-    // Не хватило — здание в этот такт просто не работает (шахта не добывает), но не рушится:
-    // кончившийся водород это беда на час, а не повод разбирать постройку.
-    const hasGen = L.some(b => b.kind === 'gen' && manned.has(b));
-    const h2Need = L.reduce((a, b) => a + (COL_BUILDING[b.kind].h2 || 0) * b.lvl, 0);
-    const h2Got = h2Need > 0 ? burnH2(col, h2Need, hasGen) : 0;
-    const powered = h2Need <= 0 || h2Got >= h2Need - 1e-9;
-    if (!powered && !col.h2Warned) { col.h2Warned = true; note(col, 'Не хватает водорода: колония стоит'); }
-    if (powered) col.h2Warned = false;
-    col.powered = powered;   // добыча следующего такта идёт, только если энергия была
-
     // 3б. СОДЕРЖАНИЕ СЫРЬЁМ — раз в час, своим типом. У шахт его нет вовсе (решение
     // пользователя: «шахты делаем бесплатными для содержания»).
     if (col.t % COL.UPKEEP_EVERY === 0) for (const b of L) {
@@ -328,7 +381,7 @@ const Colony = (() => {
 
     // 4. пища и население
     const eaters = col.pop;
-    const cap = L.reduce((a, b) => a + (b.kind === 'farm' && manned.has(b) ? COL.FARM_CAP * b.lvl : 0), 0);
+    const cap = L.reduce((a, b) => a + (b.kind === 'farm' && manned.has(b) && !b.off ? COL.FARM_CAP * b.lvl : 0), 0);
     const want = Math.min(cap, Math.max(0, eaters * COL.FOOD_KEEP - col.food));
     const bio = Math.min(want, inGroup(col, 'b'));
     let art = want - bio;
@@ -349,12 +402,12 @@ const Colony = (() => {
     }
 
     // 5. крипта
-    const mf = L.find(b => b.kind === 'mfarm' && manned.has(b));
+    const mf = L.find(b => b.kind === 'mfarm' && manned.has(b) && !b.off);
     const minted = mf ? burn(col, COL.MFARM_EN * mf.lvl) * COL.TOKEN_PER_EN : 0;
     col.crypto = Math.max(0, col.crypto + minted - paid * COL.WAGE);
 
     // 6. производство: заказ игрока — компоненты на склад или уникальный ресурс планеты
-    const pr = L.find(b => b.kind === 'prod' && manned.has(b));
+    const pr = L.find(b => b.kind === 'prod' && manned.has(b) && !b.off);
     if (pr) {
       const order = col.order || { kind: 'uniq' };
       if (order.kind === 'comp') {

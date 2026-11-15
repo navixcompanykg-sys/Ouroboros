@@ -208,9 +208,15 @@ function warpFuelK(st, p) {
 // Прикидка межзвёздного перелёта: время разгона до c, торможения и доля бака. Топливо идёт по ВРЕМЕНИ
 // работы двигателя (запас st.dv = время горения × a₀): секунда тяги на мощности p стоит a₀·p·fuelK.
 function warpEstimate(st, mode) {
-  const p = WARP_MODES[mode].p, a = st.accel * p, fk = warpFuelK(st, p);
+  // ЕСЛИ ДВИГАТЕЛИ ЦЕЛИКОМ КОРМИТ РЕАКТОР — экономить нечего (замечание пользователя: «такому
+  // кораблю имеет смысл лететь на полном газе даже в режиме экономно»). Экономия режима в том,
+  // что половину спроса закрывает реактор бесплатно, а остаток не приходится жечь топливом; когда
+  // реактор и так покрывает весь спрос, половинная тяга только удваивает время полёта. Поэтому
+  // такой корабль летит на ПОЛНОЙ тяге в любом режиме, а интерфейс это пишет прямо.
+  const free = warpFuelK(st, 1) === 0;
+  const p = free ? 1 : WARP_MODES[mode].p, a = st.accel * p, fk = warpFuelK(st, p);
   const ta = timeToSpeed(a, SHIP_LIGHT), tb = timeToSpeed(AP_BRAKE * a, SHIP_LIGHT);
-  return { accel: ta, brake: tb, fuelK: fk, p,
+  return { accel: ta, brake: tb, fuelK: fk, p, free,
     fuel: isFinite(st.dv) && st.dv > 0 ? st.accel * p * fk * (ta + AP_BRAKE * tb) / st.dv : 0 };
 }
 

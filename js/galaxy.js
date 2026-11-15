@@ -558,15 +558,23 @@
           if (!(st.accel > 0)) return '<div><span>Перелёт</span>нет двигателей</div>';
           const m = x => x < 120 ? Math.round(x) + ' с' : (x / 60).toFixed(1).replace('.', ',') + ' мин';
           const f = x => !isFinite(st.dv) || x === 0 ? 'не тратится (реактор)' : (x * 100 < 1 ? (x * 100).toFixed(2) : (x * 100).toFixed(1)).replace('.', ',') + '%';
+          // Двигатели, которые целиком кормит реактор, в экономном режиме только теряют время:
+          // топлива не тратится ни там, ни там. Такому кораблю показываем ОДНУ строку (warpEstimate.free).
+          const e1 = warpEstimate(st, 'fast');
+          if (e1.free) return `<div class="wide"><span>Перелёт</span>разгон ${m(e1.accel)} · скачок · торможение ${m(e1.brake)} · топливо не тратится: двигатели кормит реактор, поэтому полная тяга и в экономном режиме</div>`;
           return ['fast', 'eco'].map(k => { const e = warpEstimate(st, k);
             return `<div class="wide"><span>${WARP_MODES[k].name}</span>разгон ${m(e.accel)} · скачок · торможение ${m(e.brake)} · топливо ${f(e.fuel)}</div>`; }).join('');
         })());
       $('c-desc').innerHTML = `Планет: ${sys.planets.length} — ` +
         Object.entries(counts).map(([k, n]) => `${PLANET_TYPES[k].name.toLowerCase()} ${n}`).join(', ') +
         (s.bh ? `<div class="bhwarn">Чёрная дыра ${gal.stars[s.bh.id].name} вытягивает вещество звезды. Индекс влияния ${fmt(s.bh.index)} — мир нестабилен: жизни нет, больше антиматерии, изотопов и трития, меньше водорода и силикатов.</div>` : '');
+      // Кнопка «Экономно» скрыта, когда экономить нечего (реактор кормит двигатели): полёт был бы
+      // точно таким же, как по «Быстро» (warpEstimate ставит полную тягу). Тогда и у главной кнопки
+      // имя без выбора — просто «Лететь».
+      const freeThrust = (st => st && st.accel > 0 && warpEstimate(st, 'fast').free)(shipStats(findDesign(World.design())));
       $('b-jump').hidden = false;
-      $('b-jump').textContent = here ? 'Открыть систему' : 'Быстро';
-      $('b-warp-eco').hidden = here || !!travel;
+      $('b-jump').textContent = here ? 'Открыть систему' : freeThrust ? 'Лететь' : 'Быстро';
+      $('b-warp-eco').hidden = here || !!travel || freeThrust;
       // Цель внутри системы назначения: планета из списка — после скачка автопилот сразу ведёт к ней;
       // «к звезде» — корабль тормозит к звезде, планету игрок укажет на месте.
       $('c-dest-wrap').hidden = here || !!travel;
