@@ -53,6 +53,38 @@
   </section>
 
   <section class="glass panel">
+    <h2>Сырьё: 4 типа по 3 уровня</h2>
+    <p>Каждый тип компонента собирается из сырья СВОЕГО типа. Редкость — средняя концентрация
+      ресурса на планету по всей галактике в сравнении со средним по всем двенадцати
+      (замер <code>tools/resource-stats.js</code>, галактика #1).</p>
+    <div class="scroll"><table id="t-res"></table></div>
+  </section>
+
+  <section class="glass panel">
+    <h2>Рецептура компонентов</h2>
+    <p>На любой компонент уходит ровно три единицы сырья — дорожает не количество, а уровень.</p>
+    <div class="scroll"><table id="t-craft"></table></div>
+    <h3>Что даёт один компонент</h3>
+    <p>Масса и прочие свойства компонента — из таблицы производства (<code>data/parts.json</code>),
+      там же их правят. Здесь — справка: сколько весит компонент и что он добавляет предмету.</p>
+    <div class="scroll"><table id="t-comp"></table></div>
+  </section>
+
+  <section class="glass panel">
+    <h2>Энергоёмкость источников</h2>
+    <p>Реактор даёт энергию без заправки, газохранилище — только пока залито топливо, зато
+      сжигание щедрее примерно впятеро. Парус слабее обоих, но не требует ни того, ни другого.</p>
+    <div class="scroll"><table id="t-energy"></table></div>
+    <p id="energy-note" class="muted small-text"></p>
+  </section>
+
+  <section class="glass panel">
+    <h2>Массы оборудования</h2>
+    <p>Масса предмета = сумма масс его компонентов, поэтому она растёт с уровнем сборки.</p>
+    <div class="scroll"><table id="t-parts"></table></div>
+  </section>
+
+  <section class="glass panel">
     <h2>Классы кораблей</h2>
     <div class="scroll"><table id="t-cls"></table></div>
     <p>Класс задаётся числом палуб (сетка 5 × 7): чем больше палуб, тем меньше модулей на каждой. Каркас палубы — <span id="frame"></span> т.</p>
@@ -60,7 +92,10 @@
 </main>
 
 <script src="js/data.js"></script>
+<script src="js/store.js"></script>
 <script src="js/ships.js"></script>
+<script src="js/components.js"></script>
+<script src="js/parts-preset.js"></script>
 <script>
 // Справочник собирается из тех же функций, что считают корабли в игре (ships.js), — числа не расходятся.
 (() => {
@@ -81,6 +116,73 @@
   $('t-cls').innerHTML = '<tr><th>Класс</th><th>Палуб до</th><th>Модулей на палубу</th><th>Слотов всего</th></tr>' +
     SHIP_CLASSES.map(c => `<tr><td>${c.name}</td><td>${c.decks}</td><td>${c.perDeck}</td><td>${c.decks * c.perDeck}</td></tr>`).join('');
   $('frame').textContent = SHIP_FRAME_MASS;
+
+  // ---------- Сырьё, компоненты, энергия: всё из таблицы производства (data/parts.json) ----------
+  // Справочник ничего не считает сам — берёт те же числа и те же функции, что экран производства
+  // и конструктор (docs/Уроки.md §3: одна величина — одно место).
+  (async () => {
+    const got = await Store.load('parts');
+    const tbl = loadParts(got.data);
+    const lvl = ['1 ур.', '2 ур.', '3 ур.'];
+    const rel = k => { const st = RESOURCE_STATS && RESOURCE_STATS[k]; return st ? st.rel : null; };
+    const relText = v => v === null ? '—' : v >= 1 ? `× ${f(v, 2)} (чаще среднего)`
+      : `× ${f(v, 2)} — реже среднего в ${f(1 / v, 1)} раза`;
+
+    // Сырьё: 4 типа × 3 уровня, масса единицы и редкость в галактике.
+    $('t-res').innerHTML = '<tr><th>Тип компонента</th><th>Уровень</th><th>Ресурс</th>' +
+      '<th>Масса единицы</th><th>Встречаемость в галактике</th><th>Средняя концентрация</th></tr>' +
+      MAT_TYPES.map(m => m.res.map((key, i) => {
+        const r = RESOURCES.find(x => x.key === key), st = RESOURCE_STATS && RESOURCE_STATS[key];
+        return `<tr><td>${i === 0 ? m.name : ''}</td><td>${lvl[i]}</td><td>${r ? r.name : key}</td>` +
+          `<td>${r ? r.mass : '—'}</td><td>${relText(rel(key))}</td><td>${st ? f(st.avg, 2) : '—'}</td></tr>`;
+      }).join('')).join('');
+
+    // Рецепты компонентов.
+    $('t-craft').innerHTML = '<tr><th>Компонент</th><th>Сырьё 1 ур.</th><th>Сырьё 2 ур.</th><th>Сырьё 3 ур.</th><th>Итого сырья</th></tr>' +
+      CRAFT.map(c => `<tr><td>Компонент ${c.tier} уровня</td>` +
+        c.need.map(n => `<td>${n || '—'}</td>`).join('') +
+        `<td>${c.need.reduce((a, b) => a + b, 0)}</td></tr>`).join('');
+
+    // Что даёт один компонент: масса и главные вклады.
+    const show = ['mass', 'dur', 'thrust', 'enGen', 'enActive', 'capEnergy'];
+    const inf = (m, key, t) => { const a = tbl.inf[m] && tbl.inf[m][key]; return a ? (+a[t] || 0) : 0; };
+    $('t-comp').innerHTML = '<tr><th>Тип компонента</th><th>Уровень</th>' +
+      show.map(k => { const pr = tbl.params.find(x => x.key === k); return `<th>${pr ? pr.name : k}</th>`; }).join('') + '</tr>' +
+      MAT_TYPES.map(m => lvl.map((L, t) =>
+        `<tr><td>${t === 0 ? m.name : ''}</td><td>${L}</td>` +
+        show.map(k => { const v = inf(m.key, k, t); return `<td>${v ? f(v, v < 10 ? 1 : 0) : '—'}</td>`; }).join('') + '</tr>'
+      ).join('')).join('');
+
+    // Энергоёмкость источников: выработка предмета по уровням против сжигания топлива.
+    const src = ['reactor', 'solar_sail', 'gas_storage'];
+    $('t-energy').innerHTML = '<tr><th>Источник</th><th>Состав (к/э/б/эн)</th>' +
+      lvl.map(L => `<th>Выработка, ${L}</th>`).join('') + '<th>Нужно топливо</th></tr>' +
+      src.map(k => {
+        const c = tbl.comp[k] || {}, comp = [c.struct, c.compute, c.bio, c.energy].map(x => x || 0).join('/');
+        const gen = TIERS.map(t => partParam(tbl, k, 'enGen', t));
+        const fuelRow = k === 'gas_storage'
+          ? tbl.fuel.map((v, i) => `${FUEL[FUEL_KEYS[i]].name} ${f(v)}`).join(', ')
+          : 'нет';
+        const cells = k === 'gas_storage'
+          ? tbl.fuel.map(v => `<td>${f(v)}</td>`).join('')
+          : gen.map(v => `<td>${v ? f(v) : '—'}</td>`).join('');
+        return `<tr><td>${PART[k].name}</td><td>${comp}</td>${cells}<td>${fuelRow}</td></tr>`;
+      }).join('');
+    const reactor2 = partParam(tbl, 'reactor', 'enGen', 2), burn2 = +tbl.fuel[1] || 0;
+    $('energy-note').textContent = reactor2 > 0
+      ? `На втором уровне одно газохранилище на тритии даёт ${f(burn2)} за цикл, реактор — ${f(reactor2)}: ` +
+        `сжигание щедрее в ${f(burn2 / reactor2, 1)} раза, зато требует запаса топлива.`
+      : '';
+
+    // Массы оборудования по уровням сборки.
+    $('t-parts').innerHTML = '<tr><th>Оборудование</th><th>Состав (к/э/б/эн)</th>' +
+      lvl.map(L => `<th>Масса, ${L}</th>`).join('') + '</tr>' +
+      PART_GROUPS.map(g => PARTS.filter(x => x.group === g.key).map((x, i) => {
+        const c = tbl.comp[x.key] || {}, comp = [c.struct, c.compute, c.bio, c.energy].map(v => v || 0);
+        return `<tr><td>${i === 0 ? '<b>' + g.name + '</b> · ' : ''}${x.name}</td><td>${comp.join('/')}</td>` +
+          TIERS.map(t => { const v = partParam(tbl, x.key, 'mass', t); return `<td>${v ? f(v, 1) : '—'}</td>`; }).join('') + '</tr>';
+      }).join('')).join('');
+  })();
 })();
 </script>
 </body>
