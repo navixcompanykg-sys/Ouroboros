@@ -2,7 +2,13 @@
 // галактики #1 и её отношение к среднему по всем ресурсам. Числа нужны справочнику — игроку
 // важно знать, что он ищет: водород встречается всюду, антиматерия почти нигде.
 //
-// Запуск: node tools/resource-stats.js [--write]   (--write вписывает RESOURCE_STATS в js/data.js)
+// Запуск: node tools/resource-stats.js [--write]
+//   --write вписывает в js/data.js ДВА блока:
+//     RESOURCE_STATS — средняя концентрация каждого ресурса на планету,
+//     RESOURCE_VALUE — относительная стоимость сырья, ОДНА формула на всё, как в v2
+//                      (server/economy.go recommendedPriceFromTotals):
+//                      цена = 5 × (запас самого частого ÷ запас этого), кратно 5.
+//   Оба блока генерируются здесь, вручную их не править: следующий прогон перезапишет.
 // Распределение планет по сочетаниям берётся из кэша tools/.hist-g1.json (см. tools/lib.js) —
 // он не зависит от таблицы ресурсов, но зависит от генератора: поменял генератор — удали кэш.
 const fs = require('fs');
@@ -52,9 +58,30 @@ if (process.argv.includes('--write')) {
 const RESOURCE_STATS = {
 ${body}
 };`;
+  // ---------- относительная стоимость: универсальный эталон ----------
+  const maxAvg = Math.max(...ctx.RESOURCES.map(r => avg[r.key]));
+  const round5 = v => Math.max(5, Math.round(v / 5) * 5);
+  const value = {};
+  for (const r of ctx.RESOURCES) value[r.key] = round5(5 * maxAvg / (avg[r.key] || 1e-9));
+  const vBody = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11]]
+    .map(row => '  ' + row.map(i => ctx.RESOURCES[i].key + ': ' + value[ctx.RESOURCES[i].key]).join(', ') + ',').join('\n');
+  const vBlock = `// ОТНОСИТЕЛЬНАЯ СТОИМОСТЬ СЫРЬЯ — универсальный эталон, ОДНА формула на все двенадцать, как
+// в v2 (server/economy.go recommendedPriceFromTotals): цена = 5 × (запас самого распространённого
+// ресурса ÷ запас этого), округлённо до пятёрки. Никаких отдельных игродизайнерских
+// коэффициентов: кого в галактике меньше — тот дороже. Водород выходит в 5 у.е. не потому, что
+// так назначено, а потому что он самый частый по факту генерации. Через эти условные единицы
+// сравнивается что угодно: сырьё, компонент, постройка, корабль.
+// Считается из RESOURCE_STATS — tools/resource-stats.js --write. Руками не править.
+const RESOURCE_VALUE = {
+${vBody}
+};`;
+
+  const both = block + '\n\n' + vBlock;
   s = s.includes('const RESOURCE_STATS = {')
-    ? s.replace(/\/\/ ЗАМЕР РЕДКОСТИ[\s\S]*?const RESOURCE_STATS = \{[\s\S]*?\n\};/, block)
-    : s.replace(/const RARITY_RANK = \{/, block + '\n\nconst RARITY_RANK = {');
+    ? s.replace(/\/\/ ЗАМЕР РЕДКОСТИ[\s\S]*?const RESOURCE_STATS = \{[\s\S]*?\n\};(\s*\/\/ ОТНОСИТЕЛЬНАЯ СТОИМОСТЬ[\s\S]*?const RESOURCE_VALUE = \{[\s\S]*?\n\};)?/, both)
+    : s.replace(/const RARITY_RANK = \{/, both + '\n\nconst RARITY_RANK = {');
   fs.writeFileSync(file, crlf ? s.split('\n').join('\r\n') : s);
-  console.log('\nЗаписано в js/data.js: RESOURCE_STATS');
+  console.log('\nЭТАЛОН СТОИМОСТИ (у.е. за единицу сырья):');
+  for (const r of ctx.RESOURCES) console.log('  ' + r.name.padEnd(26) + String(value[r.key]).padStart(5));
+  console.log('\nЗаписано в js/data.js: RESOURCE_STATS и RESOURCE_VALUE');
 }
