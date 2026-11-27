@@ -43,6 +43,8 @@ function generateSurface(planet, gstar) {
   const rng = mulberry32(hashSeed((gstar.seed ^ Math.imul(planet.index + 1, 0x9e3779b1)) >>> 0));
   const R = planet.hexRadius, t = planet.type;
   const env = surfaceEnv(planet, rng);
+  // Условия среды для колонии (ТЗ §8.21): радиация и токсичность по формулам v2, температура планеты.
+  Object.assign(env, planetConditions(planet, gstar, env));
 
   const hexes = [];
   for (let r = -R; r <= R; r++) {
@@ -70,6 +72,48 @@ function surfaceEnv(p, rng) {
   const heatBias = Math.min(1, Math.max(-1, (p.tempK - 288) / 250));
   return { water, life, atmo, tectonic, heatBias };
 }
+
+// УСЛОВИЯ СРЕДЫ ПЛАНЕТЫ, 0…100 — формулы v2 (server/planets.go envRoll). Решения пользователя:
+// «у планет уже есть показатель токсичности — не плодим сущности, учитываем её как базовую»;
+// «добавляй радиацию и делаем по аналогии с версией 2». Без бросков rng — мир не сдвигается.
+//   вулканизм = тектоника карты × 100 (в v2 тектоника и была вулканизм / 100);
+//   давление  = есть атмосфера ? база по типу (горячая 15, скалистая 25, холодная 10, газ 90)
+//               + вулканизм × 0,3 : 0;
+//   радиация  = 100 × (d₀ / d)² × (1 − экран) + фон пород. d — «солнечное» расстояние планеты
+//               (a / √L, gen.js), d₀ — где в v2 было 100: граница выжженного ядра z0. В v2 лава
+//               кончалась на z1, в v3 — на d = 0,55, отсюда d₀ = 0,55 × z0 / z1 по типу звезды
+//               (красная и белая 3/5, жёлтая 4/7, синяя и нейтронная 5/10; протозвезда и туманность
+//               — как жёлтая, чёрная дыра — как нейтронная: ДОПУЩЕНИЕ). Экран атмосферы — до 85 %
+//               (давление / 100 × 0,85). Фон — от радиоактивных пород: в v2 √(радиоактивы 0…10000) × 0,5,
+//               в v3 радиоактивного сырья нет, ближе всего изотопы — √(доля изотопов × 100) × 0,5 (ДОПУЩЕНИЕ);
+//   токсичность = тип (ядро 5, горячая 40, скалистая 10, холодная 15, газ 60, астероид 5)
+//               + вулканизм × 0,4 + радиация × 0,2 + давление × 0,1.
+// Условия планеты БЕЗ гекс-карты (для статуса пригодности и среднего по галактике): тот же rng и
+// те же первые броски, что у generateSurface, — значения совпадают, а 33 тысячи планет считаются
+// за доли секунды.
+function planetEnv(planet, gstar) {
+  const rng = mulberry32(hashSeed((gstar.seed ^ Math.imul(planet.index + 1, 0x9e3779b1)) >>> 0));
+  const env = surfaceEnv(planet, rng);
+  return Object.assign(env, planetConditions(planet, gstar, env));
+}
+
+const RAD_Z = { red: [3, 5], white: [3, 5], yellow: [4, 7], protostar: [4, 7], nebula: [4, 7],
+  blue: [5, 10], neutron: [5, 10], blackhole: [5, 10] };
+function planetConditions(p, gstar, env) {
+  const clamp = x => Math.max(0, Math.min(100, x));
+  const volc = clamp((env.tectonic || 0) * 100);
+  const pressure = env.atmo ? clamp(({ core: 0, hot: 15, rocky: 25, cold: 10, gas: 90, asteroid: 0 }[p.type] || 0) + volc * 0.3) : 0;
+  const z = RAD_Z[gstar && gstar.type ? gstar.type.key : 'yellow'] || RAD_Z.yellow;
+  const d0 = 0.55 * z[0] / z[1];
+  const d = p.d > 0 ? p.d : 1;
+  const shield = Math.min(0.85, pressure / 100 * 0.85);
+  const iso = ((p.composition || []).find(x => x.key === 'isotopes') || {}).value || 0;
+  const radiation = Math.round(clamp(100 * Math.pow(d0 / d, 2) * (1 - shield) + Math.sqrt(iso * 100) * 0.5));
+  const base = { core: 5, hot: 40, rocky: 10, cold: 15, gas: 60, asteroid: 5 }[p.type] || 10;
+  const toxicity = Math.round(clamp(base + volc * 0.4 + radiation * 0.2 + pressure * 0.1));
+  return { volcanic: Math.round(volc), pressure: Math.round(pressure), radiation, toxicity, tempK: p.tempK };
+}
+
 
 // БУРЯ НА ГАЗОВОМ ГИГАНТЕ ЗАНИМАЕТ НЕСКОЛЬКО ГЕКСОВ, а не один (решение пользователя).
 // Раньше каждый гекс сам бросал 5 % на «вихрь», и бури получались россыпью одиночных точек —

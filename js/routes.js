@@ -30,7 +30,10 @@ const ROUTE = {
 //   e — энергия зданий в «водородах» (тритий ×3, антиматерия ×8, как жжёт генератор, COL.H2_PER_UNIT);
 //   s, c, b — штуки сырья своей группы;
 //   value — всё по эталону стоимости (RESOURCE_VALUE, у.е.).
+// Веса нужд колонии для цели 'need' (Colony.needs) — ставятся перед сканом и на каждой стоянке.
+let ROUTE_NEED_W = {};
 const ROUTE_TARGETS = {
+  need: { name: 'Нужды колонии', unit: 'ед. нужного', w: k => ROUTE_NEED_W[k] || 0 },
   crypto: { name: 'Крипта', unit: 'крипты', w: k => COL_KEY_GROUP[k] === 'e' && FUEL[k] ? FUEL[k].yield * COL.TOKEN_PER_EN : 0 },
   e: { name: 'Энергия', unit: 'водорода', w: k => COL_KEY_GROUP[k] === 'e' ? (COL.H2_PER_UNIT[k] || 1) : 0 },
   s: { name: 'Структурные', unit: 'ед.', w: k => COL_KEY_GROUP[k] === 's' ? 1 : 0 },
@@ -169,7 +172,7 @@ const Routes = (() => {
   const scanCache = new WeakMap();
   function scan(tbl, ship, homeRef, target, env) {
     const hcol = env.colony(homeRef.star, homeRef.planet);
-    const key = [homeRef.star, homeRef.planet, target, !!(hcol && Colony.has(hcol, 'gen')), ship.design, Ship.crew(ship),
+    const key = [homeRef.star, homeRef.planet, target, target === 'need' && hcol ? JSON.stringify(Colony.needs(hcol).def) : '', !!(hcol && Colony.has(hcol, 'gen')), ship.design, Ship.crew(ship),
       FUEL.hydrogen.yield, FUEL.tritium.yield, FUEL.antimatter.yield].join('|');
     let byTbl = scanCache.get(tbl);
     if (!byTbl) scanCache.set(tbl, byTbl = new Map());
@@ -186,8 +189,10 @@ const Routes = (() => {
     const st = Ship.stats(tbl, ship), fs = fly(ship);
     const home = { star: hs, planet: hp };
     const hc = env.colony(homeRef.star, homeRef.planet), gen = !!(hc && Colony.has(hc, 'gen'));
+    if (target === 'need' && hc) ROUTE_NEED_W = Colony.needs(hc).w;
     const out = [];
-    const stars = [{ s: hs, d: 0 }].concat(nearStars(gal, hs));
+    // Путевой лист (цель 'need') — по планетам СВОЕЙ системы: между ними секунды, а скачок с грузом — часы.
+    const stars = [{ s: hs, d: 0 }].concat(target === 'need' ? [] : nearStars(gal, hs));
     for (const { s, d } of stars) {
       const sys = generateSystem(s);
       for (const p of sys.planets) {
@@ -216,11 +221,18 @@ const Routes = (() => {
   // Выгрузить трюм, зарядить жизнеобеспечение, заправиться, взять водород на съёмы — только из
   // ИЗЛИШКА колонии: бронь энергоносителей (Colony.h2Reserve) не трогаем, на ней стоят здания.
   function prepare(tbl, ship, col, pick) {
+    if (pick.multi) pick.need = Colony.needs(col);      // путевой лист: снимок нужд на этот вылет
     // Что не влезло на склад даже после выброса ненужного — выбрасывается со счётом в отходах
     // колонии (col.waste), а не возвращается в трюме: иначе корабль кружил бы туда-обратно с тем
     // же грузом (прогон: сотни «рейсов» за сутки).
     Ship.unload(ship, col, true);
     Ship.recharge(tbl, ship, col);
+    // Пищи в жизнеобеспечении — хотя бы на 6 съёмов, обратную дорогу и запас. Иначе корабль снимает
+    // один гекс и разворачивается — и так сотни пустых рейсов (прогон: рейс каждые 10 минут, тритий
+    // со склада уходил впустую).
+    const stL = Ship.stats(tbl, ship);
+    const backT = Math.ceil((pick.tBack || 0) / (TICK / 1000)), outT = Math.ceil((pick.tOut || 0) / (TICK / 1000));
+    if (Ship.lifeTicks(tbl, ship, stL) < outT + backT + ROUTE.LIFE_SPARE + 6) return 'мало пищи на жизнеобеспечение — фермы колонии наработают';
     // Бак — со склада колонии (своему кораблю бесплатно, но склад расходуется) и из трюма.
     Ship.refuel(ship, col);
     if ((pick.fuelNeed || 0) > (typeof ship.fuel === 'number' ? ship.fuel : 1) + 1e-9) {
@@ -229,7 +241,8 @@ const Routes = (() => {
         + ' % — на складе нет ' + (T && FUEL[T.key] ? FUEL[T.key].name.toLowerCase() : 'топлива');
     }
     const have = (ship.cargo || {}).hydrogen || 0;
-    const want = Math.max(0, pick.h2Need - have);
+    // Путевой лист — много стоянок: водорода на съёмы берём с запасом (до 20 съёмов), если он есть.
+    const want = Math.max(0, (ship.route && ship.route.target === 'need' || pick.multi ? Math.max(pick.h2Need, 20 * H2()) : pick.h2Need) - have);
     const spare = Math.max(0, (col.stock.hydrogen || 0) - Colony.h2Reserve(col));
     if (want > 0 && spare > 0) Ship.load(tbl, ship, col, 'hydrogen', Math.min(want, spare));
     // На ПЕРВЫЙ съём можно взять и из брони: корабль привезёт в десятки раз больше, а без этого
@@ -243,7 +256,8 @@ const Routes = (() => {
     Object.assign(r, { dest: { star: pick.star, planet: pick.planet, q: pick.q, r: pick.r, name: pick.name, sysName: pick.sysName },
       plan: { n: pick.n, net: pick.net, perHour: pick.perHour, tOut: pick.tOut, tBack: pick.tBack, fOut: pick.fOut || 0, fBack: pick.fBack || 0 },
       geo: pick.geo || null, hull: pick.hull || 0,
-      phase: 'out', t0: now, until: now + pick.tOut * 1000, mined: 0 });
+      phase: 'out', t0: now, until: now + pick.tOut * 1000, mined: 0, sheet: [], ticks0: Colony.tickAt(now),
+      need: r.target === 'need' && pick.need ? pick.need : null });
     ship.mine = null; ship.landed = false; ship.planet = null;
   }
 
@@ -258,8 +272,9 @@ const Routes = (() => {
     const p = pick || best(tbl, ship, home, target, env);
     if (!p) return 'сканер не нашёл рентабельной планеты';
     if (p.err) return p.err;
+    if (target === 'need') p.multi = true;
     const err = prepare(tbl, ship, col, p); if (err) return err;
-    ship.route = { home, target, auto: !pick, stop: false, trips: 0, last: null };
+    ship.route = { home, target, auto: !pick, stop: false, trips: 0, last: null, sheet: [] };
     depart(ship, p, now, ship.route);
     Colony.note(col, 'Авторейс: ' + shipLabel(ship) + ' → ' + p.name + ' за «' + ROUTE_TARGETS[target].name.toLowerCase() + '»');
     env.placed(ship);
@@ -271,6 +286,7 @@ const Routes = (() => {
     const r = ship.route; if (!r) return;
     r.stop = true;
     if (r.phase === 'mine') leave(ship, now);
+    if (r.phase === 'idle') ship.route = null;
   }
 
   const shipLabel = s => (s.design || 'корабль') + ' #' + s.id;
@@ -301,10 +317,117 @@ const Routes = (() => {
     ship.fuel = Math.max(0, (typeof ship.fuel === 'number' ? ship.fuel : 1) - frac);
   }
 
+  // ---------- ПУТЕВОЙ ЛИСТ: облёт планет системы по нуждам колонии ----------
+  // Решение пользователя: «научить шаттл летать по планетам системы и собирать нужные ресурсы для
+  // колонии с разных планет, а не только энергоносители: выгоднее летать по разным планетам, собирая
+  // гексы, чем сидеть на одной; колония формирует путевой лист при каждом вылете по своим нуждам».
+  // На каждой стоянке: съём лучшего по нуждам свободного гекса (журнал гексов) → долив бака из трюма →
+  // следующая планета системы, где корабль в этом такте ещё не брал (журнал корабля), — по ценности
+  // нужного на секунду полёта. Свободных нет — ждёт такта на месте. Домой — когда трюм почти полон,
+  // нужды закрыты, кончается пища, не хватает бака или прошли сутки (ROUTE.MAX_TICKS).
+  // НУЖДЫ — СНИМОК ПРИ ВЫЛЕТЕ (r.need), в пути корабль с колонией не сверяется (решение пользователя:
+  // «пока корабль на маршруте, он не сверяется с текущими реальными нуждами, как бы выполняя первое
+  // задание — это снизит нагрузку на серверы при большом числе кораблей»). Остаток нужд = снимок
+  // минус то, что уже в трюме.
+  function remainingW(r, ship) {
+    const N = r.need; if (!N) return { w: {}, done: true };
+    const left = Object.assign({}, N.def), w = {};
+    for (const k in ship.cargo || {}) { const g = COL_KEY_GROUP[k]; if (g && left[g] != null) left[g] -= ship.cargo[k]; }
+    for (const g in COL_GROUPS) COL_GROUPS[g].forEach(k => { w[k] = left[g] > 0 ? N.w[k] : Math.min(N.w[k], 0.02 + (N.w[k] >= 2 ? 2 : 0)); });
+    return { w, done: Object.values(left).every(v => v <= 0) };
+  }
+  function hexValue(hex, w) {
+    const o = Colony.shipOutput(hex);
+    let v = 0; for (const k in o) v += o[k] * (w[k] || 0);
+    return v;
+  }
+  function bestHexAt(star, planet, surf, w, T) {
+    let best = null, bv = 0;
+    for (const h of surf.hexes) {
+      if (!Ship.harvestReady({ hv: {} }, star, planet, h, T)) continue;    // гекс свободен в журнале гексов
+      const v = hexValue(h, w); if (v > bv) { bv = v; best = h; }
+    }
+    return best ? { hex: best, v: bv } : null;
+  }
+  // Съём на текущей стоянке (по нуждам) и запись в путевой лист.
+  function harvestHere(tbl, ship, T, env) {
+    const r = ship.route, col = env.colony(r.home.star, r.home.planet);
+    const surf = env.surface(ship.star, ship.planet); if (!surf) return null;
+    if (!Ship.harvestReady(ship, ship.star, ship.planet, null, T)) return { wait: true };
+    const W = remainingW(r, ship).w;
+    const b = bestHexAt(ship.star, ship.planet, surf, W, T); if (!b) return { none: true };
+    const got = Ship.harvest(tbl, ship, b.hex, ship.star, ship.planet, T);
+    if (!got.err) {
+      Ship.refuel(ship, null);                                   // бак — из трюма, тем, что дал гекс
+      r.sheet.push({ name: r.dest.name, q: b.hex.q, r: b.hex.r, t: T, vol: Math.round(got.total || 0) });
+      if (r.sheet.length > 40) r.sheet.shift();
+    }
+    return got;
+  }
+  function decideNext(tbl, ship, T, env) {
+    const r = ship.route, col = env.colony(r.home.star, r.home.planet);
+    const st = Ship.stats(tbl, ship), fs = fly(ship), gs = env.galaxy().stars[r.home.star];
+    const sys = generateSystem(gs), hp = sys.planets[r.home.planet], cur = sys.planets[ship.planet];
+    const k = kOf(st.mass, Ship.cargoMass(ship)), fsL = Ship.loaded(fs, k);
+    const backSec = legSec(fsL, gs.id, cur, gs.id, hp), backF = legFuel(fsL, gs.id, cur, gs.id, hp);
+    const backT = Math.ceil(backSec / (TICK / 1000));
+    const R = remainingW(r, ship);
+    const tired = Ship.lifeTicks(tbl, ship, st) <= backT + ROUTE.LIFE_SPARE;
+    const full = Ship.cargoFree(tbl, ship, st) < 0.1 * st.capacity;
+    const long = Colony.tickAt(T) - (r.ticks0 || Colony.tickAt(T)) >= ROUTE.MAX_TICKS;
+    const noH2 = ((ship.cargo || {}).hydrogen || 0) < H2();
+    r.geo = geoOf(gs, hp, gs, cur); r.hull = st.mass;
+    r.plan.tBack = backSec; r.plan.fBack = backF;
+    if (r.stop || full || R.done || tired || long || noH2) { r.why = r.stop ? 'снят' : full ? 'трюм' : R.done ? 'нужды закрыты' : tired ? 'пища' : long ? 'сутки' : 'водород'; leave(ship, T); return; }
+    // Следующая стоянка: где в этом такте ещё не брали; ценность нужного / (секунды полёта + 10).
+    let best = null;
+    for (const p of sys.planets) {
+      if (p.index === cur.index || !PLANET_TYPES[p.type].landable) continue;
+      if (!Ship.harvestReady(ship, gs.id, p.index, null, T)) continue;
+      const surf = env.surface(gs.id, p.index); if (!surf) continue;
+      const b = bestHexAt(gs.id, p.index, surf, R.w, T); if (!b || b.v <= 0) continue;
+      const sec = legSec(fsL, gs.id, cur, gs.id, p), f = legFuel(fsL, gs.id, cur, gs.id, p) + legFuel(fsL, gs.id, p, gs.id, hp);
+      if (!isFinite(sec) || f > (typeof ship.fuel === 'number' ? ship.fuel : 1) + 1e-9) continue;
+      const score = b.v / (sec + 10);
+      if (!best || score > best.score) best = { p, sec, f: legFuel(fsL, gs.id, cur, gs.id, p), score };
+    }
+    if (best) {
+      r.dest = { star: gs.id, planet: best.p.index, q: null, r: null, name: best.p.name, sysName: gs.name };
+      r.phase = 'hop'; r.until = T + best.sec * 1000; r.hopFuel = best.f;
+      ship.mine = null; ship.landed = false; ship.planet = null;
+      return;
+    }
+    // Свободных планет в этом такте нет — ждать такта здесь (журналы сбросятся), если тут есть что брать.
+    const here = env.surface(gs.id, cur.index), hb = here && bestHexAt(gs.id, cur.index, here, R.w, (Colony.tickAt(T) + 1) * TICK);
+    if (hb && hb.v > 0) { r.phase = 'wait'; r.next = (Colony.tickAt(T) + 1) * TICK; return; }
+    r.why = 'нечего брать'; leave(ship, T);
+  }
+
   // ---------- одно событие рейса ----------
-  const nextAt = s => !s.route ? Infinity : s.route.phase === 'mine' ? s.route.next : s.route.until;
+  const nextAt = s => !s.route ? Infinity : (s.route.phase === 'mine' || s.route.phase === 'wait' || s.route.phase === 'idle') ? s.route.next : s.route.until;
   function step(tbl, ship, T, env) {
     const r = ship.route;
+    if (r.phase === 'idle') {                                 // ждал у колонии — новый путевой лист
+      const col = env.colony(r.home.star, r.home.planet);
+      if (!col || r.stop) { ship.route = null; env.placed(ship); return; }
+      env.advanceColony(col, r.home.star, r.home.planet, T);
+      Ship.advance(tbl, ship, null, T);
+      replan(tbl, ship, T, env, col);
+      return;
+    }
+    if (r.target === 'need' && (r.phase === 'out' || r.phase === 'hop' || r.phase === 'wait')) {
+      Ship.advance(tbl, ship, null, T);                       // экипаж ест
+      if (r.phase !== 'wait') {
+        ship.star = r.dest.star; ship.planet = r.dest.planet; ship.landed = true;
+        burnFuel(ship, r.phase === 'out' ? r.plan.fOut : r.hopFuel);
+      }
+      r.phase = 'mine-stop';
+      const got = harvestHere(tbl, ship, T, env);
+      if (got && got.err && got.err !== 'трюм полон') { /* гекс занят и т. п. — решаем дальше */ }
+      decideNext(tbl, ship, T, env);
+      env.placed(ship);
+      return;
+    }
     if (r.phase === 'out') {
       Ship.advance(tbl, ship, null, T);                       // в полёте экипаж только ест
       ship.star = r.dest.star; ship.planet = r.dest.planet; ship.landed = true;
@@ -357,6 +480,22 @@ const Routes = (() => {
     Colony.note(col, 'Авторейс #' + r.trips + ' с ' + r.dest.name + ': ' + Math.round(brought).toLocaleString('ru') + ' '
       + ROUTE_TARGETS[r.target].unit + ' (' + Math.round(Colony.massSum(goods)).toLocaleString('ru') + ' т груза)');
     if (r.stop) { ship.route = null; Colony.note(col, 'Авторейс снят: ' + shipLabel(ship) + ' у колонии'); env.placed(ship); return; }
+    // Пустой путевой лист (ни одного съёма) — корабль остаётся у колонии: новый лист в ту же минуту дал
+    // бы тот же пустой облёт (прогон: бесконечный цикл «вылет — возврат» в одну минуту).
+    if (r.target === 'need' && !(r.sheet && r.sheet.length)) { idle(ship, T, col, 'путевой лист пуст'); env.placed(ship); return; }
+    replan(tbl, ship, T, env, col);
+  }
+  // Путевой лист не выдать (нечего везти, мало пищи или топлива) — корабль ЖДЁТ у колонии час и
+  // просит новый лист, а не снимается с рейса: нужды появятся, фермы наработают пищу.
+  function idle(ship, T, col, why) {
+    const r = ship.route;
+    if (!r.idleNoted) Colony.note(col, shipLabel(ship) + ' ждёт у колонии: ' + why);
+    r.idleNoted = true;
+    r.phase = 'idle'; r.next = T + COL.UPKEEP_EVERY * TICK;
+    ship.landed = true; ship.star = r.home.star; ship.planet = r.home.planet; ship.mine = null;
+  }
+  function replan(tbl, ship, T, env, col) {
+    const r = ship.route;
     // Следующий заход: «сама выбирает» — сканируем заново, иначе туда же (оценку пересчитываем).
     const home = r.home;
     let pick = r.auto ? best(tbl, ship, home, r.target, env)
@@ -372,11 +511,17 @@ const Routes = (() => {
       const e = hex && estimate(tbl, ship, Ship.stats(tbl, ship), fs, L, hex, r.target, Colony.has(col, 'gen'));
       pick = e && !e.err ? Object.assign(e, { geo: geoOf(hs, hp, ds, dp), hull, star: ds.id, planet: r.dest.planet, q: hex.q, r: hex.r, name: r.dest.name, sysName: r.dest.sysName }) : null;
     }
+    if (pick && r.target === 'need') pick.multi = true;     // новый путевой лист — новый снимок нужд
     if (!pick || pick.err || !(pick.net > 0)) {
+      if (r.target === 'need') { idle(ship, T, col, 'нечего везти'); env.placed(ship); return; }
       ship.route = null; Colony.note(col, 'Авторейс остановлен: нет рентабельной цели'); env.placed(ship); return;
     }
     const err = prepare(tbl, ship, col, pick);
-    if (err) { ship.route = null; Colony.note(col, 'Авторейс остановлен: ' + err); env.placed(ship); return; }
+    if (err) {
+      if (r.target === 'need') { idle(ship, T, col, err); env.placed(ship); return; }
+      ship.route = null; Colony.note(col, 'Авторейс остановлен: ' + err); env.placed(ship); return;
+    }
+    r.idleNoted = false;
     depart(ship, pick, T, r);
     env.placed(ship);
   }
@@ -400,6 +545,13 @@ const Routes = (() => {
   function status(ship, now) {
     const r = ship.route; if (!r) return null;
     const left = s => { s = Math.max(0, Math.round(s)); return s < 90 ? s + ' с' : s < 5400 ? Math.round(s / 60) + ' мин' : (s / 3600).toFixed(1).replace('.', ',') + ' ч'; };
+    if (r.target === 'need') {
+      const n = (r.sheet || []).length;
+      if (r.phase === 'back') return 'путевой лист: ' + n + ' съёмов, возвращается' + (r.why ? ' (' + r.why + ')' : '') + ' · через ' + left((r.until - now) / 1000);
+      if (r.phase === 'wait') return 'путевой лист: ' + n + ' съёмов, ждёт такта на ' + (r.dest && r.dest.name);
+      if (r.phase === 'idle') return 'ждёт у колонии новый путевой лист · через ' + left((r.next - now) / 1000);
+      return 'путевой лист: ' + n + ' съёмов, летит к ' + (r.dest && r.dest.name) + ' · через ' + left((r.until - now) / 1000);
+    }
     if (r.phase === 'out') return 'летит к ' + r.dest.name + ' · прилёт через ' + left((r.until - now) / 1000);
     if (r.phase === 'mine') return 'копает на ' + r.dest.name + ' (гекс ' + r.dest.q + ', ' + r.dest.r + ') · съёмов ' + r.mined
       + ' из ~' + r.plan.n + (r.stop ? ' · снят, возвращается' : '');

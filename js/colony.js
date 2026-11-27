@@ -10,7 +10,15 @@
 const COL = {
   TICK_MS: 10 * 60 * 1000,
 
-  MINE_K: 10,            // шахта: 10 × уровень × содержание гекса за такт (ТЗ §8.7)
+  MINE_K: 10,            // шахта: 10 × содержание гекса за такт × бонус уровня (ТЗ §8.7)
+  // УРОВНИ ШАХТЫ (решение пользователя 2026-11-28): «улучшение шахт за компоненты 2 и 3 уровня, три
+  // уровня; добычу 2 уровень увеличивает на 20 %, третий — на 30 % от базы; по цене — в 3 и в 5 раз
+  // дороже обычной шахты (позже поднято до ×5 и ×8); содержание для 2 и 3 уровня — в компонентах». Энергия (водород) — по
+  // MINE_H2 (×1,5 и ×2 на 2 и 3 уровне, решение пользователя).
+  MINE_LVL: { 1: 1, 2: 1.2, 3: 1.3 },
+  // Энергия шахты по уровням: ×1,5 и ×2 (пользователь сперва сказал ×2 и ×3 — не окупалось в 68 % случаев,
+  // снизил: «слишком много неокупаемых — снизим рост потребления энергии до ×1,5 и ×2»).
+  MINE_H2: { 1: 1, 2: 1.5, 3: 2 },
   SHIP_MINE_K: 5,        // корабль ВДВОЕ слабее шахты 1 уровня (решение пользователя), зато берёт
                          // все ресурсы гекса сразу и может привезти то, чего колонии не хватает
 
@@ -29,15 +37,49 @@ const COL = {
   GRACE: 3,              // три часа подряд без оплаты → здание разбирают
 
   BUILD_TICKS: 6,        // здание 1 уровня строится реальный час
+  // СОДЕРЖАНИЕ КОМПОНЕНТАМИ — у зданий, не нужных для базового выживания (решение пользователя
+  // 2026-11-28: «зданиям, что не нужны для базового выживания, — содержание в компонентах, так что они
+  // потребляют примерно за месяц свою стоимость»). Раз в час — 1/720 компонентов цены (30 суток × 24),
+  // тех же типов и уровня. Не заплачено GRACE часов подряд — разбирают, как за сырьё.
+  COMP_UPKEEP_HOURS: 720,
 
   FOOD_PER_POP: 1,       // житель (и экипаж корабля — он эквивалентен одному колонисту) ест 1 пищу за такт
-  FARM_CAP: 60,          // ферма уровня L делает до 60 × L пищи за такт
-  FOOD_ART_RAW: 5,       // искусственная пища: 5 ед. структурного сырья...
-  FOOD_ART_EN: 2000,     // ...и 2000 энергии на единицу
+  // ФЕРМА: мощность — сколько ЛЮДЕЙ кормит за такт (умножается на норму еды FOOD_PER_POP):
+  // из биомассы 60, искусственной пищей 10 — «фермы не дают много пищи без среды» (решение пользователя).
+  FARM_CAP: 60,
+  FARM_ART_CAP: 10,
+  // ВЫХОД ПИЩИ С ЕДИНИЦЫ СЫРЬЯ — по Фибоначчи (решение пользователя 2026-11-28): «искусственная пища 2,
+  // микробиота 3, дикая флора 5; битумы — несъедобный, технологический компонент». Битумы фермы не
+  // берут. Микробиота идёт первой, флора — следом (флора нужна и на улучшение производства).
+  // ИСКУССТВЕННАЯ ПИЩА — ИЗ СИЛИКАТОВ, как раньше (поправка пользователя: «ферма пусть потребляет
+  // силикаты как раньше, ок для низкого уровня производства»), сверх запаса на содержание зданий.
+  // Из водорода (первая версия) безжизненные колонии вымирали: лишнего водорода у них нет.
+  FOOD_YIELD: { microbiota: 3, flora: 5, silicates: 2 },
   FOOD_KEEP: 4,          // ДОПУЩЕНИЕ: колония держит запас пищи на столько тактов потребления
 
   DOME_CAP: 10,          // купол уровня L держит 10 × L жителей
   POP_TICKS: 144,        // ±1 житель раз в реальные сутки
+
+  // ТОКСИЧНОСТЬ (решения пользователя 2026-11-27, ТЗ §8.21). У планеты есть базовая токсичность
+  // 0…100 (surface.js planetConditions, формула v2); колония её меняет: на гексе может стоять несколько
+  // зданий (нельзя только две шахты одного типа), и каждое здание сверх первого на гексе добавляет
+  // токсичности, а очистные сооружения убирают. Токсичность снижает БАЗУ БИОМАССЫ линейно: 0 — без
+  // потерь, 100 — биомассы нет. Предел — 100.
+  TOX_PER_EXTRA: 10,     // ДОПУЩЕНИЕ: каждое лишнее здание на гексе — +10 токсичности
+  TOX_CLEAN: 10,         // очистные сооружения — −10 (число пользователя)
+  TOX_MAX: 100,
+
+  // НАСЕЛЕНИЕ — ЁМКОСТЬ И ДВИЖЕНИЕ К НЕЙ (ТЗ §8.21; решения пользователя 2026-11-27).
+  //   Q = токсичность × радиация × температура × давление × пища — множители относительно нормы
+  //       расы (RACES, data.js). Каждый может быть больше 1 (лучше нормы) — так игрок компенсирует
+  //       одни факторы другими; любой может стать НУЛЁМ — критическое требование, колония гибнет.
+  //   K = места в куполах × min(1, Q) — сколько жителей планета реально держит: на хорошей 10 на
+  //       купол, на тяжёлой 3, хотя мест тоже 10.
+  //   N < K: рождения = POP_GROW × N × (1 − N / K) — от числа жителей, быстрее на середине;
+  //   N > K: смерти   = POP_DECLINE × (N − K)      — постепенно, от избытка над ёмкостью;
+  //   K = 0 (нет пищи совсем или смертельный фактор) — колония вымирает сразу.
+  POP_GROW: 0.4,         // ДОПУЩЕНИЕ: рождений в сутки на жителя при пустом куполе и Q ≥ 1
+  POP_DECLINE: 0.3,      // ДОПУЩЕНИЕ: доля лишних (сверх K) жителей, умирающих за сутки
 
   CRYPTO_START: 20000,   // крипта, с которой начинает высаженная колония: деньги игрока,
                          // вложенные в высадку. Без неё рабочие не выходят с первой же минуты.
@@ -101,37 +143,140 @@ for (const g in COL_GROUPS) COL_GROUPS[g].forEach(k => { COL_KEY_GROUP[k] = g; }
 //   Расчёт: шахта 10 000 → производство 10 000 (3000 структ + 7000 выч), ферма 5 000
 //   (1500 + 1500 + 2000 биомассы), купол 3 300 (поровну). Три шахты разных групп добывают три
 //   вида сырья параллельно, поэтому набор окупается примерно за то же время, что одна шахта.
+// Улучшение шахт (всех четырёх): 2 уровень — 1 667 компонентов 2 ур. (×5 шахт: 50 тыс. ед. сырья),
+// 3 уровень — 4 000 компонентов 3 ур. (×8: 80 тыс.) — пользователь поднял с ×3 / ×5: «медианно окупается
+// очень быстро»; доли — конструктивные 50 %, ЭВМ 30 %, энергетика 20 %
+// (ДОПУЩЕНИЕ). Содержание улучшенной шахты — компонентами (compUpkeep): её улучшения окупаются за месяц.
 const COL_BUILDINGS = [
-  { key: 'mine_s', name: 'Шахта структурная', group: 's', cost: { s: 10000 }, upkeep: 's', up: 0, h2: 100, work: true,
+  { key: 'mine_s', name: 'Шахта структурная', group: 's', cost: { s: 10000 }, upkeep: 's', up: 0, h2: 100, work: true, upgrades: { 2: { tier: 2, comp: { struct: 834, compute: 500, energy: 333 } }, 3: { tier: 3, comp: { struct: 2000, compute: 1200, energy: 800 } } }, maxLvl: 3,
     desc: 'Силикаты, редкоземельные металлы, сверхплотные минералы с гекса' },
-  { key: 'mine_c', name: 'Шахта вычислительная', group: 'c', cost: { s: 10000 }, upkeep: 'c', up: 0, h2: 100, work: true,
+  { key: 'mine_c', name: 'Шахта вычислительная', group: 'c', cost: { s: 10000 }, upkeep: 'c', up: 0, h2: 100, work: true, upgrades: { 2: { tier: 2, comp: { struct: 834, compute: 500, energy: 333 } }, 3: { tier: 3, comp: { struct: 2000, compute: 1200, energy: 800 } } }, maxLvl: 3,
     desc: 'Кремний, ниобий, изотопы с гекса' },
-  { key: 'mine_e', name: 'Шахта энергетическая', group: 'e', cost: { s: 10000 }, upkeep: 'e', up: 0, h2: 100, work: true,
+  { key: 'mine_e', name: 'Шахта энергетическая', group: 'e', cost: { s: 10000 }, upkeep: 'e', up: 0, h2: 100, work: true, upgrades: { 2: { tier: 2, comp: { struct: 834, compute: 500, energy: 333 } }, 3: { tier: 3, comp: { struct: 2000, compute: 1200, energy: 800 } } }, maxLvl: 3,
     desc: 'Водород, тритий, антиматерия с гекса' },
-  { key: 'mine_b', name: 'Шахта биохимическая', group: 'b', cost: { s: 10000 }, upkeep: 'b', up: 0, h2: 100, work: true,
+  { key: 'mine_b', name: 'Шахта биохимическая', group: 'b', cost: { s: 10000 }, upkeep: 'b', up: 0, h2: 100, work: true, upgrades: { 2: { tier: 2, comp: { struct: 834, compute: 500, energy: 333 } }, 3: { tier: 3, comp: { struct: 2000, compute: 1200, energy: 800 } } }, maxLvl: 3,
     desc: 'Микробиота, дикая флора, битумы с гекса' },
   { key: 'gen', name: 'Генератор', cost: { s: 8000, c: 2000 }, upkeep: 's', up: 200, h2: 0, work: true,
     desc: 'Сжигает тритий и антиматерию, а не только водород: единица трития идёт за три водорода, антиматерии — за восемь' },
+  // ПРОИЗВОДСТВО ДЕЛАЕТ КОМПОНЕНТЫ НЕ ВЫШЕ СВОЕГО УРОВНЯ (решение пользователя 2026-11-28): 1 уровень —
+  // только компоненты 1 уровня; чтобы прокачать — заплатить компонентами 1 уровня и сырьём 2 уровня,
+  // со 2 на 3 — компонентами 2 уровня и сырьём 3 уровня; «в несколько раз дороже зданий — минимум в
+  // десять раз — и потреблять много ресурсов, которые у нас обычно идут в отходы».
+  // Цена (подбор, ДОПУЩЕНИЕ — правится в data/prices.json): в ШТУКАХ сырья, как цена шахты (10 000).
+  // Поправка пользователя: «меньше опоры на пищевые ресурсы — всё же это технологии, но большое число
+  // битумов для технологий 3 уровня» (битумы — технологическое сырьё, не еда).
+  //   1 → 2 ≈ 100 тыс. единиц (×10 шахты): 300 конструктивных + 200 ЭВМ + 50 биохимических 1 ур. +
+  //         редкоземельные 40 000, ниобий 35 000, тритий 20 000, флора 5 000;
+  //   2 → 3 ≈ 200 тыс. (×20): 300 + 200 + 50 компонентов 2 ур. + битумы 120 000 (главные отходы),
+  //         сверхплотные 40 000, изотопы 30 000, антиматерия 10 000.
   { key: 'prod', name: 'Производство', cost: { s: 3000, c: 7000 }, upkeep: 's', up: 0, h2: 100, work: true,
-    desc: 'Делает компоненты из сырья или планетарную единицу (§8.14)' },
+    upgrades: {
+      2: { tier: 1, comp: { struct: 300, compute: 200, bio: 50 }, raw: { rareEarth: 40000, niobium: 35000, tritium: 20000, flora: 5000 } },
+      3: { tier: 2, comp: { struct: 300, compute: 200, bio: 50 }, raw: { bitumen: 120000, superdense: 40000, isotopes: 30000, antimatter: 10000 } },
+    }, maxLvl: 3,
+    desc: 'Делает компоненты из сырья или планетарную единицу (§8.14). Уровень производства — наивысший уровень компонентов' },
   { key: 'farm', name: 'Фермы', cost: { s: 1500, c: 1500, b: 2000, uniq: 1 }, upkeep: 'e', up: 700, h2: 30, work: true,
     desc: 'Пища: из биомассы 1 к 1 либо искусственно за сырьё и энергию' },
-  { key: 'mfarm', name: 'Майнинг-ферма', cost: { uniq: 1 }, comp: { struct: 80, compute: 240 }, upkeep: 'c', up: 700, h2: 0, work: true,
+  { key: 'mfarm', name: 'Майнинг-ферма', cost: {}, comp: { struct: 80, compute: 240 }, upkeep: 'c', up: 700, h2: 0, work: true,
     desc: 'Жжёт энергию в крипту — ею платят рабочим' },
   { key: 'dome', name: 'Купол', cost: { s: 1100, c: 1100, b: 1100, uniq: 1 }, upkeep: 's', up: 500, h2: 100, work: false,
     desc: 'Жильё: предел населения 10 на уровень. Содержится силикатами и водородом' },
-  { key: 'port', name: 'Космодром', cost: { uniq: 1 }, comp: { struct: 400, compute: 200 }, upkeep: 's', up: 700, h2: 40, work: true,
+  // Космодром — из компонентов 2 УРОВНЯ (решение пользователя 2026-11-28: «космодром нужно делать из
+  // компонентов второго уровня»). compTier — уровень компонентов в цене здания, по умолчанию 1;
+  // ведётся на prices.html вместе с ценой.
+  { key: 'port', name: 'Космодром', cost: {}, comp: { struct: 400, compute: 200 }, compTier: 2, upkeepDays: 15, upkeep: 's', up: 700, h2: 40, work: true,
     desc: 'Собирает корабли из компонентов колонии' },
+  // ОЧИСТНЫЕ СООРУЖЕНИЯ — снижают токсичность планеты на 10 (решение пользователя: «здание,
+  // улучшающее экологию на 10»). Сами не загрязняют. Решения пользователя 2026-11-28: строятся из
+  // компонентов 2 УРОВНЯ; «улучшение здания — каждое уменьшает ещё и радиацию — за компоненты 3 уровня;
+  // цену определи разумно относительно других зданий и реального мира».
+  // Цена (подбор, ДОПУЩЕНИЕ — правится на prices.html): 100 конструктивных + 60 ЭВМ 2 ур. ≈ 1,66 шахты —
+  // промышленная очистная установка, как производство (1,7) — дешевле фермы (1,9) и космодрома (6,1).
+  // Улучшение (upgrade) — радиационная защита: тяжёлая экранирующая масса, конструктивные 3 уровня
+  // (в них сверхплотные минералы): 60 конструктивных + 20 ЭВМ 3 ур. ≈ 0,94 шахты за ступень, −10 радиации
+  // за ступень, до 3 уровня (ДОПУЩЕНИЕ). Энергия растёт с уровнем (h2 × уровень).
+  { key: 'eco', name: 'Очистные сооружения', cost: {}, comp: { struct: 100, compute: 60 }, compTier: 2,
+    upgrade: { comp: { struct: 60, compute: 20 }, tier: 3, maxLvl: 3, radiation: 10 },
+    upkeep: 's', up: 0, h2: 50, work: true,
+    desc: 'Снижают токсичность планеты на 10; улучшение (компоненты 3 ур.) — ещё −10 радиации за ступень' },
+  // ЗДАНИЯ ИЗ ТЗ §8.7, КОТОРЫХ ЕЩЁ НЕТ В ИГРЕ (замечание пользователя 2026-11-28: «это не все типы
+  // зданий, что есть в игре»). Стоят в списке, чтобы пользователь задал им цену на prices.html
+  // (сырьё, компоненты, их уровень); строить нельзя (todo), пока не сделано их действие.
+  // Карьер не добавлен — его пользователь заменил генератором.
+  // ЦЕНЫ (решения пользователя 2026-11-28, в ШТУКАХ сырья; шахта = 10 000 единиц, компонент 2 уровня =
+  // 30 единиц сырья, 3 уровня = 20): терраформирование — компоненты 3 ур., ~80 шахт (поднято пользователем с 50) («делает планету по
+  // условиям пригодной для жизни и делает на ней посев жизни»); казарма — компоненты 2 ур., ~5 шахт, «много
+  // битумов»; планетарная батарея — компоненты 2 ур. (цену не назвал — ~4 шахты, ДОПУЩЕНИЕ); космический
+  // лифт — 3 ур., «много битумов», ~8 шахт; станция — «планетарная и орбитальная станция одно и то же»,
+  // 3 ур., «много битумов», ~30 шахт; уничтожитель планет — ~100 шахт (поднято пользователем с 30; 3 ур. — ДОПУЩЕНИЕ); фабрика роботов —
+  // 3 ур., ~50 шахт. Научный центр — 3 ур., «много биоресурсов», ~25 шахт: 2 000 / 4 000 / 6 000 / 500
+  // (констр. / ЭВМ / био / энерг.); обсерватория — 3 ур., больше вычислительных, цену не назвал — ~10 шахт,
+  // ДОПУЩЕНИЕ: 1 500 / 3 000 / 0 / 500.
+  // «Много битумов» — НЕ сырьё, а биохимические компоненты, в которые битумы входят (поправка
+  // пользователя: «битумы — часть компонента»; биохимический 3 ур. = 7 микробиоты + 7 флоры + 6 битумов):
+  // казарма — 1 000 биохимических 2 ур. (в них битумов нет), лифт — 2 000 и станция — 8 000 биохимических 3 ур.
+  { key: 'barracks', name: 'Казарма', cost: {}, comp: { struct: 450, compute: 220, bio: 1000 }, compTier: 2, upkeep: 's', up: 0, h2: 0, work: true, todo: true,
+    desc: 'Готовит армии для космических абордажей и планетарных войн. Ещё не работает' },
+  { key: 'battery', name: 'Планетарная батарея', cost: {}, comp: { struct: 800, compute: 400, energy: 130 }, compTier: 2, upkeep: 's', up: 0, h2: 0, work: true, todo: true,
+    desc: 'Защищает планету от вторжений и обстрелов. Ещё не работает' },
+  { key: 'science', name: 'Научный центр', cost: {}, comp: { struct: 2000, compute: 4000, bio: 6000, energy: 500 }, compTier: 3, upkeepDays: 15, upkeep: 'c', up: 0, h2: 0, work: true, todo: true,
+    desc: 'Открывает технологии своего уровня и чертежи уникальных изделий. Ещё не работает' },
+  { key: 'elevator', name: 'Космический лифт', cost: {}, comp: { struct: 1500, compute: 500, bio: 2000 }, compTier: 3, upkeep: 's', up: 0, h2: 0, work: true, todo: true,
+    desc: 'Дёшево поднимает грузы на орбиту. Ещё не работает' },
+  { key: 'destroyer', name: 'Уничтожитель планет', cost: {}, comp: { struct: 20000, compute: 10000, energy: 20000 }, compTier: 3, upkeep: 'e', up: 0, h2: 0, work: true, todo: true,
+    desc: 'Орудие для межпланетных выстрелов. Ещё не работает' },
+  { key: 'observatory', name: 'Обсерватория', cost: {}, comp: { struct: 1500, compute: 3000, energy: 500 }, compTier: 3, upkeep: 'c', up: 0, h2: 0, work: true, todo: true,
+    desc: 'Снимает туман войны в радиусе, который растёт с уровнем. Ещё не работает' },
+  { key: 'terraform', name: 'Терраформирование', cost: {}, comp: { struct: 11200, compute: 8000, bio: 12800, energy: 8000 }, compTier: 3, upkeepDays: 90, upkeep: 'e', up: 0, h2: 0, work: true, todo: true,
+    desc: 'Делает планету пригодной для жизни по условиям и засевает на ней жизнь. Ещё не работает' },
+  { key: 'robots', name: 'Фабрика роботов', cost: {}, comp: { struct: 8000, compute: 14000, energy: 3000 }, compTier: 3, upkeep: 'c', up: 0, h2: 0, work: true, todo: true,
+    desc: 'Заменяет население на работах. Ещё не работает' },
   // Газовый гигант: поверхности нет, корабль висит на низкой орбите и черпает газ с верхних
   // слоёв. Строить там можно только станцию, и эта ветка пока НЕ РАЗВИВАЕТСЯ (решение
   // пользователя) — кнопка есть, постройка отказывает.
-  { key: 'station', name: 'Орбитальная станция', cost: { uniq: 1 }, comp: { struct: 600, compute: 400 },
+  { key: 'station', name: 'Орбитальная станция', cost: {}, comp: { struct: 4000, compute: 2000, bio: 8000, energy: 1000 }, compTier: 3,
     upkeep: 's', up: 700, h2: 50, work: true, orbital: true, todo: true,
-    desc: 'Единственная постройка газового гиганта. Ветка пока не развивается' },
+    desc: 'Станция на орбите планеты (планетарная и орбитальная — одно и то же). Ещё не работает' },
 ];
+// ЦЕНА ЗДАНИЙ — ТОЛЬКО КОМПОНЕНТЫ, кроме стартовых зданий 1 уровня (шахты, генератор, производство,
+// фермы, купол — сырьё): решение пользователя 2026-11-28 «у нас все здания, кроме производств, стоят
+// только компоненты — ну и кроме зданий первого уровня, стартовых». Планетарная единица у майнинг-фермы,
+// космодрома и станции снята (временный пропуск §8.5 остаётся у ферм и купола).
 const COL_BUILDING = Object.fromEntries(COL_BUILDINGS.map(b => [b.key, b]));
 // Кого укомплектовывают первым, если населения или крипты не хватает на всех (правило v2).
-const COL_PRIO = { gen: 0, mine_s: 1, mine_c: 1, mine_e: 1, mine_b: 1, farm: 2, mfarm: 3, prod: 4, port: 5, station: 5, dome: 99 };
+// Производство — раньше майнинг-фермы: без него нет планетарных единиц, а значит ни куполов, ни
+// ферм; когда жителей стало меньше мест, оно оставалось без рабочего, и колония не могла расти.
+const COL_PRIO = { gen: 0, mine_s: 1, mine_c: 1, mine_e: 1, mine_b: 1, farm: 2, prod: 2, mfarm: 3, eco: 4, port: 5, station: 5, dome: 99,
+  barracks: 5, battery: 5, science: 4, elevator: 5, destroyer: 6, observatory: 5, terraform: 4, robots: 4 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ПРИГОДНОСТЬ ПЛАНЕТЫ ДЛЯ РАСЫ (ТЗ §8.21). Множитель каждого фактора относительно нормы расы
+// (RACES, data.js): 'less' — меньше лучше (ниже нормы > 1, на 100 — 0), 'near' — норма лучшая,
+// отклонение в любую сторону понижает (не ниже min). Общий множитель — произведение; он же —
+// множитель рождаемости (Colony.popRates).
+function raceNormK(n, x) {
+  if (x == null || !n) return 1;
+  if (n.lethal && (x < n.lethal[0] || x > n.lethal[1])) return 0;               // смертельно
+  if (n.kind === 'less') return x >= 100 ? 0 : Math.min(n.max || Infinity, (100 - x) / (100 - n.value));
+  return Math.max(n.min || 0, Math.exp(-Math.pow((x - n.value) / (n.spread || 1), 2)));
+}
+// Пища: share — доля съеденного (нехватка), surplus — мощность ферм / нужда (избыток).
+function raceFoodK(race, share, surplus) {
+  if (share < 1 - 1e-9) return Math.max(0, share);
+  const F = race.food || { max: 1, gain: 0 };
+  return Math.min(F.max, 1 + Math.max(0, (surplus || 1) - 1) * F.gain);
+}
+function raceFactors(env, tox, raceKey) {
+  const race = RACES[raceKey || RACE_DEFAULT] || RACES[RACE_DEFAULT], N = race.norm;
+  const k = { race: race.name,
+    tox: raceNormK(N.toxicity, tox != null ? tox : env.toxicity),
+    rad: raceNormK(N.radiation, env.radiation),
+    temp: raceNormK(N.tempK, env.tempK),
+    press: raceNormK(N.pressure, env.pressure != null ? env.pressure : (env.atmo ? N.pressure.value : 0)) };
+  k.all = k.tox * k.rad * k.temp * k.press;
+  k.critical = ['tox', 'rad', 'temp', 'press'].filter(x => k[x] <= 0);
+  return k;
+}
 
 const Colony = (() => {
   const tickAt = ms => Math.floor(ms / COL.TICK_MS);
@@ -195,8 +340,14 @@ const Colony = (() => {
       // содержание 0 подменялось на 700 — и шахты, которые пользователь сделал бесплатными,
       // снова начинали требовать сырьё, едва в data/prices.json появлялась строка.
       B.cost = { s: +v.s || 0, c: +v.c || 0, b: +v.b || 0, uniq: +v.uniq || 0 };
+      // Особое сырьё — конкретный ресурс (например, «много битумов»), сверх сырья по группам.
+      if (v.raw) { const raw = {}; for (const k in v.raw) if (+v.raw[k] > 0) raw[k] = +v.raw[k]; if (Object.keys(raw).length) B.cost.raw = raw; }
       if (v.up != null) B.up = +v.up || 0;
       if (v.h2 != null) B.h2 = +v.h2 || 0;
+      if (v.compTier >= 1 && v.compTier <= 3) B.compTier = +v.compTier;   // уровень компонентов в цене
+      if (+v.upkeepDays > 0) B.upkeepDays = +v.upkeepDays;                 // содержание компонентами: срок окупаемости
+      if (v.upgrade && v.upgrade.comp) B.upgrade = Object.assign({}, B.upgrade || {}, v.upgrade);  // цена улучшения
+      if (v.upgrades) { B.upgrades = Object.assign({}, B.upgrades || {}, v.upgrades); if (v.maxLvl) B.maxLvl = +v.maxLvl; }
       if (v.comp) { // цена в компонентах, если она задана
         B.comp = {};
         for (const m in v.comp) if (+v.comp[m] > 0) B.comp[m] = +v.comp[m];
@@ -328,7 +479,8 @@ const Colony = (() => {
   function mineOutput(hex, kind, lvl) { // ед./такт по каждому ресурсу группы
     const out = {};
     const g = COL_BUILDING[kind].group;
-    for (const k of COL_GROUPS[g]) { const v = COL.MINE_K * lvl * (hex.res[k] || 0); if (v) out[k] = v; }
+    const kL = COL.MINE_LVL[lvl] || 1;
+    for (const k of COL_GROUPS[g]) { const v = COL.MINE_K * kL * (hex.res[k] || 0); if (v) out[k] = v; }
     return out;
   }
   // Корабельная добыча: ВСЕ ресурсы гекса, вдвое слабее шахты 1 уровня.
@@ -342,7 +494,10 @@ const Colony = (() => {
   // Её держит склад (добыча кладёт водород первым, пока бронь не полна) и её же не трогают
   // авторейсы: корабль берёт водород на съёмы только сверх брони (js/routes.js).
   const RESERVE_TICKS = 6;
-  const h2Reserve = col => live(col).reduce((a, b) => a + (COL_BUILDING[b.kind].h2 || 0) * b.lvl, 0) * RESERVE_TICKS;
+  // Энергия здания за такт: у шахт — по COL.MINE_H2 (×1,5 / ×2 на 2 / 3 уровне, решение пользователя),
+  // у прочих зданий — × уровень.
+  const h2Of = b => (COL_BUILDING[b.kind].h2 || 0) * (COL_BUILDING[b.kind].group ? (COL.MINE_H2[b.lvl] || 1) : b.lvl);
+  const h2Reserve = col => live(col).reduce((a, b) => a + h2Of(b), 0) * RESERVE_TICKS;
 
   // ---------- такт колонии ----------
   function step(col, surf) {
@@ -369,7 +524,7 @@ const Colony = (() => {
     const byPrio = L.slice().sort((a, b) => COL_PRIO[a.kind] - COL_PRIO[b.kind]);
     let h2Need = 0, h2Got = 0;
     for (const b of byPrio) {
-      const q = (COL_BUILDING[b.kind].h2 || 0) * b.lvl;
+      const q = h2Of(b);
       b.off = false;
       if (q <= 0) continue;
       h2Need += q;
@@ -400,11 +555,13 @@ const Colony = (() => {
     // имея полный склад. Проверено прогоном: без этого 0 единиц за 160 тактов.
     let spill = 0;
     const mined = {};
+    const eco = ecology(col, surf);
     for (const b of L) {
       if (!COL_BUILDING[b.kind].group || !manned.has(b) || b.off) continue;
       const h = hexAt(b.q, b.r); if (!h) continue;
       const out = mineOutput(h, b.kind, b.lvl);
-      for (const k in out) mined[k] = (mined[k] || 0) + out[k];
+      const k0 = COL_BUILDING[b.kind].group === 'b' ? eco.bio : 1;    // токсичность снижает базу биомассы
+      for (const k in out) mined[k] = (mined[k] || 0) + out[k] * k0;
     }
     const rare = k => (RESOURCE_STATS[k] ? RESOURCE_STATS[k].avg : 1);
     // СНАЧАЛА ТОПЛИВО НА СВОЮ ЭНЕРГЕТИКУ, и только потом редкое. Водород — самый
@@ -436,8 +593,13 @@ const Colony = (() => {
 
     // 2. стройка
     if (col.site && --col.site.left <= 0) {
-      col.buildings.push({ kind: col.site.kind, q: col.site.q, r: col.site.r, lvl: 1, missed: 0 });
-      note(col, 'Готово: ' + COL_BUILDING[col.site.kind].name);
+      if (col.site.upgrade) {                                     // улучшение стоящего здания
+        const b = live(col).find(x => x.kind === col.site.kind && x.q === col.site.q && x.r === col.site.r);
+        if (b) { b.lvl++; note(col, 'Улучшено: ' + COL_BUILDING[b.kind].name + ' — уровень ' + b.lvl); }
+      } else {
+        col.buildings.push({ kind: col.site.kind, q: col.site.q, r: col.site.r, lvl: 1, missed: 0 });
+        note(col, 'Готово: ' + COL_BUILDING[col.site.kind].name);
+      }
       col.site = null;
     }
 
@@ -453,52 +615,95 @@ const Colony = (() => {
     // пользователя: «шахты делаем бесплатными для содержания»).
     if (col.t % COL.UPKEEP_EVERY === 0) for (const b of L) {
       const B = COL_BUILDING[b.kind], g = B.upkeep, q = (B.up || 0) * b.lvl;
-      if (q <= 0) { b.missed = 0; continue; }
-      if (inGroup(col, g) >= q) { spendIn(col, g, q); b.missed = 0; }
-      else if (++b.missed >= COL.GRACE) {
+      const cu = compUpkeep(B, b);                    // компонентами — у небазовых и улучшенных шахт
+      if (q <= 0 && !cu) { b.missed = 0; continue; }
+      const rawOk = q <= 0 || inGroup(col, g) >= q;
+      // need: ключ компонента склада → сколько за час
+      const need = {};
+      if (cu && cu.multi) for (const k in cu.multi) { const [m, t] = k.split('@'); need[m + t] = (need[m + t] || 0) + cu.multi[k]; }
+      else if (cu) for (const m in cu.comp) need[m + cu.tier] = cu.comp[m] * b.lvl;
+      const compOk = Object.keys(need).every(k => ((col.comp || {})[k] || 0) >= need[k] - 1e-9);
+      if (rawOk && compOk) {
+        if (q > 0) spendIn(col, g, q);
+        for (const k in need) col.comp[k] -= need[k];
+        b.missed = 0;
+      } else if (++b.missed >= COL.GRACE) {
         b.dead = true;
-        note(col, 'Разобрано за долги: ' + COL_BUILDING[b.kind].name);
+        note(col, 'Разобрано за долги: ' + COL_BUILDING[b.kind].name + (compOk ? '' : ' (нет компонентов на содержание)'));
       }
     }
 
     // 4. пища и население
     const eaters = col.pop;
-    const cap = L.reduce((a, b) => a + (b.kind === 'farm' && manned.has(b) && !b.off ? COL.FARM_CAP * b.lvl : 0), 0);
-    const want = Math.min(cap, Math.max(0, eaters * COL.FOOD_KEEP - col.food));
-    const bio = Math.min(want, inGroup(col, 'b'));
-    let art = want - bio;
-    if (art > 0) {
-      art = Math.min(art, Math.floor(burn(col, art * COL.FOOD_ART_EN) / COL.FOOD_ART_EN));
-      art = Math.min(art, Math.floor(spendIn(col, 's', art * COL.FOOD_ART_RAW) / COL.FOOD_ART_RAW));
+    const farmL = L.reduce((a, b) => a + (b.kind === 'farm' && manned.has(b) && !b.off ? b.lvl : 0), 0);
+    // Запас пищи — на FOOD_KEEP тактов жителям и на дозарядку жизнеобеспечения своих кораблей
+    // (col.shipFood — сколько им не хватило при последнем вылете).
+    // Растущее население ест больше нормы (RACES.food.growEat), пока пищи вдоволь: росло в прошлом
+    // такте — фермы перерабатывают и запасают на усиленный паёк.
+    const raceF = (RACES[col.race || RACE_DEFAULT] || RACES[RACE_DEFAULT]).food || {};
+    const growing = !!(col.popRates && col.popRates.births > 0 && col.popRates.food >= 1);
+    const eatK = growing ? (raceF.growEat || 1) : 1;
+    const want = Math.max(0, eaters * COL.FOOD_PER_POP * eatK * COL.FOOD_KEEP + (col.shipFood || 0) - col.food);
+    // Пища из сырья по выходу FOOD_YIELD (Фибоначчи): микробиота 3, флора 5, искусственная из водорода 2.
+    const Y = COL.FOOD_YIELD, bioCap = COL.FARM_CAP * COL.FOOD_PER_POP * farmL, artCap = COL.FARM_ART_CAP * COL.FOOD_PER_POP * farmL;
+    let bio = 0;
+    for (const k of ['microbiota', 'flora']) {
+      const room = Math.min(want, bioCap) - bio; if (room <= 1e-9) break;
+      const units = Math.min(col.stock[k] || 0, room / Y[k]);
+      if (units > 0) { col.stock[k] -= units; bio += units * Y[k]; }
     }
-    if (bio > 0) spendIn(col, 'b', bio);
-    col.food += Math.min(bio + art, roomLeft(col)); // место, которое освободили биомасса и сырьё, уже учтено
-    const eaten = Math.min(col.food, eaters * COL.FOOD_PER_POP);
+    // Силикаты на искусственную пищу — только сверх запаса на содержание зданий группы (upReserve).
+    const sSpare = () => Math.max(0, Math.min(col.stock.silicates || 0, inGroup(col, 's') - upReserve(col, 's')));
+    let art = Math.min(Math.max(0, want - bio), artCap, sSpare() * Y.silicates);
+    if (art > 0) col.stock.silicates -= art / Y.silicates;
+    // Мощность ферм за такт (для избытка пищи в popRates): что фермы могли бы сделать из того, что есть.
+    const cap = Math.min(bioCap, (col.stock.microbiota || 0) * Y.microbiota + (col.stock.flora || 0) * Y.flora + bio)
+      + Math.min(artCap, sSpare() * Y.silicates + art);
+    const made = Math.min(bio + art, roomLeft(col));
+    col.food += made; // место, которое освободили биомасса и сырьё, уже учтено
+    const eaten = Math.min(col.food, eaters * COL.FOOD_PER_POP * eatK);   // растущие едят до ×growEat
     col.food -= eaten;
     const hungry = eaten < eaters * COL.FOOD_PER_POP - 1e-9;
-    col.popClock = (col.popClock || 0) + 1;
-    if (col.popClock >= COL.POP_TICKS) {
-      col.popClock = 0;
-      if (hungry) { col.pop = Math.max(col.floraBase || 0, col.pop - 1); note(col, 'Голод: население убыло'); }
-      else if (col.pop < domeCap(col)) { col.pop++; note(col, 'Население выросло до ' + col.pop); }
+    // НАСЕЛЕНИЕ: движение к ёмкости K (popRates). Дробные рождения и смерти копятся.
+    const popR = popRates(col, surf, made, eaten, eaters, cap);
+    if (popR.wipe) {
+      const why = popR.critical.map(x => ({ tox: 'токсичность', rad: 'радиация', temp: 'температура', press: 'давление', food: 'нет пищи' }[x])).join(', ');
+      note(col, 'Колония вымерла: ' + (why || 'жить невозможно') + ' (было ' + col.pop + ')');
+      col.pop = 0; col.birth = 0; col.death = 0;
+    } else {
+      col.birth = (col.birth || 0) + popR.births / COL.DAY_TICKS;
+      col.death = (col.death || 0) + popR.deaths / COL.DAY_TICKS;
+      if (!popR.births) col.birth = Math.min(col.birth, 1);
+      if (!popR.deaths) col.death = Math.min(col.death, 1);
+      while (col.death >= 1 && col.pop > 0) {
+        col.death -= 1; col.pop--;
+        note(col, (popR.food < 1 ? 'Голод' : popR.slots * Math.min(1, popR.Q) < popR.slots ? 'Тяжёлые условия' : 'Теснота') + ': население ' + col.pop);
+      }
+      while (col.birth >= 1) { col.birth -= 1; col.pop++; note(col, 'Родился житель: население ' + col.pop); }
     }
+    col.popRates = popR;   // для интерфейса
 
     // 5. крипта
     // Майнинг-ферма жжёт только ИЗЛИШЕК энергоносителей сверх брони (h2Reserve) — по тому же
     // порядку важности, что и вся энергия (COL_PRIO: шахты раньше фермы). Иначе ферма за такт
     // съедает 1 500 водорода, склад пустеет дочиста, и на следующем такте шахты стоят без энергии,
     // а кораблю нечем начать авторейс за новым водородом.
-    const mf = L.find(b => b.kind === 'mfarm' && manned.has(b) && !b.off);
+    // Работают ВСЕ майнинг-фермы с рабочими (раньше — только первая, и вторая ферма ничего не давала).
+    const mfLvl = L.reduce((a, b) => a + (b.kind === 'mfarm' && manned.has(b) && !b.off ? b.lvl : 0), 0);
     const enHave = COL_GROUPS.e.reduce((a, k) => a + (col.stock[k] || 0) * FUEL[k].yield, 0);
     const enSpare = Math.max(0, enHave - h2Reserve(col) * FUEL.hydrogen.yield);
-    const minted = mf ? burn(col, Math.min(COL.MFARM_EN * mf.lvl, enSpare)) * COL.TOKEN_PER_EN : 0;
+    const minted = mfLvl ? burn(col, Math.min(COL.MFARM_EN * mfLvl, enSpare)) * COL.TOKEN_PER_EN : 0;
     col.crypto = Math.max(0, col.crypto + minted - paid * COL.WAGE);
 
     // 6. производство: заказ игрока — компоненты на склад или уникальный ресурс планеты
     const pr = L.find(b => b.kind === 'prod' && manned.has(b) && !b.off);
     if (pr) {
       const order = col.order || { kind: 'uniq' };
-      if (order.kind === 'comp') {
+      if (order.kind === 'comp' && order.tier > pr.lvl) {
+        // Производство делает компоненты не выше своего уровня (решение пользователя).
+        if (!col.prodWarned) { col.prodWarned = true; note(col, 'Производство ' + pr.lvl + ' уровня не делает компоненты ' + order.tier + ' уровня — нужно улучшение'); }
+      } else if (order.kind === 'comp') {
+        col.prodWarned = false;
         const cost = compCost(order.mat, order.tier);
         let n = COL.PROD_COMP * pr.lvl;
         for (const k in cost) n = Math.min(n, Math.floor((col.stock[k] || 0) / cost[k]));
@@ -551,7 +756,7 @@ const Colony = (() => {
   function advance(col, surf, now) {
     const target = tickAt(now);
     let n = Math.min(Math.max(0, target - col.t), 4032);
-    while (n-- > 0) step(col, surf);
+    while (n-- > 0) { autoStep(col, surf, null); step(col, surf); }   // автостройка — если включена
     col.t = target;
     return col;
   }
@@ -584,24 +789,333 @@ const Colony = (() => {
   const withShip = (col, ship, g) => inGroup(col, g) +
     (ship ? COL_GROUPS[g].reduce((a, k) => a + ((ship.cargo || {})[k] || 0), 0) : 0);
 
+  // ---------- ЭКОЛОГИЯ: ТОКСИЧНОСТЬ ----------
+  // base — токсичность планеты (surf.env.toxicity); extra — зданий на гексах СВЕРХ первого (стройка
+  // тоже считается; очистные — нет, они не загрязняют); clean — очистных. tox = base + 10·extra −
+  // 10·clean, в пределах 0…100. bio — доля базы биомассы (1 − tox/100): добыча биомассы и база
+  // населения по флоре; growth — во сколько раз медленнее растёт население (1 + tox/100).
+  function ecology(col, surf) {
+    const per = {};
+    const at = b => { if (b.kind === 'eco') return; const k = b.q + ',' + b.r; per[k] = (per[k] || 0) + 1; };
+    live(col).forEach(at);
+    if (col.site) at(col.site);
+    const extra = Object.values(per).reduce((a, n) => a + Math.max(0, n - 1), 0);
+    const clean = live(col).filter(b => b.kind === 'eco').length;
+    const base = surf && surf.env && surf.env.toxicity != null ? surf.env.toxicity : 0;
+    const tox = Math.max(0, Math.min(COL.TOX_MAX, base + COL.TOX_PER_EXTRA * extra - COL.TOX_CLEAN * clean));
+    // Улучшенные очистные (уровень 2+) снимают радиацию: −10 за каждую ступень сверх первой.
+    const radCut = live(col).reduce((a, b) => a + (b.kind === 'eco' && COL_BUILDING.eco.upgrade ? (b.lvl - 1) * (COL_BUILDING.eco.upgrade.radiation || 0) : 0), 0);
+    const env = (surf && surf.env) || {};
+    return { base, extra, clean, tox, radCut, bio: 1 - tox / 100, radiation: Math.max(0, (env.radiation || 0) - radCut), atmo: env.atmo !== false, tempK: env.tempK };
+  }
+  // Множители рождаемости по условиям (0…1): токсичность, радиация, атмосфера, температура.
+  // Рождения и смерти за сутки (в жителях) — одна формула для такта и для интерфейса/проверок.
+  // made — сколько пищи сделано в такт, eaten/eaters — съедено и сколько едоков.
+  // Ёмкость и движение населения за сутки (в жителях). eaten/eaters — съедено и едоков в такт,
+  // farmCap — сколько пищи могут сделать фермы за такт (избыток мощностей).
+  function popRates(col, surf, made, eaten, eaters, farmCap) {
+    const race = RACES[col.race || RACE_DEFAULT] || RACES[RACE_DEFAULT];
+    const env = birthEnv(col, surf);
+    const need = eaters * COL.FOOD_PER_POP, pop = col.pop;
+    const share = need > 0 ? eaten / need : 1;
+    const food = need > 0 ? raceFoodK(race, share, (farmCap || 0) / need) : 1;
+    const Q = env.all * food;
+    const slots = domeCap(col), K = slots * Math.min(1, Q);
+    // Мгновенная гибель — только смертельный фактор среды или полное отсутствие пищи. Нет жилья
+    // (купол разобран) — это теснота: K = 0, люди уходят постепенно (POP_DECLINE).
+    const wipe = pop > 0 && (env.all <= 0 || (need > 0 && eaten <= 1e-9));
+    const births = pop > 0 && pop < K ? COL.POP_GROW * pop * (1 - pop / K) : 0;
+    const deaths = pop > K ? COL.POP_DECLINE * (pop - K) : 0;
+    return { births, deaths, net: births - deaths, K, Q, env: env.all, food, slots, wipe,
+      critical: env.critical.concat(need > 0 && eaten <= 1e-9 ? ['food'] : []) };
+  }
+  // Множители рождаемости по условиям планеты с поправкой колонии на токсичность (raceFactors).
+  function birthEnv(col, surf) {
+    const e = ecology(col, surf);
+    return raceFactors(Object.assign({}, (surf && surf.env) || {}, { radiation: e.radiation }), e.tox, col.race);
+  }
+  const hexBusy = (col, hex) => live(col).filter(b => b.q === hex.q && b.r === hex.r).length
+    + (col.site && col.site.q === hex.q && col.site.r === hex.r ? 1 : 0);
+
+  // ---------- АВТОСТРОЙКА ----------
+  // Решение пользователя: «научить колонию развиваться — строить новые здания и шахты, наращивать
+  // население»; включается переключателем (col.auto). Это та же логика, что была у «игрока» в
+  // прогоне tools/colony.js, — теперь она живёт здесь, а прогон вызывает её же (второй реализации
+  // нет). Раз в такт, когда стройка свободна:
+  //   1. энергия — добыча водорода меньше, чем едят здания (с запасом 1,3) → энергетическая шахта;
+  //   2. базовый набор по порядку: шахты трёх групп, производство, ферма, майнинг-ферма, купол,
+  //      генератор, биохимическая шахта (чего нет на планете — пропускает);
+  //   3. ПИЩА — фермы кормят меньше, чем едят (с запасом) → ферма;
+  //   4. НАСЕЛЕНИЕ — купол полон и не голодают → ещё купол (рост населения);
+  //   5. раз в сутки: нет сырья 3 уровня под планетарную единицу → шахта на таком гексе; группа
+  //      убывает → шахта, если гекс окупает свою энергию.
+  // Шахт не больше, чем рабочих: лишняя шахта по приоритету отнимает рабочего у майнинг-фермы.
+  // Место: шахты — на лучший по ценности гекс своей группы, где такой шахты ещё нет; прочее —
+  // на пустой гекс, где меньше ресурсов. Свободного гекса нет — на гекс с другим зданием, но это
+  // портит экологию, поэтому сначала всегда пустые.
+  const AUTO_PLAN = ['mine_e', 'mine_s', 'mine_c', 'prod', 'farm', 'mfarm', 'dome', 'gen', 'mine_b'];
+  function hexRank(surf, group) {
+    const weight = k => group === 'e' ? (COL.H2_PER_UNIT[k] || 1) : 1 / (RESOURCE_STATS[k] ? RESOURCE_STATS[k].avg : 1);
+    const t3 = COL_GROUPS[group][2];
+    return surf.hexes
+      .filter(h => COL_GROUPS[group].some(k => (h.res[k] || 0) > 0))
+      .map(h => ({ h, three: group !== 'e' && (h.res[t3] || 0) > 0 ? 1 : 0,
+        v: COL_GROUPS[group].reduce((a, k) => a + (h.res[k] || 0) * weight(k), 0) }))
+      // сначала гексы с сырьём 3 уровня — без него нет планетарной единицы (§8.5)
+      .sort((a, b) => b.three - a.three || b.v - a.v)
+      .map(x => x.h);
+  }
+  function autoHex(col, surf, kind, want3) {
+    const B = COL_BUILDING[kind];
+    const ok = h => !B.group || !col.buildings.some(b => !b.dead && b.q === h.q && b.r === h.r && b.kind === kind);
+    if (B.group) {
+      const list = hexRank(surf, B.group).filter(h => ok(h) && (!want3 || (h.res[COL_GROUPS[B.group][2]] || 0) > 0));
+      return list.find(h => hexBusy(col, h) === 0) || list[0] || null;   // пустой лучше, чем экология
+    }
+    const val = h => Object.keys(h.res).reduce((a, k) => a + (h.res[k] || 0) / (RESOURCE_STATS[k] ? RESOURCE_STATS[k].avg : 1), 0);
+    const list = surf.hexes.filter(ok).sort((a, b) => hexBusy(col, a) - hexBusy(col, b) || val(a) - val(b));
+    return list[0] || null;
+  }
+  // Заказ производству: сперва планетарная единица, потом компоненты на майнинг-ферму и космодром.
+  function autoOrder(col, surf) {
+    if (col.uniq < 1) return { kind: 'uniq' };
+    const L = live(col), jobs = L.filter(b => COL_BUILDING[b.kind].work).length;
+    const nMf = L.filter(b => b.kind === 'mfarm').length;
+    const moreMf = nMf > 0 && jobs >= nMf * COL.MFARM_CRYPTO / COL.WAGE && col.pop > jobs;   // нужна ещё ферма
+    // Очистные нужны (токсичность ≥ 30 и есть биомасса или фермы), а их нет — компоненты под них.
+    const wantEco = surf && !col.buildings.some(b => b.kind === 'eco' && !b.dead) && ecology(col, surf).tox >= 30
+      && L.some(b => b.kind === 'mine_b' || b.kind === 'farm');
+    const prodLvl = L.filter(b => b.kind === 'prod').reduce((a, b) => Math.max(a, b.lvl), 0);
+    col.needProdUp = false;
+    // Компоненты на содержание небазовых зданий — запас на сутки, раньше всего остального.
+    for (const b of L) {
+      const cu = compUpkeep(COL_BUILDING[b.kind], b); if (!cu) continue;
+      const list = cu.multi ? Object.keys(cu.multi).map(k => { const [m, t] = k.split('@'); return [m, +t, cu.multi[k]]; })
+        : Object.keys(cu.comp).map(m => [m, cu.tier, cu.comp[m] * b.lvl]);
+      for (const [m, t, perH] of list) if (t <= prodLvl && ((col.comp || {})[m + t] || 0) < perH * 24) return { kind: 'comp', mat: m, tier: t };
+    }
+    for (const key of ['mfarm', 'eco', 'port']) {
+      if (key === 'eco' && !wantEco) continue;
+      if (col.buildings.some(b => b.kind === key) && !(key === 'mfarm' && moreMf)) continue;
+      const B = COL_BUILDING[key], tier = B.compTier || 1;
+      for (const m in B.comp || {}) {
+        if (((col.comp || {})[m + tier] || 0) >= B.comp[m]) continue;
+        // Компоненты выше уровня производства не сделать — сперва компоненты на его улучшение.
+        if (tier > prodLvl && prodLvl > 0) {
+          col.needProdUp = true;
+          const U = upgradeSpec(COL_BUILDING.prod, prodLvl + 1);
+          if (U) for (const um in U.comp || {}) if (((col.comp || {})[um + U.tier] || 0) < U.comp[um]) return { kind: 'comp', mat: um, tier: U.tier };
+          return { kind: 'uniq' };
+        }
+        return { kind: 'comp', mat: m, tier };
+      }
+    }
+    return { kind: 'uniq' };
+  }
+  // НУЖДЫ КОЛОНИИ — для путевого листа шаттла (решение пользователя: «колония должна формировать
+  // путевой лист для шаттла при каждом его вылете по своим потребностям»). Недостача по группам
+  // сырья на ближайшие часы: ближайшая постройка автостройки, содержание зданий на 6 часов, энергия
+  // зданиям и майнинг-фермам на 6 часов, биомасса на пищу на 6 часов, минус то, что уже на складе.
+  // Вес ресурса — сколько стоит единица для колонии: группа в недостаче — 1 (энергия — в «водородах»),
+  // в достатке — 0,02 (возьмёт, если по пути); сырьё 3 уровня, пока нет планетарной единицы, — +2.
+  const NEED_HOURS = 6;
+  function needs(col) {
+    const L = live(col), def = { s: 0, c: 0, e: 0, b: 0 };
+    const next = AUTO_PLAN.find(k => !col.buildings.some(b => b.kind === k && !b.dead));
+    if (next) for (const g of ['s', 'c', 'b']) def[g] += COL_BUILDING[next].cost[g] || 0;
+    for (const b of L) {
+      const B = COL_BUILDING[b.kind];
+      if (B.up) def[B.upkeep] += B.up * b.lvl * NEED_HOURS;
+      if (B.h2) def.e += h2Of(b) * COL.UPKEEP_EVERY * NEED_HOURS;
+      if (b.kind === 'mfarm') def.e += COL.MFARM_H2 * b.lvl * COL.UPKEEP_EVERY * NEED_HOURS;
+    }
+    def.b += (col.pop || 0) * COL.FOOD_PER_POP * COL.UPKEEP_EVERY * NEED_HOURS / COL.FOOD_YIELD.microbiota;   // в единицах микробиоты
+    for (const g in def) def[g] = Math.max(0, def[g] - inGroup(col, g));
+    const t3 = !uniqPick(col);
+    const w = {};
+    for (const g in COL_GROUPS) COL_GROUPS[g].forEach((k, i) => {
+      // битумы несъедобны — нужда в биомассе (пища) их не касается
+      const base = def[g] > 0 && k !== 'bitumen' ? (g === 'e' ? COL.H2_PER_UNIT[k] || 1 : g === 'b' ? COL.FOOD_YIELD[k] / COL.FOOD_YIELD.microbiota : 1) : 0.02;
+      w[k] = base + (t3 && i === 2 && (col.stock[k] || 0) < COL.UNIQ_RAW ? 2 : 0);
+    });
+    return { def, w };
+  }
+
+  function autoStep(col, surf, ship) {
+    if (!col.auto) return null;
+    col.order = autoOrder(col, surf);
+    if (col.site) return null;
+    const L = live(col);
+    const jobs = L.filter(b => COL_BUILDING[b.kind].work).length;
+    const hexAt = (q, r) => surf.hexes.find(h => h.q === q && h.r === r);
+    const h2In = L.reduce((a, b) => {
+      if (COL_BUILDING[b.kind].group !== 'e') return a;
+      const h = hexAt(b.q, b.r); if (!h) return a;
+      const out = mineOutput(h, b.kind, b.lvl);
+      return a + Object.keys(out).reduce((v, k) => v + out[k] * (COL.H2_PER_UNIT[k] || 1), 0);
+    }, 0);
+    const h2Out = L.reduce((a, b) => a + h2Of(b)
+      + (COL_BUILDING[b.kind].upkeep === 'e' ? (COL_BUILDING[b.kind].up || 0) * b.lvl / COL.UPKEEP_EVERY : 0), 0);
+    const skip = col.autoSkip = col.autoSkip || {};
+    const have = k => col.buildings.some(b => b.kind === k && !b.dead);
+    // Рабочих мест не больше, чем жителей, И не больше, чем окупают майнинг-фермы: ферма 1 уровня
+    // платит MFARM_CRYPTO / WAGE = 10 рабочим. Раньше автостройка набирала 14–15 мест на одну ферму,
+    // крипта уходила в минус, и колония гибла на 8-е сутки.
+    const nMf = L.filter(b => b.kind === 'mfarm').reduce((a, b) => a + b.lvl, 0);
+    const payable = nMf > 0 ? Math.floor(nMf * COL.MFARM_CRYPTO / COL.WAGE) : Math.floor(COL.MFARM_CRYPTO / COL.WAGE);
+    const workersFree = jobs < Math.min(col.pop, payable);
+    // Кандидаты по порядку важности; строится ПЕРВЫЙ, на который хватает ресурсов. Раньше первый же
+    // кандидат без планетарной единицы (ферма, купол) занимал очередь, и до шахт дело не доходило.
+    const cands = [];
+    const add = (kind, why, want3) => { const h = autoHex(col, surf, kind, want3); if (h) cands.push({ kind, hex: h, why }); return !!h; };
+    // 1. энергия: зданиям (с запасом 1,3) и майнинг-ферме — ей нужно MFARM_H2 водорода за такт, иначе
+    //    она не покроет жалованье
+    const mfNeed = have('mfarm') ? COL.MFARM_H2 : 0;
+    const starving = h2In < h2Out * 1.3;
+    if (!skip.mine_e && (starving || (h2In < h2Out * 1.3 + mfNeed && workersFree)))
+      add('mine_e', starving ? 'не хватает энергии' : 'энергия на майнинг-ферму');
+    // 2. базовый набор
+    for (const k of AUTO_PLAN) {
+      if (have(k) || skip[k]) continue;
+      if (!add(k)) { skip[k] = true; note(col, 'Автостройка: на планете нет места или ресурса для «' + COL_BUILDING[k].name + '»'); }
+    }
+    // 3. пища: фермы кормят меньше, чем едят жители (с запасом)
+    // Ферма из биомассы кормит 60, без биомассы (искусственная пища) — 10: на безжизненной планете
+    // ферм нужно вшестеро больше.
+    const edible = (col.stock.microbiota || 0) + (col.stock.flora || 0);   // битумы несъедобны
+    const farmCap = L.filter(b => b.kind === 'farm').reduce((a, b) => a + (edible * COL.FOOD_YIELD.microbiota > col.pop * COL.FOOD_PER_POP * COL.FOOD_KEEP ? COL.FARM_CAP : COL.FARM_ART_CAP) * b.lvl, 0);
+    if (have('farm') && farmCap < col.pop * 1.5) add('farm', 'не хватает пищи');   // мощность — в людях
+    // 3б. ещё майнинг-ферма: жителей больше, чем окупают фермы, — новая ферма даст ещё 10 мест
+    if (have('mfarm') && jobs >= payable && col.pop > jobs) add('mfarm', 'жителей больше, чем окупает крипта');
+    // 3в. токсичность: если от неё уже страдает биомасса — очистные сооружения
+    { const e = ecology(col, surf); if (e.tox >= 30 && (have('mine_b') || have('farm'))) add('eco', 'токсичность ' + e.tox); }
+    // 4. население: купол полон, никто не голодает → новый купол. Только когда майнинг-ферма уже
+    //    стоит: купол тоже просит планетарную единицу, и раньше он съедал её у фермы.
+    // Купол — когда занято 80 % мест: рождениям нужно свободное жильё (popRates: × свободная доля).
+    const K = col.popRates ? col.popRates.K : domeCap(col);
+    if (have('dome') && have('mfarm') && col.pop >= 0.8 * K && col.food >= col.pop * COL.FOOD_PER_POP) add('dome', 'жильё на исходе — растим население');
+    // 5. раз в сутки — шахты там, где просело
+    if (col.t % COL.DAY_TICKS === 0) {
+      if (!uniqPick(col)) {
+        let best = null;
+        for (const g in COL_GROUPS) {
+          const h = autoHex(col, surf, 'mine_' + g, true); if (!h) continue;
+          const v = h.res[COL_GROUPS[g][2]] || 0;
+          if (!best || v > best.v) best = { kind: 'mine_' + g, hex: h, v, why: 'нужно сырьё 3 уровня' };
+        }
+        if (best) cands.push(best);
+      }
+      const hist = col.autoHist || {};
+      for (const g of ['e', 's', 'c']) {
+        if (hist[g] == null || inGroup(col, g) >= hist[g]) continue;
+        const h = autoHex(col, surf, 'mine_' + g); if (!h) continue;
+        const perHour = COL.UPKEEP_EVERY * COL.MINE_K * COL_GROUPS[g].reduce((a, k) => a + (h.res[k] || 0), 0);
+        if (perHour <= (COL_BUILDING['mine_' + g].up || 0) + COL.UPKEEP_EVERY * (COL_BUILDING['mine_' + g].h2 || 0)) continue;
+        cands.push({ kind: 'mine_' + g, hex: h, why: COL_GROUP_NAME[g].toLowerCase() + ' просели' });
+      }
+      col.autoHist = { s: inGroup(col, 's'), c: inGroup(col, 'c'), e: inGroup(col, 'e') };
+    }
+    // Улучшить производство, если есть всё на улучшение и нужны компоненты выше его уровня.
+    const prodB = L.find(b => b.kind === 'prod');
+    if (prodB && col.needProdUp && !canUpgrade(col, prodB)) {
+      upgrade(col, prodB);
+      note(col, 'Автостройка: улучшение производства до ' + (prodB.lvl + 1) + ' уровня');
+      return { kind: 'prod', hex: { q: prodB.q, r: prodB.r }, why: 'улучшение' };
+    }
+    for (const plan of cands) {
+      // Рабочих мест не больше, чем жителей, — кроме энергии (на ней всё стоит) и купола (рабочий
+      // не нужен): лишняя шахта по приоритету отнимает рабочего у майнинг-фермы.
+      if (COL_BUILDING[plan.kind].work && !(plan.kind === 'mine_e' && starving) && plan.kind !== 'mfarm' && !workersFree) continue;
+      if (build(col, plan.kind, plan.hex, false, ship || null)) continue;   // не хватает ресурсов — следующий
+      if (plan.why) note(col, 'Автостройка: ' + COL_BUILDING[plan.kind].name + ' — ' + plan.why);
+      if (plan.kind !== 'eco' && hexBusy(col, plan.hex) > 1) note(col, 'Автостройка: гекс ' + plan.hex.q + ', ' + plan.hex.r + ' уже занят — токсичность +' + COL.TOX_PER_EXTRA);
+      return plan;
+    }
+    return null;
+  }
+
+  // Содержание компонентами за час (null — нет): небазовое здание, цена которого в компонентах.
+  const BASIC = new Set(['mine_s', 'mine_c', 'mine_e', 'mine_b', 'gen', 'prod', 'farm', 'dome', 'mfarm']);
+  function compUpkeep(B, b) {
+    // Улучшенная шахта (и любое базовое здание с улучшениями): содержание — улучшения за месяц,
+    // по компонентам и уровню последней ступени (цены ступеней — upgrades).
+    if (B && b && B.upgrades && b.lvl >= 2 && BASIC.has(B.key)) {
+      const comp = {}; let tier = 1;
+      for (let L = 2; L <= b.lvl; L++) {
+        const U = B.upgrades[L]; if (!U) continue;
+        tier = U.tier;
+        for (const m in U.comp || {}) comp[m + '@' + U.tier] = (comp[m + '@' + U.tier] || 0) + U.comp[m] / COL.COMP_UPKEEP_HOURS;
+      }
+      return Object.keys(comp).length ? { multi: comp, tier } : null;
+    }
+    if (!B || BASIC.has(B.key) || !B.comp) return null;
+    const comp = {};
+    // upkeepDays — за сколько суток содержание съедает цену (по умолчанию 30). Решение пользователя:
+    // «научный центр и космодром — по содержанию дороже обычного, а терраформирование — дешевле».
+    const hours = B.upkeepDays ? B.upkeepDays * 24 : COL.COMP_UPKEEP_HOURS;
+    for (const m in B.comp) if (B.comp[m] > 0) comp[m] = B.comp[m] / hours;
+    return Object.keys(comp).length ? { tier: B.compTier || 1, comp } : null;
+  }
+
+  // ---------- УЛУЧШЕНИЕ ЗДАНИЯ ----------
+  // Пока — только у зданий с полем upgrade (очистные). Цена — компоненты своего уровня (upgrade.tier),
+  // время — как стройка, занимает ту же площадку стройки (одна стройка за раз).
+  // Цена перехода на уровень to: у здания — либо одна цена на все ступени (upgrade), либо по уровням
+  // (upgrades[to]). raw — сырьё со склада по ключам ресурсов.
+  function upgradeSpec(B, to) {
+    if (!B) return null;
+    if (B.upgrades) return B.upgrades[to] ? Object.assign({ maxLvl: B.maxLvl || 3 }, B.upgrades[to]) : null;
+    return B.upgrade || null;
+  }
+  function canUpgrade(col, b) {
+    const B = COL_BUILDING[b.kind], U = upgradeSpec(B, b.lvl + 1);
+    if (!B || !(B.upgrade || B.upgrades)) return 'это здание не улучшается';
+    if (b.dead) return 'здание разобрано';
+    if (!U || b.lvl >= (U.maxLvl || B.maxLvl || 1)) return 'уже наивысший уровень';
+    if (col.site) return 'уже идёт стройка: ' + COL_BUILDING[col.site.kind].name;
+    for (const m in U.comp || {}) if (((col.comp || {})[m + U.tier] || 0) < U.comp[m]) return 'мало компонентов: ' + compName(m, U.tier).toLowerCase();
+    for (const k in U.raw || {}) if ((col.stock[k] || 0) < U.raw[k]) {
+      const r = RESOURCES.find(x => x.key === k);
+      return 'мало сырья: ' + (r ? r.name.toLowerCase() : k) + ' ' + Math.floor(col.stock[k] || 0) + ' из ' + U.raw[k];
+    }
+    return null;
+  }
+  function upgrade(col, b) {
+    const err = canUpgrade(col, b); if (err) return err;
+    const U = upgradeSpec(COL_BUILDING[b.kind], b.lvl + 1);
+    for (const m in U.comp || {}) col.comp[m + U.tier] -= U.comp[m];
+    for (const k in U.raw || {}) col.stock[k] -= U.raw[k];
+    col.site = { kind: b.kind, q: b.q, r: b.r, left: COL.BUILD_TICKS, upgrade: true };
+    note(col, 'Начато улучшение: ' + COL_BUILDING[b.kind].name + ' → уровень ' + (b.lvl + 1));
+    return null;
+  }
+
   function canBuild(col, key, hex, lowOrbit, ship) {
     const B = COL_BUILDING[key];
     if (!B) return 'нет такой постройки';
-    if (B.todo) return 'эта ветка пока не развивается';
+    if (B.todo) return 'ещё не работает — цену можно задать на странице «Расценки»';
     if (!!B.orbital !== !!lowOrbit) return B.orbital ? 'только на низкой орбите газового гиганта' : 'нужна твёрдая поверхность';
     if (col.site) return 'уже идёт стройка: ' + COL_BUILDING[col.site.kind].name;
     if (!hex) return 'выберите гекс';
-    if (col.buildings.some(b => !b.dead && b.q === hex.q && b.r === hex.r)) return 'гекс занят';
+    // На гексе может стоять несколько зданий; нельзя только ДВЕ ШАХТЫ ОДНОГО ТИПА (решение
+    // пользователя: «не каждого типа, а только шахты; другие типы можно ставить на один гекс несколько»).
+    if (B.group && col.buildings.some(b => !b.dead && b.q === hex.q && b.r === hex.r && b.kind === key))
+      return 'на этом гексе уже есть ' + B.name.toLowerCase();
     if (B.group && !COL_GROUPS[B.group].some(k => (hex.res[k] || 0) > 0))
       return 'на этом гексе нет ' + COL_GROUP_NAME[B.group].toLowerCase();
     if (withShip(col, ship, 's') < (B.cost.s || 0)) return 'мало структурного сырья';
     if (withShip(col, ship, 'c') < (B.cost.c || 0)) return 'мало вычислительного сырья';
     if (withShip(col, ship, 'b') < (B.cost.b || 0)) return 'мало биомассы';
+    for (const k in B.cost.raw || {}) {
+      const have = (col.stock[k] || 0) + (ship ? ((ship.cargo || {})[k] || 0) : 0);
+      if (have < B.cost.raw[k]) return 'мало: ' + ((RESOURCES.find(r => r.key === k) || { name: k }).name.toLowerCase()) + ' ' + Math.floor(have) + ' из ' + B.cost.raw[k];
+    }
     if (col.uniq < (B.cost.uniq || 0)) return 'нужна планетарная единица';
+    const tier = B.compTier || 1;
     for (const m in B.comp || {}) {
-      const key = m + '1';
+      const key = m + tier;
       if (((col.comp || {})[key] || 0) < B.comp[m])
-        return 'мало компонентов: ' + compName(m, 1).toLowerCase();
+        return 'мало компонентов: ' + compName(m, tier).toLowerCase();
     }
     return null;
   }
@@ -624,9 +1138,14 @@ const Colony = (() => {
     const B = COL_BUILDING[key];
     spendBoth(col, ship, 's', B.cost.s || 0); spendBoth(col, ship, 'c', B.cost.c || 0);
     spendBoth(col, ship, 'b', B.cost.b || 0);
+    for (const k in B.cost.raw || {}) {             // особое сырьё: со склада, остаток — из трюма
+      let need = B.cost.raw[k];
+      const fromCol = Math.min(need, col.stock[k] || 0); col.stock[k] = (col.stock[k] || 0) - fromCol; need -= fromCol;
+      if (need > 0 && ship && ship.cargo) { ship.cargo[k] -= need; if (ship.cargo[k] <= 0) delete ship.cargo[k]; }
+    }
     col.uniq -= B.cost.uniq || 0;
     col.comp = col.comp || {};
-    for (const m in B.comp || {}) col.comp[m + '1'] -= B.comp[m];
+    for (const m in B.comp || {}) col.comp[m + (B.compTier || 1)] -= B.comp[m];
     col.site = { kind: key, q: hex.q, r: hex.r, left: COL.BUILD_TICKS };
     note(col, 'Начата стройка: ' + B.name);
     return null;
@@ -648,13 +1167,13 @@ const Colony = (() => {
     return { live: L, workers: paid, jobs: need.length, rate, yard: col.yard, order: col.order || { kind: 'uniq' },
       cap: capacity(col), used: used(col), room: roomLeft(col),
       upkeep: L.reduce((a, b) => a + (COL_BUILDING[b.kind].up || 0) * b.lvl, 0),
-      h2: L.reduce((a, b) => a + (COL_BUILDING[b.kind].h2 || 0) * b.lvl, 0),
+      h2: L.reduce((a, b) => a + h2Of(b), 0),
       gen: L.some(b => b.kind === 'gen'), powered: col.powered !== false, port: has(col, 'port'),
       stock: col.stock, food: col.food, crypto: col.crypto, pop: col.pop, uniq: col.uniq,
       popCap: domeCap(col), site: col.site };
   }
 
-  return { blank, advance, step, build, canBuild, summary, live, has, inGroup, spendIn, add, startKit,
+  return { blank, advance, step, build, canBuild, summary, live, has, inGroup, spendIn, add, startKit, ecology, birthEnv, popRates, needs, autoStep, canUpgrade, upgrade, upgradeSpec, compUpkeep, autoOrder, hexRank,
     capacity, used, roomLeft, store, setHoldUnit, setPrices, setMasses, massOf, massSum, volOf, volSum,
     compKey, compName, compCost, compTotal,
     shipOutput, mineOutput, tickAt, note, domeCap, uniqPick, h2Reserve, waste };
@@ -677,7 +1196,8 @@ const Ship = (() => {
   // пользователя в таблице компонентов.
   function foodPerUnit(tbl) {
     const one = partParam(tbl, 'life_support', 'lifeSup', 1);
-    return one > 0 ? COL.DAY_TICKS / one : COL.DAY_TICKS / 6;
+    // ×норма еды: блок кормит одного сутки, сколько бы ни ел человек (FOOD_PER_POP)
+    return (one > 0 ? COL.DAY_TICKS / one : COL.DAY_TICKS / 6) * COL.FOOD_PER_POP;
   }
   // Корабль считается ВСЕГДА на компонентах 1 уровня с базовыми настройками (этап игры).
   const stats = (tbl, ship) => shipTotals(tbl, findDesign(ship.design), 1, null, 1, 1);
@@ -927,8 +1447,12 @@ const Ship = (() => {
   function recharge(tbl, ship, col) {
     const st = stats(tbl, ship), cap = lifeCap(tbl, st);
     const need = Math.max(0, cap - lifeLeft(tbl, ship, st));
-    const got = Math.min(need, col.food);
+    // Пищу колонии корабль берёт только сверх её запаса (FOOD_KEEP тактов на жителя): ноль пищи на
+    // складе — мгновенная гибель колонии (ТЗ §8.21), шаттл не должен её устраивать.
+    const spare = Math.max(0, col.food - (col.pop || 0) * COL.FOOD_PER_POP * COL.FOOD_KEEP);
+    const got = Math.min(need, spare);
     col.food -= got; ship.food = lifeLeft(tbl, ship, st) + got;
+    col.shipFood = Math.max(0, need - got);     // недостачу фермы колонии наработают к следующему вылету
     return got;
   }
   // Положить пищу в трюм — ею потом заряжают жизнеобеспечение в полёте.
@@ -1053,3 +1577,62 @@ function shipBuildTicks(design) {
   // Время сборки: час на каждые четыре модуля (ДОПУЩЕНИЕ).
   return COL.BUILD_TICKS * Math.max(1, Math.ceil((designModules(design).length + design.decks.length) / 4));
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// СТАТУС ПЛАНЕТЫ ДЛЯ ЗАСЕЛЕНИЯ (решение пользователя: «у планет, где есть факторы, мешающие жизни,
+// выделять их красным — критически непригодно, зелёным — оптимально, жёлтым — терпимо — и
+// показывать статус планеты для заселения по совокупности факторов: насколько благоприятна
+// планета в процентах по сравнению со средним значением в космосе»).
+//   Цвет фактора по его множителю: ≥ 0,9 — зелёный, 0,5…0,9 — жёлтый, < 0,5 — красный, 0 — красный
+//   «смертельно» (ДОПУЩЕНИЕ по порогам).
+//   Q — произведение множителей условий (пища считается нормальной); жителей на купол = 10 × min(1, Q).
+//   Класс: оптимальная Q ≥ 0,9, терпимая 0,5…0,9, тяжёлая 0,2…0,5 (нужны постройки, чтобы
+//   компенсировать), непригодная < 0,2 (купол держит меньше 2 жителей), смертельная — какой-то
+//   фактор 0. Газовый гигант — непригоден (нет поверхности). Цель пользователя: «больше половины
+//   планет вообще непригодны для заселения, включая газовые».
+//   Процент — Q планеты / среднее Q твёрдых планет галактики × 100.
+const Habitat = (() => {
+  const COLORS = { good: '#3fb950', mid: '#d29922', bad: '#f85149' };
+  const tone = k => k >= 0.9 ? 'good' : k >= 0.5 ? 'mid' : 'bad';
+  const solid = p => PLANET_TYPES[p.type].landable && !PLANET_TYPES[p.type].lowOrbit;
+  let avgCache = null;
+  function average(gal) {
+    if (avgCache && avgCache.seed === gal.seed) return avgCache.v;
+    const key = 'ouro.v3.habAvg2.' + gal.seed + '.' + RACE_DEFAULT;
+    try { const c = JSON.parse(localStorage.getItem(key)); if (c && c.v > 0) { avgCache = { seed: gal.seed, v: c.v }; return c.v; } } catch (_) { /* нет */ }
+    let sum = 0, n = 0;
+    for (const s of gal.stars) for (const p of generateSystem(s).planets) {
+      if (!solid(p)) continue;
+      sum += raceFactors(planetEnv(p, s)).all; n++;
+    }
+    const v = n ? sum / n : 1;
+    avgCache = { seed: gal.seed, v };
+    try { localStorage.setItem(key, JSON.stringify({ v })); } catch (_) { /* приватный режим */ }
+    return v;
+  }
+  function classOf(k) {
+    if (k.critical.length) return ['смертельная', 'bad'];
+    return k.all >= 0.9 ? ['оптимальная', 'good'] : k.all >= 0.5 ? ['терпимая', 'mid'] : k.all >= 0.2 ? ['тяжёлая', 'bad'] : ['непригодная', 'bad'];
+  }
+  function status(planet, gstar, gal, tox) {
+    if (!solid(planet)) return { solid: false };
+    const env = planetEnv(planet, gstar), k = raceFactors(env, tox);
+    return { solid: true, env, k, cls: classOf(k), perDome: Math.round(COL.DOME_CAP * Math.min(1, k.all) * 10) / 10,
+      pct: gal ? Math.round(k.all / average(gal) * 100) : null };
+  }
+  function html(planet, gstar, gal, tox) {
+    const s = status(planet, gstar, gal, tox);
+    if (!s.solid) return '<div class="hab"><span>Заселение</span><b style="color:' + COLORS.bad + '">нельзя — нет твёрдой поверхности</b></div>';
+    const f = x => x.toFixed(2).replace('.', ',');
+    const row = (name, val, k) => '<div class="hab"><span>' + name + '</span><b style="color:' + COLORS[tone(k)] + '">' + val +
+      (k <= 0 ? ' · смертельно' : ' · ×' + f(k)) + '</b></div>';
+    return '<div class="hab"><span>Для заселения</span><b style="color:' + COLORS[s.cls[1]] + '">' + s.cls[0] +
+      (s.pct != null ? ' · ' + s.pct + ' % от среднего' : '') + '</b></div>' +
+      '<div class="hab"><span>Жителей на купол</span><b style="color:' + COLORS[s.cls[1]] + '">' + String(s.perDome).replace('.', ',') + ' из ' + COL.DOME_CAP + '</b></div>' +
+      row('Токсичность', (tox != null ? tox : s.env.toxicity) + ' / 100', s.k.tox) +
+      row('Радиация', s.env.radiation + ' / 100', s.k.rad) +
+      row('Температура', Math.round(s.env.tempK) + ' K', s.k.temp) +
+      row('Давление', s.env.pressure + ' / 100', s.k.press);
+  }
+  return { status, html, average, tone, classOf, COLORS };
+})();

@@ -1304,7 +1304,9 @@
       `<div><span>Жизнь</span>${LIFE_STATES[p.life].name}</div>` +
       `<div><span>Масса</span>${p.massE < 10 ? p.massE.toFixed(2).replace('.', ',') : Math.round(p.massE)} M⊕</div>` +
       `<div><span>Радиус</span>${p.radiusKm.toLocaleString('ru-RU')} км · g ${p.gSurf.toFixed(1).replace('.', ',')} м/с²</div>` +
-      (T.landable ? `<div><span>Размер</span>${SIZE_NAMES[p.hexRadius]} · ${hexCount(p.hexRadius)} гексов</div>` : '');
+      (T.landable ? `<div><span>Размер</span>${SIZE_NAMES[p.hexRadius]} · ${hexCount(p.hexRadius)} гексов</div>` : '') +
+      // Пригодность для заселения: факторы цветом и процент от среднего по галактике (Habitat, colony.js).
+      (typeof Habitat !== 'undefined' ? Habitat.html(p, sys.gstar, World.galaxy()).replace(/class="hab"/g, 'class="wide"') : '');
     $('c-desc').textContent = T.desc;
 
     const show = (id, on) => { $(id).hidden = !on; };

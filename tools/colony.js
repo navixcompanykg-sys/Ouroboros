@@ -18,7 +18,7 @@
 //   node tools/colony.js --spread --n=60     — разброс по обитаемым планетам галактики #1
 //   node tools/colony.js --up=2              — всё содержание (сырьё и энергия) ×2: поиск порога
 //   node tools/colony.js --route=crypto      — корабль не копает на месте, а ходит авторейсами
-//                                              (js/routes.js) за целью: crypto, e, s, c, b, value
+//                                              (js/routes.js) за целью: need (путевой лист), crypto, e, s, c, b, value
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
@@ -63,6 +63,11 @@ const tbl = G.__tbl;
 const GROUP_NAME = G.COL_GROUP_NAME;
 const GROUPS = COL_GROUPS;
 
+// --food=N — норма еды на жителя за такт (COL.FOOD_PER_POP) — для подбора: сколько съедают люди.
+{
+  const a = process.argv.find(x => x.startsWith('--food='));
+  if (a) COL.FOOD_PER_POP = +a.split('=')[1];
+}
 // --up=K множит ВСЁ содержание (сырьё и энергию) — так ищется порог рентабельности: цель
 // пользователя «рентабельно 20–30 % планет, всё что ниже среднего не рентабельно».
 {
@@ -103,21 +108,8 @@ function pickWorld(starId, planetIdx) {
 // ГЛАВНОЕ: у групп кроме энергоносителей гексы с сырьём 3 УРОВНЯ идут первыми. Без него не
 // делается планетарная единица (§8.5), а без неё нет ни ферм, ни майнинг-фермы, ни купола —
 // колония умирает от голода посреди полного склада.
-function hexRank(surf, group) {
-  const weight = k => group === 'e' ? (COL.H2_PER_UNIT[k] || 1)
-    : 1 / (G.RESOURCE_STATS[k] ? G.RESOURCE_STATS[k].avg : 1);
-  const t3 = GROUPS[group][2];
-  return surf.hexes
-    .filter(h => GROUPS[group].some(k => (h.res[k] || 0) > 0))
-    .map(h => ({ h, three: group !== 'e' && (h.res[t3] || 0) > 0 ? 1 : 0,
-      v: GROUPS[group].reduce((a, k) => a + (h.res[k] || 0) * weight(k), 0) }))
-    // Сначала ВСЕ гексы с сырьём 3 уровня, и только потом богатые. Без этого правила
-    // взвешенная ценность ставит шахту на гекс «силикаты 159, сверхплотные 0», колония никогда
-    // не набирает 10 единиц третьего уровня, планетарная единица не делается, а значит нет ни
-    // майнинг-фермы, ни крипты — рабочие уходят и колония умирает при полном складе.
-    .sort((a, b) => b.three - a.three || b.v - a.v)
-    .map(x => x.h);
-}
+// Ранжирование гексов под шахты — то же, что у автостройки (Colony.hexRank, js/colony.js).
+const hexRank = (surf, group) => Colony.hexRank(surf, group);
 
 // ИГРОК: порядок стройки. Вынужденный: без генератора колония жжёт только водород, без шахт нет
 // сырья, без производства нет планетарных единиц, а купол, фермы и майнинг-ферма стоят по одной.
@@ -142,10 +134,12 @@ function simulate(world, ticks, opts = {}) {
   col.pop = G.START_LOAD.pax;
   col.crypto = COL.CRYPTO_START;
   if (opts.startKit !== false) Colony.startKit(col, surf);
+  col.auto = true;                               // прогон — это колония на автостройке
 
   // Корабль игрока — стартовый шаттл с его настоящей загрузкой (js/colony.js START_LOAD).
   const ship = { id: 1, design: G.START_DESIGN, star: gstar.id, planet: p.index, landed: true, at: nowAt(0) };
   Ship.ensureStart(ship);
+  ship.pax = 0;   // колонисты высажены (как в игре, planet-ui found) — иначе экипаж 11 и жизнеобеспечения на 13 тактов
   const shipSt = Ship.stats(tbl, ship);
   Ship.unload(ship, col);                       // сырьё на склад, пища в запас колонии
 
@@ -179,15 +173,36 @@ function simulate(world, ticks, opts = {}) {
     const now = nowAt(t);
     const live = Colony.live(col);
 
+    // ИГРОК: чего колонии не хватает больше всего — на ближайшую постройку плана, на энергию зданий
+    // и на содержание (на 6 часов вперёд). Туда же шлёт шаттл — копать на месте или в рейс.
+    const needG = (() => {
+      const next = PLAN.find(k => !col.buildings.some(b => b.kind === k));
+      const cost = next ? COL_BUILDING[next].cost : {};
+      let pick = 'e', worst = -Infinity;
+      for (const g of ['s', 'c', 'e', 'b']) {
+        const need = (cost[g === 's' ? 's' : g === 'c' ? 'c' : g === 'b' ? 'b' : 'e'] || 0)
+          + (g === 'e' ? 6 * live.reduce((a, b) => a + (COL_BUILDING[b.kind].h2 || 0), 0) : 0)
+          + 6 * live.reduce((a, b) => a + (COL_BUILDING[b.kind].upkeep === g ? (COL_BUILDING[b.kind].up || 0) : 0), 0)
+          - groupStock(g);
+        if (need > worst) { worst = need; pick = g; }
+      }
+      return pick;
+    })();
+
     // ── КОРАБЛЬ В АВТОРЕЙСАХ (--route=цель): настоящий js/routes.js — сканер, полёт, съём,
     // выгрузка. Своего у инструмента тут нет ничего, кроме решения «отправить в рейс».
     if (ROUTE_ARG) {
       // ИГРОК: стоящий корабль снова отправляет в рейс раз в час, а не каждый такт.
-      // Водород нужен майнинг-ферме — пока её нет, шаттл копает на месте и возит сырьё на стройку,
-      // как без авторейсов (--route-now — в рейс сразу).
-      if (!ship.route && ship.landed && ship.star === gstar.id && ship.planet === p.index && t % COL.UPKEEP_EVERY === 1
-          && (process.argv.includes('--route-now') || Colony.has(col, 'mfarm'))) {
-        const err = Routes.start(tbl, ship, col, ROUTE_ARG, null, now, routeEnv);
+      // ИГРОК: шаттл уходит в рейсы СРАЗУ (замечание пользователя: «шаттл может ходить в рейс сразу,
+      // пополняя топливо на планетах, — зачем ждать майнинг-фермы»). Раньше прогон держал его дома до
+      // фермы, и колонии без водорода до неё не доживали.
+      // ИГРОК: шаттл везёт то, чего колонии не хватает больше всего (как без рейсов), а за целью
+      // прогона (--route=…) — когда майнинг-ферма уже стоит. Сменилась нужда — рейс снимается.
+      // --route=need — путевой лист по нуждам колонии (сама колония решает, что везти).
+      const want = ROUTE_ARG === 'need' ? 'need' : Colony.has(col, 'mfarm') ? ROUTE_ARG : needG;
+      if (ship.route && ship.route.target !== want && !ship.route.stop) Routes.stop(ship, now);
+      if (!ship.route && ship.landed && ship.star === gstar.id && ship.planet === p.index && t % COL.UPKEEP_EVERY === 1) {
+        const err = Routes.start(tbl, ship, col, want, null, now, routeEnv);
         if (err && !routeErr) { routeErr = err; events.push([t, 'авторейс не начат: ' + err]); }
       }
       Routes.tick(tbl, [ship], now, routeEnv);
@@ -196,18 +211,7 @@ function simulate(world, ticks, opts = {}) {
     if (!ship.route) {
       // ── КОРАБЛЬ. Ship.advance — настоящий код: ест пищу, снимает добычу с гекса (100 водорода
       // за съём, лимит один гекс на планету за такт), останавливается на пище, топливе и трюме.
-      const needG = (() => {
-        const next = PLAN.find(k => !col.buildings.some(b => b.kind === k));
-        const cost = next ? COL_BUILDING[next].cost : {};
-        let pick = 'e', worst = -Infinity;
-        for (const g of ['s', 'c', 'e', 'b']) {
-          const need = (cost[g === 's' ? 's' : g === 'c' ? 'c' : g === 'b' ? 'b' : 'e'] || 0)
-            + (g === 'e' ? 6 * live.reduce((a, b) => a + (COL_BUILDING[b.kind].h2 || 0), 0) : 0)
-            - groupStock(g);
-          if (need > worst) { worst = need; pick = g; }
-        }
-        return pick;
-      })();
+      // needG — см. выше (чего колонии не хватает больше всего)
       const h = mineHex(needG);
       shipAt = h ? needG : null;
       if (h) ship.mine = { q: h.q, r: h.r };
@@ -227,21 +231,15 @@ function simulate(world, ticks, opts = {}) {
 
     }
 
-    // ── ИГРОК ЗАКАЗЫВАЕТ ПРОИЗВОДСТВУ. Сперва планетарная единица (без неё нельзя ставить
-    // ферму, купол, майнинг-ферму), потом КОМПОНЕНТЫ на майнинг-ферму и космодром — они стоят
-    // не сырьём, а компонентами (80 конструктивных и 240 ЭВМ у фермы), и без заказа производство
-    // их не делает никогда. Это и запирало прогон: крипта кончалась на четвёртые сутки, рабочие
-    // уходили, добыча вставала — при полном складе сырья.
-    col.order = (() => {
-      if (col.uniq < 1) return { kind: 'uniq' };
-      for (const key of ['mfarm', 'port']) {
-        if (Colony.has(col, key) || col.buildings.some(b => b.kind === key)) continue;
-        const B = COL_BUILDING[key];
-        for (const m in B.comp || {})
-          if (((col.comp || {})[m + '1'] || 0) < B.comp[m]) return { kind: 'comp', mat: m, tier: 1 };
-      }
-      return { kind: 'uniq' };
-    })();
+    // ── АВТОСТРОЙКА — настоящий Colony.autoStep (тот же, что в игре при включённой автостройке):
+    // заказ производству и стройка. Своей логики стройки у прогона больше нет. Корабль у колонии
+    // даёт на стройку свой трюм, как у игрока.
+    {
+      const here = ship.landed && ship.star === gstar.id && ship.planet === p.index;
+      const plan = Colony.autoStep(col, surf, here ? ship : null);
+      if (plan) events.push([t, 'начата стройка: ' + LABEL(plan.kind) + (plan.why ? ' (' + plan.why + ')' : '')
+        + (Colony.ecology(col, surf).extra ? ' · токсичность ' + Colony.ecology(col, surf).tox : '')]);
+    }
 
     // ── ТАКТ КОЛОНИИ — настоящий Colony.step: добыча, стройка, энергия, содержание, пища,
     // население, крипта, производство.
@@ -256,75 +254,6 @@ function simulate(world, ticks, opts = {}) {
     if (col.uniq > uniqWas && !firstUniq) { firstUniq = true; events.push([t, 'первая планетарная единица']); }
     const demolished = col.buildings.filter(b => b.dead).length - deadWas;
     if (demolished > 0) events.push([t, 'РАЗОБРАНО за долги: ' + demolished + ' шт.']);
-
-    // ── ИГРОК СТРОИТ. Цену и запреты проверяет Colony.canBuild, списывает Colony.build —
-    // со склада и из трюма стоящего рядом корабля.
-    if (!col.site) {
-      let plan = null;
-      // ИГРОК: ЭНЕРГИЯ ПЕРВЕЕ ПЛАНА. Пока водорода добывается меньше, чем съедают здания (плюс
-      // запас на то, что строится), ставится ещё одна энергетическая шахта — иначе часть зданий
-      // просто стоит, а ферма гибнет от долгов по энергоносителям. Запас 1,3: содержание фермы
-      // тоже идёт энергоносителями, и его надо откуда-то брать.
-      const h2In = Colony.live(col).reduce((a2, b) => {
-        if (COL_BUILDING[b.kind].group !== 'e' || b.dead) return a2;
-        const hx = surf.hexes.find(x => x.q === b.q && x.r === b.r);
-        if (!hx) return a2;
-        const out = Colony.mineOutput(hx, b.kind, b.lvl);
-        return a2 + Object.keys(out).reduce((v, k) => v + out[k] * (COL.H2_PER_UNIT[k] || 1), 0);
-      }, 0);
-      const h2Out = Colony.live(col).reduce((a2, b) => a2 + (COL_BUILDING[b.kind].h2 || 0) * b.lvl, 0)
-        + Colony.live(col).reduce((a2, b) => a2 + (COL_BUILDING[b.kind].upkeep === 'e' ? (COL_BUILDING[b.kind].up || 0) / COL.UPKEEP_EVERY : 0), 0);
-      if (h2In < h2Out * 1.3) {
-        const hx = nextHex('e', false);
-        if (hx) plan = { kind: 'mine_e', hex: hx, g: 'e', why: 'не хватает энергии' };
-      }
-      const next = plan ? null : PLAN.find(k => !col.buildings.some(b => b.kind === k));
-      if (next && !plan) {
-        const g = COL_BUILDING[next].group;
-        const hx = g ? nextHex(g, false) : nextHex('s', false) || surf.hexes.find(x => !taken().has(x.q + ',' + x.r));
-        if (g && !hx) {
-          col.buildings.push({ kind: next, q: -99, r: -99, lvl: 1, missed: 0, dead: true });
-          events.push([t, 'пропущено (нет ресурса на планете): ' + LABEL(next)]);
-        } else if (hx) plan = { kind: next, hex: hx, g };
-      } else if (t % FIX_EVERY === 0) {
-        // ИГРОК: план пройден — раз в сутки добавляет шахту там, где просело. Сперва сырьё
-        // 3 уровня (без него встаёт производство), потом группа, которая убывает.
-        if (!Colony.uniqPick(col)) {
-          let best = null;
-          for (const g in GROUPS) {
-            const hx = nextHex(g, true); if (!hx) continue;
-            const v = hx.res[GROUPS[g][2]] || 0;
-            if (!best || v > best.v) best = { kind: 'mine_' + g, hex: hx, g, v, why: 'нужно сырьё 3 уровня' };
-          }
-          if (best) plan = best;
-        }
-        if (!plan) for (const g of ['e', 's', 'c']) {
-          const was = hist[hist.length - FIX_EVERY];
-          if (!was || groupStock(g) >= was[g]) continue;
-          const hx = nextHex(g, false); if (!hx) continue;
-          // Шахта на бедном гексе делает хуже: за час она должна отдать больше, чем стоит её
-          // содержание и энергия.
-          const perHour = COL.UPKEEP_EVERY * COL.MINE_K * GROUPS[g].reduce((a, k) => a + (hx.res[k] || 0), 0);
-          if (perHour <= (COL_BUILDING['mine_' + g].up || 0) + 6 * (COL_BUILDING['mine_' + g].h2 || 0)) continue;
-          plan = { kind: 'mine_' + g, hex: hx, g, why: GROUP_NAME[g].toLowerCase() + ' просели' };
-          break;
-        }
-      }
-      // ИГРОК: рабочих мест не больше, чем жителей. Лишняя шахта по приоритету (COL_PRIO) забирает
-      // рабочего у майнинг-фермы — крипта перестаёт капать, и колония гибнет при полном складе.
-      if (plan && plan.kind.startsWith('mine_') && Colony.has(col, 'mfarm')) {
-        const jobs = Colony.live(col).filter(b => COL_BUILDING[b.kind].work).length;
-        if (jobs >= col.pop) plan = null;
-      }
-      if (plan) {
-        const here = ship.landed && ship.star === gstar.id && ship.planet === p.index;
-        const err = Colony.build(col, plan.kind, plan.hex, false, here ? ship : null);
-        if (!err) {
-          if (plan.g) used[plan.g].add(plan.hex);
-          events.push([t, 'начата стройка: ' + LABEL(plan.kind) + (plan.why ? ' (' + plan.why + ')' : '')]);
-        }
-      }
-    }
 
     // ── АВТОНОМНОСТЬ (критерий инструмента, в игре его нет): всё построено, рабочие
     // укомплектованы, энергия есть, долгов нет, пища не убывает, крипта не проедается,

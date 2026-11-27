@@ -47,7 +47,7 @@
       const cur = prices.buildings[B.key];
       if (cur) continue;
       prices.buildings[B.key] = { s: B.cost.s || 0, c: B.cost.c || 0, b: B.cost.b || 0, uniq: B.cost.uniq || 0,
-        up: B.up || 0, h2: B.h2 || 0,
+        up: B.up || 0, h2: B.h2 || 0, compTier: B.compTier || 1,
         comp: { struct: (B.comp || {}).struct || 0, compute: (B.comp || {}).compute || 0,
           bio: (B.comp || {}).bio || 0, energy: (B.comp || {}).energy || 0 } };
     }
@@ -89,7 +89,18 @@
     return out;
   }
   // Один компонент 1 уровня в условных единицах (RESOURCE_VALUE, data.js).
-  const compValue = mat => Ship.valueComp(mat, 1);
+  const compValue = (mat, tier = 1) => Ship.valueComp(mat, tier);
+  const rawValue = v => Object.keys(v.raw || {}).reduce((a, k) => a + v.raw[k] * (RESOURCE_VALUE[k] || 0), 0);
+  // Цена здания в ШТУКАХ сырья (мера пользователя): сырьё + сырьё внутри компонентов (CRAFT: 50 / 30 / 20).
+  const unitsOf = v => (v.s || 0) + (v.c || 0) + (v.b || 0) + Object.values(v.raw || {}).reduce((a, x) => a + x, 0)
+    + MAT_TYPES.reduce((a, m) => a + ((v.comp || {})[m.key] || 0) * CRAFT[(v.compTier || 1) - 1].need.reduce((x, y) => x + y, 0), 0);
+  // Клетка «Всего»: в ШТУКАХ сырья и в шахтах по штукам (мера пользователя), рядом — у.е.
+  function totalCell(v, val) {
+    const mine = prices.buildings.mine_s || {}, mu = unitsOf(mine);
+    const u = unitsOf(v);
+    return '<b>' + n0(u) + ' ед.</b><i>' + (mu ? (u / mu).toFixed(1).replace('.', ',') + ' шахты' : '') +
+      ' · ' + n0(val) + ' у.е.</i>';
+  }
   const partValue = v => MAT_TYPES.reduce((a, m) => a + (v[m.key] || 0) * compValue(m.key), 0);
 
   // ---------- 1. сколько ресурсов в гексе ----------
@@ -159,7 +170,7 @@
     const v = prices.buildings.mine_s; if (!v) return 0;
     return v.s * (RESOURCE_VALUE.silicates || 0) + v.c * (RESOURCE_VALUE.silicon || 0) +
         (v.b || 0) * (RESOURCE_VALUE.microbiota || 0) +
-      MAT_TYPES.reduce((a, m) => a + ((v.comp || {})[m.key] || 0) * compValue(m.key), 0);
+      MAT_TYPES.reduce((a, m) => a + ((v.comp || {})[m.key] || 0) * compValue(m.key, v.compTier || 1), 0);
   }
   let mineRef = 0;
 
@@ -171,17 +182,20 @@
       const num = (f, title) => `<td class="n"><input type="number" min="0" step="10" data-b="${B.key}" data-f="${f}" value="${v[f] || 0}" title="${title}"></td>`;
       const cnum = m => `<td class="n"><input type="number" min="0" step="10" data-b="${B.key}" data-cf="${m}" value="${v.comp[m] || 0}" title="компонентов типа «${MAT_TYPE[m].name}»"></td>`;
       const val = v.s * (RESOURCE_VALUE.silicates || 0) + v.c * (RESOURCE_VALUE.silicon || 0) +
-        (v.b || 0) * (RESOURCE_VALUE.microbiota || 0) +
-        MAT_TYPES.reduce((a, m) => a + (v.comp[m.key] || 0) * compValue(m.key), 0);
+        (v.b || 0) * (RESOURCE_VALUE.microbiota || 0) + rawValue(v) +
+        MAT_TYPES.reduce((a, m) => a + (v.comp[m.key] || 0) * compValue(m.key, v.compTier || 1), 0);
+      // Уровень компонентов в цене здания (решение пользователя: здания на компонентах 2–3 уровня).
+      const tierSel = `<td class="n"><select data-b="${B.key}" data-tier="1" title="уровень компонентов в цене">` +
+        [1, 2, 3].map(t => `<option value="${t}"${(v.compTier || 1) === t ? ' selected' : ''}>${t}</option>`).join('') + '</select></td>';
       return `<tr><td>${B.name}<i>${B.desc}</i></td>` +
         `<td class="g">${COL_GROUP_NAME[B.upkeep]}</td>` +
         num('s', 'структурного сырья на постройку') + num('c', 'вычислительного сырья на постройку') +
         num('b', 'биомассы на постройку — нужна только куполу и ферме') +
-        cnum('struct') + cnum('compute') +
+        cnum('struct') + cnum('compute') + cnum('bio') + cnum('energy') + tierSel +
         `<td class="n"><input type="number" min="0" step="1" data-b="${B.key}" data-f="uniq" value="${v.uniq}" title="планетарных единиц"></td>` +
         num('up', 'содержание за час, сырьём своего типа; у шахт его нет') +
         num('h2', 'водорода за такт на энергию') +
-        `<td class="n" data-bval="${B.key}"><b>${n0(val)}</b><i>${mineRef ? (val / mineRef).toFixed(1) + ' шахты' : ''}</i></td></tr>`;
+        `<td class="n" data-bval="${B.key}">${totalCell(v, val)}</td></tr>`;
     }).join('');
   }
 
@@ -243,10 +257,10 @@
       const v = prices.buildings[B.key]; if (!v) continue;
       v.comp = v.comp || {};
       const val = v.s * (RESOURCE_VALUE.silicates || 0) + v.c * (RESOURCE_VALUE.silicon || 0) +
-        (v.b || 0) * (RESOURCE_VALUE.microbiota || 0) +
-        MAT_TYPES.reduce((a, m) => a + (v.comp[m.key] || 0) * compValue(m.key), 0);
+        (v.b || 0) * (RESOURCE_VALUE.microbiota || 0) + rawValue(v) +
+        MAT_TYPES.reduce((a, m) => a + (v.comp[m.key] || 0) * compValue(m.key, v.compTier || 1), 0);
       const cell = document.querySelector('[data-bval="' + B.key + '"]');
-      if (cell) cell.innerHTML = '<b>' + n0(val) + '</b><i>' + (mineRef ? (val / mineRef).toFixed(1) + ' шахты' : '') + '</i>';
+      if (cell) cell.innerHTML = totalCell(v, val);
     }
     for (const P of PARTS) {
       const v = prices.parts[P.key]; if (!v) continue;
@@ -261,9 +275,40 @@
     renderShips();
   }
 
+  // ---------- улучшения зданий (только показ) ----------
+  // Меры сравнения — шахта: в штуках сырья (как цену шахты задаёт пользователь, 10 000 силикатов) и в у.е.
+  function renderUpgrades() {
+    const mine = prices.buildings.mine_s || {};
+    const mineUnits = (mine.s || 0) + (mine.c || 0) + (mine.b || 0);
+    const rows = [];
+    for (const B of COL_BUILDINGS) {
+      const v = prices.buildings[B.key] || {};
+      const list = v.upgrades ? Object.keys(v.upgrades).map(to => [+to, v.upgrades[to]])
+        : v.upgrade ? Array.from({ length: Math.max(0, (v.upgrade.maxLvl || 1) - 1) }, (_, i) => [i + 2, v.upgrade]) : [];
+      for (const [to, U] of list) {
+        const comp = Object.keys(U.comp || {}).filter(m => U.comp[m] > 0)
+          .map(m => n0(U.comp[m]) + ' ' + MAT_TYPE[m].name.toLowerCase() + ' ' + U.tier + ' ур.').join(', ');
+        const raw = Object.keys(U.raw || {}).map(k => n0(U.raw[k]) + ' ' + (RESOURCES.find(r => r.key === k) || { name: k }).name.toLowerCase()).join(', ');
+        // в штуках сырья: сырьё + сырьё внутри компонентов (CRAFT: 50 / 30 / 20)
+        const units = Object.values(U.raw || {}).reduce((a, x) => a + x, 0)
+          + Object.values(U.comp || {}).reduce((a, x) => a + x, 0) * CRAFT[(U.tier || 1) - 1].need.reduce((x, y) => x + y, 0);
+        const val = Object.keys(U.raw || {}).reduce((a, k) => a + U.raw[k] * (RESOURCE_VALUE[k] || 0), 0)
+          + Object.keys(U.comp || {}).reduce((a, m) => a + U.comp[m] * compValue(m, U.tier), 0);
+        const effect = U.radiation ? ' · −' + U.radiation + ' радиации' : B.key === 'prod' ? ' · компоненты ' + to + ' ур.'
+          : B.group ? ' · добыча +' + Math.round(((COL.MINE_LVL || {})[to] - 1) * 100) + ' %' : '';
+        rows.push('<tr><td>' + B.name + '</td><td>' + (to - 1) + ' → ' + to + '<i>' + effect + '</i></td><td>' + (comp || '—') +
+          '</td><td>' + (raw || '—') + '</td><td class="n">' + (units ? n0(units) : '—') + '</td><td class="n">' + n0(val) +
+          '</td><td class="n">' + (units && mineUnits ? (units / mineUnits).toFixed(1).replace('.', ',') : '—') + ' / ' +
+          (mineRef ? (val / mineRef).toFixed(1).replace('.', ',') : '—') + '</td></tr>');
+      }
+    }
+    $('upg-body').innerHTML = rows.join('') || '<tr><td colspan="7">Улучшений нет</td></tr>';
+  }
+
   function render() {
     renderValue();
     renderBuildings();
+    renderUpgrades();
     renderParts();
     renderShips();
     $('save').disabled = !dirty;
@@ -271,11 +316,19 @@
   }
 
   // ---------- ввод ----------
+  document.addEventListener('change', e => {
+    const el = e.target;
+    if (!el.matches('select[data-tier]')) return;
+    prices.buildings[el.dataset.b].compTier = +el.value;
+    dirty = true; $('save').disabled = false; $('save').textContent = 'Сохранить';
+    refreshDerived();
+  });
   document.addEventListener('input', e => {
     const el = e.target;
     if (!el.matches('input[type=number]')) return;
     const val = Math.max(0, Math.round(+el.value || 0));
-    if (el.dataset.b && el.dataset.cf) prices.buildings[el.dataset.b].comp[el.dataset.cf] = val;
+    if (el.dataset.b && el.dataset.raw) { const v = prices.buildings[el.dataset.b]; v.raw = v.raw || {}; v.raw[el.dataset.raw] = val; }
+    else if (el.dataset.b && el.dataset.cf) prices.buildings[el.dataset.b].comp[el.dataset.cf] = val;
     else if (el.dataset.b) prices.buildings[el.dataset.b][el.dataset.f] = val;
     else if (el.dataset.p) prices.parts[el.dataset.p][el.dataset.f] = val;
     dirty = true;

@@ -164,7 +164,11 @@
       $('c-swatch').style.background = `radial-gradient(circle at 35% 35%, ${T.colors[0]}, ${T.colors[1]} 60%, ${T.colors[2]})`;
       $('c-name').textContent = 'Вся планета';
       $('c-type').textContent = 'Сумма по всем гексам';
-      $('c-body').innerHTML = resRows(total) + '<div class="note">Сумма по всей планете в тех же единицах — добыча за 10 минут. Выберите гекс — покажутся его ресурсы.</div>';
+      // Пригодность для заселения (Habitat, colony.js): с колонией — с её токсичностью.
+      const col = typeof PlanetUI !== 'undefined' ? PlanetUI.colony() : null;
+      const tox = col && typeof Colony !== 'undefined' ? Colony.ecology(col, surf).tox : null;
+      const hab = typeof Habitat !== 'undefined' ? '<div class="habbox">' + Habitat.html(planet, gstar, World.galaxy(), tox) + '</div>' : '';
+      $('c-body').innerHTML = hab + resRows(total) + '<div class="note">Сумма по всей планете в тех же единицах — добыча за 10 минут. Выберите гекс — покажутся его ресурсы.</div>';
     }
   }
   $('c-close').onclick = () => { selected = null; renderCard(); };

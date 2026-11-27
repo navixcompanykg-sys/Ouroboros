@@ -13,6 +13,25 @@
     "compute": 0,
     "bio": 0,
     "energy": 0
+   },
+   "maxLvl": 3,
+   "upgrades": {
+    "2": {
+     "tier": 2,
+     "comp": {
+      "struct": 834,
+      "compute": 500,
+      "energy": 333
+     }
+    },
+    "3": {
+     "tier": 3,
+     "comp": {
+      "struct": 2000,
+      "compute": 1200,
+      "energy": 800
+     }
+    }
    }
   },
   "mine_c": {
@@ -27,6 +46,25 @@
     "compute": 0,
     "bio": 0,
     "energy": 0
+   },
+   "maxLvl": 3,
+   "upgrades": {
+    "2": {
+     "tier": 2,
+     "comp": {
+      "struct": 834,
+      "compute": 500,
+      "energy": 333
+     }
+    },
+    "3": {
+     "tier": 3,
+     "comp": {
+      "struct": 2000,
+      "compute": 1200,
+      "energy": 800
+     }
+    }
    }
   },
   "mine_e": {
@@ -41,6 +79,25 @@
     "compute": 0,
     "bio": 0,
     "energy": 0
+   },
+   "maxLvl": 3,
+   "upgrades": {
+    "2": {
+     "tier": 2,
+     "comp": {
+      "struct": 834,
+      "compute": 500,
+      "energy": 333
+     }
+    },
+    "3": {
+     "tier": 3,
+     "comp": {
+      "struct": 2000,
+      "compute": 1200,
+      "energy": 800
+     }
+    }
    }
   },
   "mine_b": {
@@ -55,6 +112,25 @@
     "compute": 0,
     "bio": 0,
     "energy": 0
+   },
+   "maxLvl": 3,
+   "upgrades": {
+    "2": {
+     "tier": 2,
+     "comp": {
+      "struct": 834,
+      "compute": 500,
+      "energy": 333
+     }
+    },
+    "3": {
+     "tier": 3,
+     "comp": {
+      "struct": 2000,
+      "compute": 1200,
+      "energy": 800
+     }
+    }
    }
   },
   "gen": {
@@ -83,6 +159,37 @@
     "compute": 0,
     "bio": 0,
     "energy": 0
+   },
+   "maxLvl": 3,
+   "upgrades": {
+    "2": {
+     "tier": 1,
+     "comp": {
+      "struct": 300,
+      "compute": 200,
+      "bio": 50
+     },
+     "raw": {
+      "rareEarth": 40000,
+      "niobium": 35000,
+      "tritium": 20000,
+      "flora": 5000
+     }
+    },
+    "3": {
+     "tier": 2,
+     "comp": {
+      "struct": 300,
+      "compute": 200,
+      "bio": 50
+     },
+     "raw": {
+      "bitumen": 120000,
+      "superdense": 40000,
+      "isotopes": 30000,
+      "antimatter": 10000
+     }
+    }
    }
   },
   "farm": {
@@ -103,7 +210,7 @@
    "s": 0,
    "c": 0,
    "b": 0,
-   "uniq": 1,
+   "uniq": 0,
    "up": 700,
    "h2": 0,
    "comp": {
@@ -131,7 +238,7 @@
    "s": 0,
    "c": 0,
    "b": 0,
-   "uniq": 1,
+   "uniq": 0,
    "up": 700,
    "h2": 40,
    "comp": {
@@ -139,21 +246,170 @@
     "compute": 200,
     "bio": 0,
     "energy": 0
-   }
+   },
+   "compTier": 2,
+   "upkeepDays": 15
   },
   "station": {
    "s": 0,
    "c": 0,
    "b": 0,
-   "uniq": 1,
+   "uniq": 0,
    "up": 700,
    "h2": 50,
    "comp": {
-    "struct": 600,
-    "compute": 400,
+    "struct": 4000,
+    "compute": 2000,
+    "bio": 8000,
+    "energy": 1000
+   },
+   "compTier": 3
+  },
+  "eco": {
+   "s": 0,
+   "c": 0,
+   "b": 0,
+   "uniq": 0,
+   "up": 0,
+   "h2": 50,
+   "compTier": 2,
+   "comp": {
+    "struct": 100,
+    "compute": 60,
     "bio": 0,
     "energy": 0
+   },
+   "upgrade": {
+    "tier": 3,
+    "maxLvl": 3,
+    "radiation": 10,
+    "comp": {
+     "struct": 60,
+     "compute": 20
+    }
    }
+  },
+  "terraform": {
+   "s": 0,
+   "c": 0,
+   "b": 0,
+   "uniq": 0,
+   "up": 0,
+   "h2": 0,
+   "compTier": 3,
+   "comp": {
+    "struct": 11200,
+    "compute": 8000,
+    "bio": 12800,
+    "energy": 8000
+   },
+   "upkeepDays": 90
+  },
+  "barracks": {
+   "s": 0,
+   "c": 0,
+   "b": 0,
+   "uniq": 0,
+   "up": 0,
+   "h2": 0,
+   "compTier": 2,
+   "comp": {
+    "struct": 450,
+    "compute": 220,
+    "bio": 1000,
+    "energy": 0
+   }
+  },
+  "battery": {
+   "s": 0,
+   "c": 0,
+   "b": 0,
+   "uniq": 0,
+   "up": 0,
+   "h2": 0,
+   "compTier": 2,
+   "comp": {
+    "struct": 800,
+    "compute": 400,
+    "bio": 0,
+    "energy": 130
+   }
+  },
+  "elevator": {
+   "s": 0,
+   "c": 0,
+   "b": 0,
+   "uniq": 0,
+   "up": 0,
+   "h2": 0,
+   "compTier": 3,
+   "comp": {
+    "struct": 1500,
+    "compute": 500,
+    "bio": 2000,
+    "energy": 0
+   }
+  },
+  "destroyer": {
+   "s": 0,
+   "c": 0,
+   "b": 0,
+   "uniq": 0,
+   "up": 0,
+   "h2": 0,
+   "compTier": 3,
+   "comp": {
+    "struct": 20000,
+    "compute": 10000,
+    "bio": 0,
+    "energy": 20000
+   }
+  },
+  "robots": {
+   "s": 0,
+   "c": 0,
+   "b": 0,
+   "uniq": 0,
+   "up": 0,
+   "h2": 0,
+   "compTier": 3,
+   "comp": {
+    "struct": 8000,
+    "compute": 14000,
+    "bio": 0,
+    "energy": 3000
+   }
+  },
+  "science": {
+   "s": 0,
+   "c": 0,
+   "b": 0,
+   "uniq": 0,
+   "up": 0,
+   "h2": 0,
+   "comp": {
+    "struct": 2000,
+    "compute": 4000,
+    "bio": 6000,
+    "energy": 500
+   },
+   "compTier": 3,
+   "upkeepDays": 15
+  },
+  "observatory": {
+   "s": 0,
+   "c": 0,
+   "b": 0,
+   "uniq": 0,
+   "up": 0,
+   "h2": 0,
+   "comp": {
+    "struct": 1500,
+    "compute": 3000,
+    "bio": 0,
+    "energy": 500
+   },
+   "compTier": 3
   }
  },
  "parts": {

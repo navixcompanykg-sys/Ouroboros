@@ -373,3 +373,8 @@ table.tt input[type=number]:focus { outline: none; border-color: var(--accent); 
 .paybar i { display: block; opacity: .6; font-style: normal; margin-top: 2px; }
 .paycost { display: flex; gap: 6px; opacity: .8; margin: -2px 0 6px; }
 .paycost span { flex: 1 1 0; text-align: center; }
+
+/* Статус пригодности для заселения (Habitat, js/colony.js). */
+.habbox { margin: 2px 0 8px; }
+.hab { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 1px 0; }
+.hab span { opacity: .7; }

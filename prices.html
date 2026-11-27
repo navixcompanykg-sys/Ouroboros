@@ -58,9 +58,19 @@
       производство. Содержание списывается сырьём своего типа, любым внутри типа (ТЗ §8.8).</p>
     <table class="tt">
       <thead><tr><th>Здание</th><th>Содержится</th><th class="n">Сырьё: структ.</th><th class="n">Сырьё: выч.</th><th class="n">Сырьё: био</th>
-        <th class="n">Комп.: констр.</th><th class="n">Комп.: ЭВМ</th>
-        <th class="n">Планет. ед.</th><th class="n">Сырья/час</th><th class="n">Водорода/такт</th><th class="n">Всего у.е. / в шахтах</th></tr></thead>
+        <th class="n">Комп.: констр.</th><th class="n">Комп.: ЭВМ</th><th class="n">Комп.: био</th><th class="n">Комп.: энерг.</th><th class="n">Ур. комп.</th>
+        <th class="n">Планет. ед.</th><th class="n">Сырья/час</th><th class="n">Водорода/такт</th><th class="n">Всего: сырья, ед. / в шахтах · у.е.</th></tr></thead>
       <tbody id="bld-body"></tbody>
+    </table>
+    <h3>Улучшения зданий</h3>
+    <p class="s">Переход на следующий уровень. Производство делает компоненты не выше своего уровня;
+      улучшение — в несколько раз дороже здания (ТЗ §8.25). Очистные — каждая ступень ещё −10 радиации
+      (§8.24). Цены лежат в data/prices.json (<code>upgrades</code> / <code>upgrade</code>); на этой странице
+      пока только показаны.</p>
+    <table class="tt">
+      <thead><tr><th>Здание</th><th>Переход</th><th>Компоненты</th><th>Сырьё</th>
+        <th class="n">Сырья, ед.</th><th class="n">У.е.</th><th class="n">В шахтах (ед. / у.е.)</th></tr></thead>
+      <tbody id="upg-body"></tbody>
     </table>
   </section>
 

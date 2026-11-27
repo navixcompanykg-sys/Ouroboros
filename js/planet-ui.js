@@ -10,7 +10,7 @@
 const PlanetUI = (() => {
   const $ = id => document.getElementById(id);
   let tbl = null, col = null, ctxRef = null, view = 'ship', modal = null, lowOrbit = false;
-  let rTarget = 'crypto', rScan = null;   // раздел «Рейсы»: цель и последний скан (кэш на 10 с)
+  let rTarget = 'need', rScan = null;   // раздел «Рейсы»: цель и последний скан (кэш на 10 с)
 
   const VIEWS = [['ship', 'Корабль'], ['wh', 'Склад'], ['build', 'Строительство'],
     ['prod', 'Производство'], ['route', 'Рейсы'], ['yard', 'Верфь'], ['fleet', 'Флот']];
@@ -186,6 +186,24 @@ const PlanetUI = (() => {
       rows + '<div class="sect"><div class="rg-h">⇄ Перегрузка</div>' + acts + '</div>' + holdBlock + wasteBlock();
   }
 
+  // ---------- токсичность планеты (ТЗ §8.21) ----------
+  function ecoBlock() {
+    if (!col) return '';
+    const e = Colony.ecology(col, ctxRef.surf);
+    return kv('Токсичность', e.tox + ' из 100') +
+      '<div class="note">База планеты ' + e.base + (e.extra ? ' · +' + e.extra * COL.TOX_PER_EXTRA + ' за ' + e.extra + ' лишн. зданий на гексах' : '') +
+      (e.clean ? ' · −' + e.clean * COL.TOX_CLEAN + ' очистные' : '') + '. Биомасса −' + e.tox + ' %.</div>' +
+      kv('Радиация', e.radiation + ' из 100' + (e.radCut ? ' (−' + e.radCut + ' улучшенные очистные)' : '')) +
+      (col.popRates ? kv('Ёмкость планеты', Math.floor(col.popRates.K) + ' жителей из ' + col.popRates.slots + ' мест (Q ×' +
+        col.popRates.Q.toFixed(2).replace('.', ',') + ', пища ×' + col.popRates.food.toFixed(2).replace('.', ',') + ')') +
+        kv('За сутки', '+' + col.popRates.births.toFixed(1).replace('.', ',') + ' рождений − ' + col.popRates.deaths.toFixed(1).replace('.', ',') + ' смертей') : '') +
+      (b => kv('Условия', '×' + b.all.toFixed(2).replace('.', ',')) +
+        '<div class="note">' + b.race + ', относительно нормы расы: токсичность ×' + b.tox.toFixed(2).replace('.', ',') +
+        ', радиация ×' + b.rad.toFixed(2).replace('.', ',') + ', температура ' + (e.tempK != null ? Math.round(e.tempK) + ' K ' : '') +
+        '×' + b.temp.toFixed(2).replace('.', ',') + ', давление ' + ((ctxRef.surf.env || {}).pressure ?? '—') + ' ×' + b.press.toFixed(2).replace('.', ',') +
+        '. Больше 1 — лучше нормы и покрывает слабые стороны; 0 — смертельно.</div>')(Colony.birthEnv(col, ctxRef.surf));
+  }
+
   // ---------- отходы: что выбросил полный склад (col.waste, js/colony.js) ----------
   // Решение пользователя: склад переполнен — колония выбрасывает ненужное, а счётчик показывает,
   // какие ресурсы и в каких объёмах уходят в отходы (потом их можно будет продавать на бирже или
@@ -218,6 +236,15 @@ const PlanetUI = (() => {
     rScan = { target: rTarget, ship: ship.id, at: now, rows };
     return rows;
   }
+  // Путевой лист: нужды колонии, снятые при вылете (в пути корабль с ними не сверяется), и стоянки.
+  function waybill(r) {
+    const G = { s: 'структурных', c: 'вычислительных', e: 'энергии (в водородах)', b: 'биомассы' };
+    const need = r.need ? Object.keys(r.need.def).filter(g => r.need.def[g] > 0).map(g => n0(r.need.def[g]) + ' ' + G[g]).join(', ') : '';
+    const stops = (r.sheet || []).slice(-8).map(x => x.name + ' (' + x.q + ', ' + x.r + ') — ' + n0(x.vol)).join(' · ');
+    return kv('Путевой лист', (r.sheet || []).length + ' съёмов') +
+      '<div class="note">Задание при вылете: ' + (need || 'нужды закрыты — берёт сверх, что ценнее') + '.' +
+      (stops ? ' Стоянки: ' + stops + '.' : '') + ' В пути корабль задание не меняет; новый лист — дома.</div>';
+  }
   function routeView(ship, here) {
     const T = ROUTE_TARGETS;
     let head = '<h4>Авторейсы</h4><div class="sub">Колония сама гоняет корабль: долетел → копает гекс, пока не забит трюм → ' +
@@ -227,7 +254,7 @@ const PlanetUI = (() => {
       const r = ship.route;
       return head + kv('Цель', T[r.target].name) + kv('Сейчас', Routes.status(ship, Date.now())) +
         kv('Куда', r.dest.name + ' · гекс ' + r.dest.q + ', ' + r.dest.r + (r.auto ? ' · выбирает сама' : ' · выбран вручную')) +
-        kv('План рейса', '~' + r.plan.n + ' съёмов · +' + n0(r.plan.perHour) + ' ' + T[r.target].unit + '/ч') +
+        (r.target === 'need' ? waybill(r) : kv('План рейса', '~' + r.plan.n + ' съёмов · +' + n0(r.plan.perHour) + ' ' + T[r.target].unit + '/ч')) +
         kv('Рейсов сделано', r.trips) +
         (r.last ? kv('Последний', 'с ' + r.last.from + ': ' + n0(r.last.brought) + ' ' + T[r.target].unit) : '') +
         '<div class="actions"><button data-act="routestop" ' + (r.stop ? 'disabled' : '') + '>' +
@@ -277,9 +304,11 @@ const PlanetUI = (() => {
       MAT_TYPES.map(m => TIERS.map(t => {
         const on = order.kind === 'comp' && order.mat === m.key && order.tier === t;
         const cost = Colony.compCost(m.key, t);
-        const txt = Object.keys(cost).map(k => resName(k) + ' ' + cost[k]).join(' + ');
-        return '<button class="bl" data-order="comp:' + m.key + ':' + t + '" ' + (on ? 'disabled' : '') + '>' +
-          '<span>' + Colony.compName(m.key, t) + '<i>' + txt + ' за штуку · до ' + COL.PROD_COMP + ' за такт</i></span>' +
+        const lvl = Colony.live(col).filter(b => b.kind === 'prod').reduce((a, b) => Math.max(a, b.lvl), 0);
+        const locked = t > lvl;   // производство делает компоненты не выше своего уровня
+        const txt = locked ? 'нужно производство ' + t + ' уровня — улучшение в «Строительстве»' : Object.keys(cost).map(k => resName(k) + ' ' + cost[k]).join(' + ');
+        return '<button class="bl" data-order="comp:' + m.key + ':' + t + '" ' + (on || locked ? 'disabled' : '') + '>' +
+          '<span>' + Colony.compName(m.key, t) + '<i>' + txt + (locked ? '' : ' за штуку · до ' + COL.PROD_COMP + ' за такт') + '</i></span>' +
           '<b>' + (on ? 'делается' : 'заказать') + '</b></button>';
       }).join('')).join('');
     return '<h4>Производство</h4>' +
@@ -308,14 +337,30 @@ const PlanetUI = (() => {
       kv('Содержание', n0(s.upkeep) + ' ед. сырья/час') +
       kv('Энергия', n0(s.h2) + ' водорода/такт' + (s.gen ? ' · генератор жжёт и тритий' : '') +
         (s.powered ? '' : ' · НЕ ХВАТАЕТ')) +
-      (s.site ? kv('Строится ' + COL_BUILDING[s.site.kind].name, hrs(s.site.left)) : '');
+      (s.site ? kv('Строится ' + COL_BUILDING[s.site.kind].name, hrs(s.site.left)) : '') +
+      ecoBlock();
     const rows = COL_BUILDINGS.filter(B => !!B.orbital === lowOrbit).map(B => {
       const err = Colony.canBuild(col, B.key, sel, lowOrbit, here ? ship : null);
       const n = Colony.live(col).filter(b => b.kind === B.key).length;
       return '<button class="bl" data-open="' + B.key + '"><span>' + B.name + (n ? ' ×' + n : '') +
         '<i>' + (err || B.desc) + '</i></span><b>' + (err ? '—' : 'можно') + '</b></button>';
     }).join('');
-    return '<h4>Колония</h4><div class="sub">Такт 10 минут · содержание раз в час</div>' + stats +
+    const auto = '<div class="actions"><button data-act="auto" class="' + (col.auto ? 'primary' : '') + '">' +
+      (col.auto ? 'Автостройка включена — выключить' : 'Включить автостройку') + '</button></div>' +
+      '<div class="note">Автостройка сама ставит шахты, производство, фермы, купола для роста населения, ' +
+      'майнинг-фермы под жалованье и очистные при высокой токсичности. Строить вручную можно всегда.</div>';
+    // Улучшения стоящих зданий (пока — очистные: компоненты 3 уровня, −10 радиации за ступень).
+    const ups = Colony.live(col).filter(b => COL_BUILDING[b.kind].upgrade || COL_BUILDING[b.kind].upgrades).map(b => {
+      const U = Colony.upgradeSpec(COL_BUILDING[b.kind], b.lvl + 1), err = Colony.canUpgrade(col, b);
+      const price = U ? Object.keys(U.comp || {}).map(m => n0(U.comp[m]) + ' × ' + Colony.compName(m, U.tier).toLowerCase())
+        .concat(Object.keys(U.raw || {}).map(k => n0(U.raw[k]) + ' ' + resName(k).toLowerCase())).join(' + ') : '';
+      const effect = b.kind === 'prod' ? 'компоненты ' + (b.lvl + 1) + ' уровня' : U && U.radiation ? 'ещё −' + U.radiation + ' радиации' : '';
+      return '<button class="bl" data-upg="' + b.q + ',' + b.r + ',' + b.kind + '" ' + (err ? 'disabled' : '') + '><span>' +
+        COL_BUILDING[b.kind].name + ' (' + b.q + ', ' + b.r + ') · уровень ' + b.lvl + '<i>' + (err && !price ? err : (err ? err.replace(/\.$/, '') + '. ' : '') + 'Улучшить: ' + price + (effect ? ' — ' + effect : '')) +
+        '</i></span><b>' + (err ? '—' : 'улучшить') + '</b></button>';
+    }).join('');
+    return '<h4>Колония</h4><div class="sub">Такт 10 минут · содержание раз в час</div>' + stats + auto +
+      (ups ? '<div class="sect"><div class="rg-h">Улучшения</div>' + ups + '</div>' : '') +
       '<div class="sect"><div class="rg-h">Постройки' + (sel ? ' · гекс ' + sel.q + ', ' + sel.r : ' · выберите гекс') +
       '</div>' + rows + '</div>';
   }
@@ -327,7 +372,7 @@ const PlanetUI = (() => {
     const err = col ? Colony.canBuild(col, modal, sel, lowOrbit, here ? World.active() : null) : 'колонии нет';
     const cost = [B.cost.s ? n0(B.cost.s) + ' структурного сырья' : '', B.cost.c ? n0(B.cost.c) + ' вычислительного сырья' : '',
       B.cost.b ? n0(B.cost.b) + ' биомассы' : '']
-      .concat(Object.keys(B.comp || {}).map(m => n0(B.comp[m]) + ' × ' + Colony.compName(m, 1).toLowerCase()))
+      .concat(Object.keys(B.comp || {}).map(m => n0(B.comp[m]) + ' × ' + Colony.compName(m, B.compTier || 1).toLowerCase()))
       .concat(B.cost.uniq ? [B.cost.uniq + ' планетарная единица'] : []).filter(Boolean).join(' · ');
     $('con-modal').innerHTML = '<div class="cm-t">' + B.name + '</div>' +
       '<div class="sub">1 уровень · ' +
@@ -384,7 +429,7 @@ const PlanetUI = (() => {
       // ловить, и разделы не переключались.
       const b = e.target.closest('#vtabs [data-view],#colony [data-act],#colony [data-open],' +
         '#colony [data-ship],#colony [data-pick],#colony [data-order],#colony [data-take],' +
-        '#colony [data-put],#colony [data-rgo],#colony [data-rtarget],#con-modal [data-act]');
+        '#colony [data-put],#colony [data-rgo],#colony [data-rtarget],#colony [data-upg],#con-modal [data-act]');
       if (!b || b.disabled) return;
       const ship = World.active(), sel = ctxRef.selected();
       if (b.dataset.view) view = b.dataset.view;
@@ -396,6 +441,12 @@ const PlanetUI = (() => {
       else if (b.dataset.take) { Ship.load(tbl, ship, col, b.dataset.take, Infinity); World.save(); }
       else if (b.dataset.put) putOne(ship, b.dataset.put);
       else if (b.dataset.rtarget) { rTarget = b.dataset.rtarget; rScan = null; }
+      else if (b.dataset.upg && col) {
+        const [q, r, kind] = b.dataset.upg.split(',');
+        const bl = Colony.live(col).find(x => x.kind === kind && x.q === +q && x.r === +r);
+        const err = bl ? Colony.upgrade(col, bl) : 'здания нет';
+        if (err) alert(err); World.save();
+      }
       else if (b.dataset.rgo) routeGo(ship, rScan && rScan.rows.filter(x => !x.err)[+b.dataset.rgo]);
       tick();
     });
@@ -438,6 +489,7 @@ const PlanetUI = (() => {
       if (err) alert(err); else modal = null;
     }
     if (a === 'closemodal') modal = null;
+    if (a === 'auto' && col) { col.auto = !col.auto; Colony.note(col, col.auto ? 'Автостройка включена' : 'Автостройка выключена'); }
     if (a === 'routeauto') routeGo(ship, null);
     if (a === 'routestop') Routes.stop(ship, Date.now());
     World.save();
