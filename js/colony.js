@@ -17,8 +17,13 @@ const COL = {
   H2_TICK: 100,          // ЭНЕРГИЯ: столько водорода (или его эквивалента) ест шахта за такт.
                          // Решение пользователя: «потребление шахты порядка 100 водорода в
                          // 10 минут, такая же цена добычи и у шахтёра на корабле».
-  H2_PER_UNIT: { hydrogen: 1, tritium: 3, antimatter: 8 }, // во сколько водородов идёт единица
-                         // (из энергоёмкости 100/300/800, ТЗ §7.3)
+  // Во сколько водородов идёт единица — ВЫВОДИТСЯ из единой энергоёмкости FUEL.yield (таблица
+  // пользователя, 100 / 300 / 800 → 1 / 3 / 8), а не задаётся вторым числом рядом.
+  H2_PER_UNIT: {
+    get hydrogen() { return 1; },
+    get tritium() { return FUEL.tritium.yield / FUEL.hydrogen.yield; },
+    get antimatter() { return FUEL.antimatter.yield / FUEL.hydrogen.yield; },
+  },
   UPKEEP_RAW: 700,       // содержание здания 1 уровня за ЧАС, сырьём своего типа (любым внутри типа)
   UPKEEP_EVERY: 6,       // содержание раз в час, добыча раз в 10 минут
   GRACE: 3,              // три часа подряд без оплаты → здание разбирают
@@ -37,8 +42,16 @@ const COL = {
   CRYPTO_START: 20000,   // крипта, с которой начинает высаженная колония: деньги игрока,
                          // вложенные в высадку. Без неё рабочие не выходят с первой же минуты.
   WAGE: 6,               // крипты рабочему за такт
-  MFARM_EN: 200000,      // майнинг-ферма жжёт до 200 000 × уровень энергии за такт
   TOKEN_PER_EN: 0.0004,  // крипты за единицу энергии
+  // МАЙНИНГ-ФЕРМА 1 УРОВНЯ ПОКРЫВАЕТ ВСЕ РАСХОДЫ МИНИМАЛЬНОЙ КОЛОНИИ (требование пользователя:
+  // «1 криптоферма по выработке должна покрывать все расходы минимальной колонии, потребляя
+  // водород»). Минимальная колония — один купол, то есть до DOME_CAP жителей, и все её расходы
+  // в крипте — жалованье: 10 × 6 = 60 крипты за такт. Сколько энергии на это нужно, выводится
+  // отсюда (MFARM_EN), а не задаётся отдельным числом: поменяется жалованье, купол или
+  // энергоёмкость водорода — ферма останется ровно на окупаемости.
+  get MFARM_CRYPTO() { return this.WAGE * this.DOME_CAP; },
+  get MFARM_EN() { return this.MFARM_CRYPTO / this.TOKEN_PER_EN; },  // энергии за такт × уровень
+  get MFARM_H2() { return this.MFARM_EN / FUEL.hydrogen.yield; },     // ...то же в водородах
 
   UNIQ_RAW: 10,          // планетарная единица: по 10 ед. сырья 1, 2 и 3 уровня разных типов (§8.5)
   PROD_TICKS: 144,       // производство уровня L выдаёт одну планетарную единицу раз в 144 / L тактов
@@ -192,15 +205,26 @@ const Colony = (() => {
     }
   }
 
-  // ---------- МАССА ----------
-  // Трюм и склад меряются МАССОЙ, а не числом единиц (решение пользователя: «мерим по массе
-  // предельную вместимость»). У сырья масса своя — от 1 у водорода до 10 у сверхплотных
-  // (RESOURCES.mass), поэтому десять тысяч силикатов (масса 4) — это сорок тысяч массы, то есть
-  // два-три грузовых отсека, а не «десять тысяч чего-то».
-  let compMass = {};           // масса компонента по ключу вида 'struct1'
+  // ---------- ОБЪЁМ И МАССА — РАЗНЫЕ ВЕЩИ ----------
+  // Решение пользователя (2026-11-27, отменяет прежнее «мерим по массе предельную вместимость»):
+  // «нужно развести ёмкость и массу: грузовместимость мы считаем по ОБЪЁМУ, а масса определит, на
+  // сколько изменится скорость, когда трюм будет забит; на планете же склад на земле стоит, и масса
+  // ни на что не влияет; ёмкости, что заданы, — это ёмкости по объёму».
+  //   ОБЪЁМ — им меряются трюм и склад (ёмкости из таблицы пользователя). Сырьё задано массой «на
+  //     единый объём» (data.js), то есть единица любого сырья занимает 1; пища — 1 (ДОПУЩЕНИЕ);
+  //     компонент — сколько сырья на него ушло (CRAFT: 50 / 30 / 20), ДОПУЩЕНИЕ: сырьё в
+  //     компоненте не сжимается.
+  //   МАССА — только для корабля: груз утяжеляет его и снижает разгон (Ship.cargoK). Масса сырья
+  //     RESOURCES.mass — тонны на единицу (компонент из 50 силикатов по 4 весит в таблице 120 т),
+  //     компонента — параметр «Масса» из таблицы.
+  // Масса компонента по ключу вида 'struct1'. Таблица грузится асинхронно, а экрану полёта масса
+  // груза нужна сразу при открытии — поэтому последние известные массы лежат и в localStorage.
+  const COMP_MASS_KEY = 'ouro.v3.compMass';
+  let compMass = (() => { try { return JSON.parse(localStorage.getItem(COMP_MASS_KEY)) || {}; } catch (_) { return {}; } })();
   function setMasses(tbl) {    // вызывает экран, когда загрузил таблицу компонентов
     compMass = {};
     for (const m of MAT_TYPES) for (const t of TIERS) compMass[m.key + t] = influence(tbl, m.key, 'mass', t);
+    try { localStorage.setItem(COMP_MASS_KEY, JSON.stringify(compMass)); } catch (_) { /* приватный режим */ }
   }
   const FOOD_MASS = 1;         // ДОПУЩЕНИЕ: пища лёгкая, как водород
   function massOf(key) {
@@ -210,6 +234,12 @@ const Colony = (() => {
     return compMass[key] || 1;
   }
   const massSum = store => Object.keys(store || {}).reduce((a, k) => a + store[k] * massOf(k), 0);
+  function volOf(key) {
+    if (key === 'food' || RESOURCES.some(x => x.key === key)) return 1;
+    const tier = +String(key).slice(-1);
+    return CRAFT[tier - 1] ? CRAFT[tier - 1].need.reduce((a, n) => a + n, 0) : 1;
+  }
+  const volSum = store => Object.keys(store || {}).reduce((a, k) => a + store[k] * volOf(k), 0);
 
   // ---------- СКЛАД ПЛАНЕТЫ ----------
   // Решение пользователя: «каждой планете, где есть хоть одна постройка, нужен свой склад;
@@ -223,11 +253,56 @@ const Colony = (() => {
   let holdUnit = 2000;
   const setHoldUnit = n => { if (n > 0) holdUnit = n; };
   const capacity = col => Math.max(1, live(col).length) * 2 * holdUnit;
-  const used = col => massSum(col.stock) + (col.food || 0) * FOOD_MASS + massSum(col.comp);
+  const used = col => volSum(col.stock) + (col.food || 0) * volOf('food') + volSum(col.comp);   // объём
   const roomLeft = col => Math.max(0, capacity(col) - used(col));
+  // ---------- ОТХОДЫ ----------
+  // Решение пользователя: «позволь колониям выбрасывать ненужные ресурсы, если склад переполнен;
+  // их потом на биржу выставлять можно будет или утилизировать, но пока пусть будет так — и
+  // счётчик включи, чего сколько выбросили, чтоб понимать, какие ресурсы уходят в отходы и в
+  // каких объёмах». col.waste — всего выброшено с основания колонии, по ресурсам.
+  // Бронь СОДЕРЖАНИЯ: сырьё группы на RESERVE_TICKS тактов платы за здания (купол — силикатами,
+  // ферма — энергоносителями…). Ниже неё склад не выбрасывает — иначе выброс «ненужного» силиката
+  // разбирал бы купол за долги.
+  const upReserve = (col, g) => live(col).reduce((a, b) => a + (COL_BUILDING[b.kind].upkeep === g ? (COL_BUILDING[b.kind].up || 0) * b.lvl : 0), 0)
+    / COL.UPKEEP_EVERY * RESERVE_TICKS * 2;
+  function waste(col, key, q) {
+    if (!(q > 1e-9)) return;
+    col.waste = col.waste || {};
+    col.waste[key] = (col.waste[key] || 0) + q;
+  }
+
   // Положить на склад, сколько влезет; вернуть, сколько легло.
+  // СКЛАД ПОЛОН — ВЫБРАСЫВАЕТСЯ НЕНУЖНОЕ, то есть то, чего на складе НАВАЛОМ: место освобождает
+  // позиция с наибольшим объёмом, пока её больше, чем привезённого. Брони не трогаются: энергия
+  // зданий (h2Reserve) и сырьё на их содержание (upReserve). Что не влезло и так — уходит в отходы
+  // у того, кто привёз (добыча в step, авторейс в Ship.unload).
+  // Первая версия выбрасывала «распространённое» (по редкости в галактике) — и колония гибла:
+  // гора редкой биомассы не давала положить водород, 570 тысяч водорода ушли в отходы, шахты
+  // встали без энергии (прогон tools/colony.js).
   function store(col, key, qty) {
-    const q = Math.min(qty, roomLeft(col) / massOf(key));   // место считается массой
+    let q = Math.min(qty, roomLeft(col) / volOf(key));   // место считается ОБЪЁМОМ
+    if (q < qty - 1e-9 && RESOURCES.some(r => r.key === key)) {
+      let need = (qty - q) * volOf(key);
+      const heap = j => (col.stock[j] || 0) * volOf(j);
+      const junk = Object.keys(col.stock).filter(j => j !== key && heap(j) > 1e-9).sort((a, b) => heap(b) - heap(a));
+      for (const j of junk) {
+        if (need <= 1e-9) break;
+        // Выбрасываем только то, чего на складе БОЛЬШЕ, чем станет привезённого: склад
+        // выравнивается, а не меняет одну гору на другую.
+        const over = (heap(j) - (heap(key) + (qty - q) * volOf(key))) / volOf(j);
+        if (over <= 1e-9) continue;
+        let can = col.stock[j];
+        const g = COL_KEY_GROUP[j];
+        if (g === 'e') {                           // бронь энергии — в «водородах»
+          const eHave = COL_GROUPS.e.reduce((a, k) => a + (col.stock[k] || 0) * (COL.H2_PER_UNIT[k] || 1), 0);
+          can = Math.min(can, Math.max(0, eHave - h2Reserve(col) - upReserve(col, g)) / (COL.H2_PER_UNIT[j] || 1));
+        } else can = Math.min(can, Math.max(0, inGroup(col, g) - upReserve(col, g)));
+        const take = Math.min(can, over, need / volOf(j));
+        if (take <= 0) continue;
+        col.stock[j] -= take; waste(col, j, take); need -= take * volOf(j);
+      }
+      q = Math.min(qty, roomLeft(col) / volOf(key));
+    }
     if (q > 0) add(col.stock, key, q);
     return q;
   }
@@ -262,6 +337,12 @@ const Colony = (() => {
     for (const k in hex.res) { const v = COL.SHIP_MINE_K * hex.res[k]; if (v) out[k] = v; }
     return out;
   }
+
+  // БРОНЬ ЭНЕРГОНОСИТЕЛЕЙ — запас на RESERVE_TICKS тактов работы всех зданий, в «водородах».
+  // Её держит склад (добыча кладёт водород первым, пока бронь не полна) и её же не трогают
+  // авторейсы: корабль берёт водород на съёмы только сверх брони (js/routes.js).
+  const RESERVE_TICKS = 6;
+  const h2Reserve = col => live(col).reduce((a, b) => a + (COL_BUILDING[b.kind].h2 || 0) * b.lvl, 0) * RESERVE_TICKS;
 
   // ---------- такт колонии ----------
   function step(col, surf) {
@@ -333,8 +414,7 @@ const Colony = (() => {
     // на RESERVE_TICKS тактов работы всех зданий, не больше: остальное место по-прежнему
     // достаётся редкому сырью, иначе на складе не окажется третьего уровня для планетарной
     // единицы (§8.5).
-    const RESERVE_TICKS = 6;
-    const h2Res = L.reduce((a2, b) => a2 + (COL_BUILDING[b.kind].h2 || 0) * b.lvl, 0) * RESERVE_TICKS;
+    const h2Res = h2Reserve(col);
     if (h2Res > 0) {
       const have = inGroup(col, 'e');
       let room = Math.max(0, h2Res - have);
@@ -347,8 +427,10 @@ const Colony = (() => {
         if (mined[k] <= 1e-9) delete mined[k];
       }
     }
-    for (const k of Object.keys(mined).sort((a, b) => rare(a) - rare(b)))
-      spill += mined[k] - store(col, k, mined[k]);
+    for (const k of Object.keys(mined).sort((a, b) => rare(a) - rare(b))) {
+      const lost = mined[k] - store(col, k, mined[k]);
+      spill += lost; waste(col, k, lost);       // не влезло — в отходы, со счётом
+    }
     if (spill > 0 && !col.fullWarned) { col.fullWarned = true; note(col, 'Склад полон — добыча пропадает'); }
     if (spill <= 0) col.fullWarned = false;
 
@@ -402,8 +484,14 @@ const Colony = (() => {
     }
 
     // 5. крипта
+    // Майнинг-ферма жжёт только ИЗЛИШЕК энергоносителей сверх брони (h2Reserve) — по тому же
+    // порядку важности, что и вся энергия (COL_PRIO: шахты раньше фермы). Иначе ферма за такт
+    // съедает 1 500 водорода, склад пустеет дочиста, и на следующем такте шахты стоят без энергии,
+    // а кораблю нечем начать авторейс за новым водородом.
     const mf = L.find(b => b.kind === 'mfarm' && manned.has(b) && !b.off);
-    const minted = mf ? burn(col, COL.MFARM_EN * mf.lvl) * COL.TOKEN_PER_EN : 0;
+    const enHave = COL_GROUPS.e.reduce((a, k) => a + (col.stock[k] || 0) * FUEL[k].yield, 0);
+    const enSpare = Math.max(0, enHave - h2Reserve(col) * FUEL.hydrogen.yield);
+    const minted = mf ? burn(col, Math.min(COL.MFARM_EN * mf.lvl, enSpare)) * COL.TOKEN_PER_EN : 0;
     col.crypto = Math.max(0, col.crypto + minted - paid * COL.WAGE);
 
     // 6. производство: заказ игрока — компоненты на склад или уникальный ресурс планеты
@@ -567,9 +655,9 @@ const Colony = (() => {
   }
 
   return { blank, advance, step, build, canBuild, summary, live, has, inGroup, spendIn, add, startKit,
-    capacity, used, roomLeft, store, setHoldUnit, setPrices, setMasses, massOf, massSum,
+    capacity, used, roomLeft, store, setHoldUnit, setPrices, setMasses, massOf, massSum, volOf, volSum,
     compKey, compName, compCost, compTotal,
-    shipOutput, mineOutput, tickAt, note, domeCap, uniqPick };
+    shipOutput, mineOutput, tickAt, note, domeCap, uniqPick, h2Reserve, waste };
 })();
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -600,7 +688,22 @@ const Ship = (() => {
   // На сколько тактов хватит запаса при нынешнем экипаже (с пассажирами — меньше).
   const lifeTicks = (tbl, ship, st) => Math.floor(lifeLeft(tbl, ship, st) / (crew(ship) * COL.FOOD_PER_POP));
 
-  const cargoUsed = ship => Colony.massSum(ship.cargo);   // трюм меряется массой
+  const cargoUsed = ship => Colony.volSum(ship.cargo);    // трюм меряется ОБЪЁМОМ
+  const cargoMass = ship => Colony.massSum(ship.cargo);   // а масса груза — тонны, она тормозит корабль
+  // ГРУЖЁНЫЙ КОРАБЛЬ МЕДЛЕННЕЕ: тяга та же, масса больше — ускорение × корпус / (корпус + груз).
+  // Корпус — масса корабля из таблицы пользователя (Ship.stats, т). Запас Δv падает в ту же долю:
+  // время горения то же, ускорение меньше. Полётные числа порожнего корабля не меняются.
+  const cargoK = (tbl, ship, extraT = 0) => {
+    const hull = stats(tbl, ship).mass || 0;
+    const m = cargoMass(ship) + extraT;
+    return hull > 0 ? hull / (hull + m) : 1;
+  };
+  const loaded = (st, k) => Object.assign({}, st, { accel: st.accel * k, dv: st.dv * k, idleDv: (st.idleDv || 0) * k, cargoK: k });
+  // То же для РУЧНОГО полёта (экраны системы и галактики): там таблицы может ещё не быть, поэтому
+  // масса корпуса берётся из ship.hullT — её записывают экраны, у которых таблица загружена
+  // (rememberHull). Пока её нет ни разу — корабль летит как порожний.
+  const rememberHull = (tbl, ship) => { const m = stats(tbl, ship).mass; if (m > 0 && ship.hullT !== m) ship.hullT = m; };
+  const flightK = ship => ship && ship.hullT > 0 ? ship.hullT / (ship.hullT + cargoMass(ship)) : 1;
   const cargoFree = (tbl, ship, st) => Math.max(0, st.capacity - cargoUsed(ship));
   const hasMiner = ship => designModules(findDesign(ship.design)).includes('miner');
 
@@ -623,9 +726,11 @@ const Ship = (() => {
     const h = ship.mine && ship.landed && surf
       ? surf.hexes.find(x => x.q === ship.mine.q && x.r === ship.mine.r) : null;
     if (h && hasMiner(ship)) {
+      // «На добыче» — один съём своего гекса за такт. Такт, в котором корабль уже брал, не считаем.
       const t0 = Colony.tickAt(last), t1 = Colony.tickAt(now);
       const lastH = hvOf(ship, ship.star, ship.planet);
-      let n = Math.max(0, t1 - Math.max(t0, lastH ? lastH.t : -1));
+      const from = Math.max(t0, lastH ? lastH.t : -1);
+      let n = Math.max(0, t1 - from);
       const per = Object.values(Colony.shipOutput(h)).reduce((a, v) => a + v, 0);
       const byFuel = Math.floor(((ship.cargo || {}).hydrogen || 0) / HARVEST_H2);
       const byCargo = per > 0 ? Math.ceil(cargoFree(tbl, ship, st) / per) : 0;
@@ -633,7 +738,10 @@ const Ship = (() => {
       if (n > byFuel) { n = byFuel; stop = 'топливо'; }
       if (n > byCargo) { n = byCargo; stop = 'трюм'; }
       for (let i = 0; i < n; i++) {
-        const r = harvest(tbl, ship, h, ship.star, ship.planet, now, true);
+        // каждый съём — в СВОЙ такт (последний — текущий: его гекс пишется в журнал)
+        const tick = t1 - n + 1 + i, at = tick === t1 ? now : tick * COL.TICK_MS;
+        const r = harvest(tbl, ship, h, ship.star, ship.planet, at, true);
+        if (r.err && r.err.startsWith('гекс уже снят')) { stop = 'гекс занят'; continue; }
         if (r.err) { stop = r.err; break; }
         auto++; got = got || {};
         for (const k in r.got) got[k] = (got[k] || 0) + r.got[k];
@@ -657,30 +765,61 @@ const Ship = (() => {
   // пользователя: «такая же цена добычи и у шахтёра на корабле»). Водород берётся ИЗ ТРЮМА:
   // корабль должен возить топливо, чтобы копать.
   const HARVEST_H2 = 100;
-  // ЛИМИТ ХРАНИТСЯ В ПАМЯТИ КОРАБЛЯ (решение пользователя): ship.hv — по одной записи на
-  // планету, {t: номер такта, q, r: откуда брали}. Один корабль снимает с ОДНОЙ планеты один
-  // гекс за 10 минут; прилетел на другую — там свой счёт.
+  // ДВА ЖУРНАЛА СЪЁМА (решения пользователя 2026-11-27):
+  //  1. ЖУРНАЛ КОРАБЛЯ — «один гекс на планету в 10 минут остаётся, это журнал самого корабля»:
+  //     ship.hv, по записи на планету {t, q, r}; старше текущего такта — выбрасывается.
+  //  2. ЖУРНАЛ ГЕКСОВ — «гекс на 10 минут заблокирован для добычи, чтоб другие корабли не могли
+  //     снять его повторно; каждые 10 минут сбрасывается история добычи на всех планетах, чтоб не
+  //     считать каждый гекс отдельно, а регистрировать только снятые гексы».
+  // Снять можно, только если пускают оба: корабль ещё не брал на этой планете в этом такте, и
+  // гекс никто не снимал в этом такте.
   //
-  // ПОЧЕМУ НА КОРАБЛЕ, А НЕ НА ПЛАНЕТЕ (вопрос про ММО). История не нужна ни там, ни там:
-  // запись старше текущего такта уже ничего не ограничивает, её сразу выбрасываем — поэтому
-  // у корабля остаются одна-две записи, то есть O(1). Главное же не память, а ЗАПИСЬ: лимит на
-  // корабле пишется только в собственную строку корабля — ни блокировок, ни гонок между
-  // игроками, шардится по игроку. Лимит на гексе пришлось бы писать в ОБЩЕЕ состояние планеты
-  // на самом горячем пути. Плата за выбор: два корабля могут снять с одного гекса в один такт.
-  // Понадобится ограничить толпу на гексе — добавим хекс-лимит ПОВЕРХ, не убирая корабельный.
+  // Журнал один на мир: { t: номер такта, taken: { 'звезда:планета:q:r': id корабля } }. В нём
+  // ТОЛЬКО гексы, снятые в текущем такте; наступил новый такт — журнал просто заменяется пустым.
+  // Сколько в мире звёзд и гексов, неважно: размер журнала = число съёмов за последние 10 минут,
+  // проверка — один поиск по ключу. Хранит его World (в браузере — сохраняется вместе с миром);
+  // где World нет (прогоны в node), журнал живёт в памяти.
+  //
+  // Для ММО: журнал — общее состояние, которое пишут все игроки. Делится на куски по звезде (ключ
+  // начинается со звезды), запись — «вставить, если нет» на ключ, без блокировок всего журнала.
+  let memLog = { t: -1, taken: {} };
+  const resetHexLog = () => { memLog = { t: -1, taken: {} }; };   // прогоны в node: новый мир — новый журнал
+  const hexLog = () => (typeof World !== 'undefined' && World.hexLog ? World.hexLog() : memLog);
+  const hexKey = (star, planet, hex) => star + ':' + planet + ':' + hex.q + ':' + hex.r;
+  // Журнал на такт tick: устаревший — сбросить. Для ПРОШЛОГО такта (догон после отсутствия)
+  // журнала уже нет — такой такт считается свободным и не пишется.
+  function logFor(tick) {
+    const L = hexLog();
+    if (tick > L.t) { L.t = tick; L.taken = {}; }
+    return tick === L.t ? L : null;
+  }
+  function hexFree(star, planet, hex, now) {
+    const L = logFor(Colony.tickAt(now));
+    return !L || !L.taken[hexKey(star, planet, hex)];
+  }
+  function hexTake(star, planet, hex, now, ship) {
+    const L = logFor(Colony.tickAt(now));
+    if (L) L.taken[hexKey(star, planet, hex)] = ship ? ship.id : 1;
+  }
+  // Гексы планеты, снятые в текущем такте (для отметок на карте).
+  function hexesTaken(star, planet, now) {
+    const L = logFor(Colony.tickAt(now)); if (!L) return [];
+    const pre = star + ':' + planet + ':';
+    return Object.keys(L.taken).filter(k => k.startsWith(pre)).map(k => { const p = k.split(':'); return { q: +p[2], r: +p[3] }; });
+  }
+  // Журнал корабля: на этой планете корабль уже брал в этом такте?
   const hvKey = (star, planet) => star + ':' + planet;
   const hvOf = (ship, star, planet) => (ship.hv || {})[hvKey(star, planet)] || null;
-  function harvestReady(ship, star, planet, now) {
-    const h = hvOf(ship, star, planet);
-    return !h || Colony.tickAt(now) > h.t;
-  }
-  function harvestWait(ship, star, planet, now) { // секунд до следующего съёма на этой планете
-    if (harvestReady(ship, star, planet, now)) return 0;
+  const shipReady = (ship, star, planet, now) => { const h = hvOf(ship, star, planet); return !h || Colony.tickAt(now) > h.t; };
+  const harvestReady = (ship, star, planet, hex, now) => shipReady(ship, star, planet, now) && (!hex || hexFree(star, planet, hex, now));
+  function harvestWait(ship, star, planet, hex, now) { // секунд до следующего возможного съёма
+    if (harvestReady(ship, star, planet, hex, now)) return 0;
     return Math.ceil((COL.TICK_MS - (now % COL.TICK_MS)) / 1000);
   }
   function harvest(tbl, ship, hex, star, planet, now, auto) {
     if (!hasMiner(ship)) return { err: 'нет модуля «Шахтёр»' };
-    if (!auto && !harvestReady(ship, star, planet, now)) return { err: 'на этой планете корабль уже брал добычу в этом такте' };
+    if (!auto && !shipReady(ship, star, planet, now)) return { err: 'на этой планете корабль уже брал добычу в этом такте' };
+    if (!hexFree(star, planet, hex, now)) return { err: 'гекс уже снят в этом такте — свободен через ' + harvestWait(ship, star, planet, hex, now) + ' с' };
     const st = stats(tbl, ship);
     const free = cargoFree(tbl, ship, st);
     if (free <= 0) return { err: 'трюм полон' };
@@ -693,10 +832,11 @@ const Ship = (() => {
     const got = {};
     ship.cargo = ship.cargo || {};
     for (const key in out) { const q = out[key] * k; if (q > 0) { ship.cargo[key] = (ship.cargo[key] || 0) + q; got[key] = q; } }
-    const nowT = Colony.tickAt(now);
+    hexTake(star, planet, hex, now, ship);                // журнал гексов — для всех кораблей
+    const nowT = Colony.tickAt(now);                      // журнал корабля — одна запись на планету
     ship.hv = ship.hv || {};
-    for (const k in ship.hv) if (ship.hv[k].t < nowT) delete ship.hv[k]; // мёртвые записи не храним
-    ship.hv[hvKey(star, planet)] = { t: nowT, q: hex.q, r: hex.r };
+    for (const k in ship.hv) if (ship.hv[k].t < nowT) delete ship.hv[k];
+    ship.hv[hvKey(star, planet)] = { t: Math.max(nowT, (hvOf(ship, star, planet) || { t: -1 }).t), q: hex.q, r: hex.r };
     ship.cargo.hydrogen -= HARVEST_H2;
     if (ship.cargo.hydrogen <= 0) delete ship.cargo.hydrogen;
     return { got, total: want * k, full: cargoFree(tbl, ship, st) <= 0 };
@@ -705,13 +845,16 @@ const Ship = (() => {
   // Выгрузить трюм на склад колонии.
   // Выгрузка на склад планеты: что не влезло — остаётся в трюме (склад планеты ограничен,
   // ТЗ §8.12: постройка = два трюма).
-  function unload(ship, col) {
+  // dump — то, что не влезло даже после выброса ненужного, тоже выбросить (в отходы колонии), а не
+  // оставлять в трюме: так поступает авторейс, иначе корабль увозил бы груз обратно. Игрок,
+  // выгружая вручную, решает сам — у него остаток лежит в трюме.
+  function unload(ship, col, dump) {
     let n = 0, left = 0;
     for (const k of Object.keys(ship.cargo || {})) {
       if (k === 'food') continue; // пища идёт в запас колонии, а не в сырьё
       const isComp = !RESOURCES.some(r => r.key === k);
       const room = Colony.roomLeft(col);
-      const got = isComp ? Math.min(ship.cargo[k], room) : Colony.store(col, k, ship.cargo[k]);
+      const got = isComp ? Math.min(ship.cargo[k], room / Colony.volOf(k)) : Colony.store(col, k, ship.cargo[k]);
       if (isComp && got > 0) { col.comp = col.comp || {}; col.comp[k] = (col.comp[k] || 0) + got; }
       n += got;
       if (got < ship.cargo[k]) { ship.cargo[k] -= got; left += ship.cargo[k]; } else delete ship.cargo[k];
@@ -721,7 +864,13 @@ const Ship = (() => {
       col.food += got; n += got;
       if (got < ship.cargo.food) { ship.cargo.food -= got; left += ship.cargo.food; } else delete ship.cargo.food;
     }
-    if (n > 0) Colony.note(col, 'Корабль выгрузил ' + Math.round(n) + ' ед.' + (left > 0 ? ', ' + Math.round(left) + ' не влезло' : ''));
+    let thrown = 0;
+    if (dump && left > 0) for (const k of Object.keys(ship.cargo || {})) {
+      if (!RESOURCES.some(r => r.key === k)) continue;   // компоненты и пищу не выбрасываем
+      Colony.waste(col, k, ship.cargo[k]); thrown += ship.cargo[k]; delete ship.cargo[k];
+    }
+    if (n > 0 || thrown > 0) Colony.note(col, 'Корабль выгрузил ' + Math.round(n) + ' ед.'
+      + (thrown > 0 ? ', ' + Math.round(thrown) + ' выброшено (склад полон)' : left > 0 ? ', ' + Math.round(left) + ' не влезло' : ''));
     return n;
   }
   // Что лежит на складе колонии одной таблицей: сырьё, компоненты и пища. Ключ компонента —
@@ -743,12 +892,35 @@ const Ship = (() => {
   function load(tbl, ship, col, key, qty) {
     const st = stats(tbl, ship);
     const have = key === 'food' ? col.food : (col.stock[key] != null ? col.stock[key] : (col.comp || {})[key] || 0);
-    const q = Math.min(qty, have, cargoFree(tbl, ship, st));
+    const q = Math.min(qty, have, cargoFree(tbl, ship, st) / Colony.volOf(key));   // место в трюме — объём
     if (q <= 0) return 0;
     takeFromColony(col, key, q);
     ship.cargo = ship.cargo || {};
     ship.cargo[key] = (ship.cargo[key] || 0) + q;
     return q;
+  }
+
+  // ---------- ЗАПРАВКА ----------
+  // Решение пользователя: «корабли могут потреблять ресурсы, добытые на планетах быстрой добычей;
+  // в колониях корабли берут топливо со склада, а не просто заполняют бак бесплатно». Бак наполняется
+  // ТЕМ топливом, на котором летит корабль (шаттл — тритий; водород в тритий не превращается):
+  // сначала из своего трюма, потом, если стоит у колонии, — с её склада. Нечем — бак остаётся как есть.
+  // ship.fuel — доля полного бака (0…1). Корабль, двигатели которого кормит реактор, не заправляется.
+  function tankOf(ship) {
+    const st = shipStats(findDesign(ship.design));
+    return st.burnPerCycle > 0 && st.fuelUnits > 0 ? { key: st.fuelKey, units: st.fuelUnits } : null;
+  }
+  function refuel(ship, col) {
+    const T = tankOf(ship); if (!T) return { got: 0, fromHold: 0, fromCol: 0 };
+    const cur = typeof ship.fuel === 'number' ? ship.fuel : 1;
+    let need = Math.max(0, (1 - cur) * T.units);
+    const fromHold = Math.min(need, (ship.cargo || {})[T.key] || 0);
+    if (fromHold > 0) { ship.cargo[T.key] -= fromHold; if (ship.cargo[T.key] <= 1e-9) delete ship.cargo[T.key]; need -= fromHold; }
+    const fromCol = col ? Math.min(need, col.stock[T.key] || 0) : 0;
+    if (fromCol > 0) { col.stock[T.key] -= fromCol; need -= fromCol; }
+    ship.fuel = Math.min(1, cur + (fromHold + fromCol) / T.units);
+    if (col && fromCol > 0) Colony.note(col, 'Заправка ' + (ship.design || 'корабля') + ' #' + ship.id + ': ' + Math.round(fromCol * 10) / 10 + ' ' + (FUEL[T.key] ? FUEL[T.key].name.toLowerCase() : T.key) + ' со склада');
+    return { got: fromHold + fromCol, fromHold, fromCol, key: T.key, units: T.units, full: ship.fuel >= 1 - 1e-9 };
   }
 
   // Зарядить жизнеобеспечение пищей колонии.
@@ -778,8 +950,8 @@ const Ship = (() => {
     return got;
   }
 
-  return { stats, crew, lifeCap, lifeLeft, lifeShare, lifeTicks, cargoUsed, cargoFree, hasMiner,
-    advance, harvest, harvestReady, harvestWait, HARVEST_H2, unload, load, colonyGoods, recharge, loadFood, rechargeFromHold, foodPerUnit,
+  return { stats, crew, lifeCap, lifeLeft, lifeShare, lifeTicks, cargoUsed, cargoMass, cargoK, loaded, flightK, rememberHull, cargoFree, hasMiner,
+    advance, harvest, harvestReady, harvestWait, hexesTaken, resetHexLog, HARVEST_H2, unload, refuel, tankOf, load, colonyGoods, recharge, loadFood, rechargeFromHold, foodPerUnit,
     cost: shipCost, costRaw: shipCostRaw, costTotal: shipCostTotal, paxCap, ensureStart,
     value: valueOfRaw, valueComp: valueOfComp, valueComps: valueOfComps };
 })();
@@ -844,7 +1016,7 @@ function paxCap(design) { return designModules(design).filter(k => k === 'coloni
 
 // Стартовая загрузка первого корабля — ровно та, что в прогоне tools/colony.js: сырьё на первую
 // шахту, водород на первые часы, пища на колонистов. Делается один раз на новую игру.
-// Трюм стартового шаттла — 40 000 массы (2,5 грузовых отсека). Грузим так, чтобы хватило на
+// Трюм стартового шаттла — 40 000 объёма (2,5 грузовых отсека). Грузим так, чтобы хватило на
 // первые часы: водород нужен и на съём кораблём (100 за раз), и на содержание первой шахты.
 const START_LOAD = { silicates: 2000, silicon: 1000, hydrogen: 6000, food: 2000, pax: 10 };
 function ensureStart(ship) {
@@ -871,6 +1043,12 @@ function ensureStart(ship) {
 // шахту для пассивной добычи или пару кораблей для активной». При ×3 укомплектованный шаттл
 // стоит 4 650 сырья против 10 000 за шахту — ровно вдвое дешевле.
 const SHIP_SCALE = 3;
+
+// ПОЛЁТНЫЕ ЧИСЛА КОРАБЛЯ С ГРУЗОМ (решение пользователя: «масса определит, на сколько изменится
+// скорость, когда трюм будет забит»; «в ручном полёте тоже нужно учитывать массу груза»).
+// Тяга та же, масса больше: ускорение и запас Δv × корпус / (корпус + груз). Этим пользуются
+// экраны системы и галактики (ручной полёт) и авторейсы — расчёт один.
+function flightStats(design, ship) { return Ship.loaded(shipStats(design), Ship.flightK(ship)); }
 function shipBuildTicks(design) {
   // Время сборки: час на каждые четыре модуля (ДОПУЩЕНИЕ).
   return COL.BUILD_TICKS * Math.max(1, Math.ceil((designModules(design).length + design.decks.length) / 4));

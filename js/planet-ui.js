@@ -10,9 +10,10 @@
 const PlanetUI = (() => {
   const $ = id => document.getElementById(id);
   let tbl = null, col = null, ctxRef = null, view = 'ship', modal = null, lowOrbit = false;
+  let rTarget = 'crypto', rScan = null;   // раздел «Рейсы»: цель и последний скан (кэш на 10 с)
 
   const VIEWS = [['ship', 'Корабль'], ['wh', 'Склад'], ['build', 'Строительство'],
-    ['prod', 'Производство'], ['yard', 'Верфь'], ['fleet', 'Флот']];
+    ['prod', 'Производство'], ['route', 'Рейсы'], ['yard', 'Верфь'], ['fleet', 'Флот']];
 
   async function init(c) {
     ctxRef = c;
@@ -41,9 +42,13 @@ const PlanetUI = (() => {
   // ---------- такт ----------
   function tick() {
     const now = Date.now();
+    // Авторейсы всего флота — первыми: прилёт к колонии доводит её до своей минуты и выгружается.
+    Routes.tickWorld(tbl, now);
     const ship = World.active();
+    Ship.rememberHull(tbl, ship);   // масса корпуса для ручного полёта с грузом (Ship.flightK)
     const here = ship.star === ctxRef.gstar.id && ship.planet === ctxRef.planet.index && ship.landed;
-    const r = Ship.advance(tbl, ship, here ? ctxRef.surf : null, now);
+    // Корабль в рейсе ведёт Routes — второй раз его не двигаем.
+    const r = ship.route ? { full: false, justLow: false, low: false } : Ship.advance(tbl, ship, here ? ctxRef.surf : null, now);
     if (r.full) Notify.shipAlert(ship, 'full', 'Трюм забит: ' + shipName(ship) + ' больше не берёт добычу', '');
     else Notify.drop('ship' + ship.id + ':full');
     if (r.justLow) Notify.shipAlert(ship, 'low',
@@ -84,6 +89,7 @@ const PlanetUI = (() => {
       : view === 'wh' ? whView(ship, st, here)
       : view === 'build' ? buildView(ship, here, sel)
       : view === 'prod' ? prodView()
+      : view === 'route' ? routeView(ship, here)
       : view === 'yard' ? yardView()
       : fleetView(ship);
     $('colony').innerHTML = body + logBlock();
@@ -99,7 +105,9 @@ const PlanetUI = (() => {
     let out = cell('Трюм', n0(used) + ' / ' + n0(st.capacity), used / st.capacity) +
       cell('Водород в трюме', n0(((ship.cargo || {}).hydrogen || 0)) + ' · ' + Math.floor(((ship.cargo || {}).hydrogen || 0) / Ship.HARVEST_H2) + ' съёмов',
         Math.min(1, ((ship.cargo || {}).hydrogen || 0) / (Ship.HARVEST_H2 * 20)), ((ship.cargo || {}).hydrogen || 0) < Ship.HARVEST_H2) +
-      cell('Жизнеобеспечение', hrs(Ship.lifeTicks(tbl, ship, st)), lifeF, lifeF <= COL.ALERT_LIFE);
+      cell('Жизнеобеспечение', hrs(Ship.lifeTicks(tbl, ship, st)), lifeF, lifeF <= COL.ALERT_LIFE) +
+      (Ship.tankOf(ship) ? cell('Бак', Math.round((typeof ship.fuel === 'number' ? ship.fuel : 1) * 100) + ' % · ' +
+        FUEL[Ship.tankOf(ship).key].name.toLowerCase(), typeof ship.fuel === 'number' ? ship.fuel : 1, (ship.fuel || 0) < 0.2) : '');
     if (col) {
       const s = Colony.summary(col, ctxRef.surf);
       out += cell('Склад', n0(s.used) + ' / ' + n0(s.cap), s.used / s.cap, s.room <= 0) +
@@ -114,10 +122,12 @@ const PlanetUI = (() => {
     const used = Ship.cargoUsed(ship), free = Ship.cargoFree(tbl, ship, st);
     const lifeF = Ship.lifeShare(tbl, ship, st), lt = Ship.lifeTicks(tbl, ship, st);
     const y = sel ? Object.values(Colony.shipOutput(sel)).reduce((a, v) => a + v, 0) : 0;
-    const wait = Ship.harvestWait(ship, ctxRef.gstar.id, ctxRef.planet.index, Date.now());
+    const wait = sel ? Ship.harvestWait(ship, ctxRef.gstar.id, ctxRef.planet.index, sel, Date.now()) : 0;
 
     let acts = '';
-    if (!here) acts = '<div class="note">Корабль не у этой планеты — он у звезды ' + World.galaxy().stars[ship.star].name + '.</div>';
+    if (ship.route) acts = '<div class="note">В авторейсе: ' + Routes.status(ship, Date.now()) +
+      '. Корабль ведёт колония — управление в разделе «Рейсы».</div>';
+    else if (!here) acts = '<div class="note">Корабль не у этой планеты — он у звезды ' + World.galaxy().stars[ship.star].name + '.</div>';
     else if (!Ship.hasMiner(ship)) acts = '<div class="note">Нет модуля «Шахтёр» — снимать добычу нечем. Поставьте его в конструкторе.</div>';
     else if (!sel) acts = '<div class="note">Выберите гекс на карте — с него можно снять добычу.</div>';
     else {
@@ -130,8 +140,8 @@ const PlanetUI = (() => {
         (ship.mine ? '<div class="note">Стоит на гексе ' + ship.mine.q + ', ' + ship.mine.r +
           ' и берёт добычу каждые 10 минут, пока есть пища и топливо и не забит трюм.</div>' : '') +
         '<div class="note">Вдвое меньше, чем взяла бы шахта. Стоит ' + Ship.HARVEST_H2 +
-        ' водорода из трюма — столько же ест шахта за такт. Один гекс на планету за 10 минут на ' +
-        'каждый корабль; на другой планете свой счёт.</div>';
+        ' водорода из трюма — столько же ест шахта за такт. Корабль берёт один гекс на планету за 10 минут; ' +
+        'снятый гекс закрыт и для других кораблей до конца такта.</div>';
     }
     return '<h4>' + shipName(ship) + '<span class="tag">' + (st.cls ? st.cls.name : '') + '</span></h4>' +
       '<div class="sub">' + (here ? 'Корабль ' + (lowOrbit ? 'на низкой орбите' : 'на поверхности') : 'Корабль в другом месте') +
@@ -164,14 +174,89 @@ const PlanetUI = (() => {
     const acts = here ? '<div class="actions">' +
       '<button data-act="unload" ' + (Ship.cargoUsed(ship) > 0 ? '' : 'disabled') + '>Выгрузить всё</button>' +
       '<button data-act="recharge" ' + (col.food > 0 && lifeF < 1 ? '' : 'disabled') + '>Зарядить пищей</button>' +
-      '<button data-act="holdfood" ' + ((ship.cargo || {}).food > 0 && lifeF < 1 ? '' : 'disabled') + '>Зарядить из трюма</button></div>'
+      '<button data-act="holdfood" ' + ((ship.cargo || {}).food > 0 && lifeF < 1 ? '' : 'disabled') + '>Зарядить из трюма</button>' +
+      (Ship.tankOf(ship) ? '<button data-act="refuel" ' + ((ship.fuel ?? 1) < 1 - 1e-6 ? '' : 'disabled') + '>Заправить (' +
+        FUEL[Ship.tankOf(ship).key].name.toLowerCase() + ': трюм, склад)</button>' : '') + '</div>'
       : '<div class="note">Перегрузка возможна, только когда корабль у этой планеты.</div>';
 
     return '<h4>Склад планеты</h4>' +
       '<div class="sub">' + n0(sum.used) + ' / ' + n0(sum.cap) + ' ед. · постройка даёт два трюма (' +
       n0(sum.cap / Math.max(1, sum.live.length)) + ' ед.)</div>' + bar(sum.used / sum.cap, sum.room <= 0) +
       (sum.room <= 0 ? '<div class="note bad">Склад полон: добыча пропадает. Стройте дальше или вывозите.</div>' : '') +
-      rows + '<div class="sect"><div class="rg-h">⇄ Перегрузка</div>' + acts + '</div>' + holdBlock;
+      rows + '<div class="sect"><div class="rg-h">⇄ Перегрузка</div>' + acts + '</div>' + holdBlock + wasteBlock();
+  }
+
+  // ---------- отходы: что выбросил полный склад (col.waste, js/colony.js) ----------
+  // Решение пользователя: склад переполнен — колония выбрасывает ненужное, а счётчик показывает,
+  // какие ресурсы и в каких объёмах уходят в отходы (потом их можно будет продавать на бирже или
+  // утилизировать).
+  function wasteBlock() {
+    const w = (col && col.waste) || {};
+    const keys = Object.keys(w).filter(k => w[k] >= 0.5).sort((a, b) => w[b] * Colony.volOf(b) - w[a] * Colony.volOf(a));
+    const total = keys.reduce((a, k) => a + w[k] * Colony.volOf(k), 0);
+    return '<div class="sect"><div class="rg-h">Отходы · выброшено при полном складе' +
+      (keys.length ? ' · ' + n0(total) + ' объёма' : '') + '</div>' +
+      (keys.length ? keys.map(k => '<div class="tr"><span>' + resName(k) + '</span><b>' + n0(w[k]) + '</b></div>').join('')
+        : '<div class="note">Пока ничего не выброшено.</div>') +
+      '<div class="note">Склад полон — уходит то, чего на нём больше всего; бронь энергии и сырья на содержание не трогается.</div></div>';
+  }
+
+  // ---------- раздел «Рейсы»: колония сама гоняет корабль за ресурсом (js/routes.js) ----------
+  const fmtSec = s => s < 90 ? Math.round(s) + ' с' : s < 5400 ? Math.round(s / 60) + ' мин' : (s / 3600).toFixed(1).replace('.', ',') + ' ч';
+  function scanNow(ship) {
+    const now = Date.now();
+    if (rScan && rScan.target === rTarget && rScan.ship === ship.id && now - rScan.at < 10000) return rScan.rows;
+    const rows = Routes.scan(tbl, ship, { star: col.star, planet: col.planet }, rTarget, {
+      galaxy: () => World.galaxy(),
+      surface: (st, pl) => {
+        if (st === ctxRef.gstar.id && pl === ctxRef.planet.index) return ctxRef.surf;
+        const g = World.galaxy().stars[st], p = g && generateSystem(g).planets[pl];
+        return p ? generateSurface(p, g) : null;
+      },
+      colony: (st, pl) => World.colony(st, pl),
+    });
+    rScan = { target: rTarget, ship: ship.id, at: now, rows };
+    return rows;
+  }
+  function routeView(ship, here) {
+    const T = ROUTE_TARGETS;
+    let head = '<h4>Авторейсы</h4><div class="sub">Колония сама гоняет корабль: долетел → копает гекс, пока не забит трюм → ' +
+      'везёт домой → выгружает и выбирает следующую цель. Сканер смотрит свою систему и ' + Routes.ROUTE.STARS +
+      ' ближайших звёзд (до ' + Routes.ROUTE.KPC + ' кпк).</div>';
+    if (ship.route) {
+      const r = ship.route;
+      return head + kv('Цель', T[r.target].name) + kv('Сейчас', Routes.status(ship, Date.now())) +
+        kv('Куда', r.dest.name + ' · гекс ' + r.dest.q + ', ' + r.dest.r + (r.auto ? ' · выбирает сама' : ' · выбран вручную')) +
+        kv('План рейса', '~' + r.plan.n + ' съёмов · +' + n0(r.plan.perHour) + ' ' + T[r.target].unit + '/ч') +
+        kv('Рейсов сделано', r.trips) +
+        (r.last ? kv('Последний', 'с ' + r.last.from + ': ' + n0(r.last.brought) + ' ' + T[r.target].unit) : '') +
+        '<div class="actions"><button data-act="routestop" ' + (r.stop ? 'disabled' : '') + '>' +
+        (r.stop ? 'Возвращается — рейс будет снят' : 'Вернуть и снять с рейса') + '</button></div>';
+    }
+    if (!col) return head + '<div class="note">Колонии нет — возить некуда.</div>';
+    const tabs = '<div class="actions">' + Object.keys(T).map(k => '<button data-rtarget="' + k + '"' +
+      (k === rTarget ? ' class="primary"' : '') + '>' + T[k].name + '</button>').join('') + '</div>';
+    const why = !Ship.hasMiner(ship) ? 'Нет модуля «Шахтёр» — копать нечем.'
+      : !here ? 'Корабль должен стоять у этой колонии — отсюда он уходит и сюда возвращается.' : null;
+    const rows = scanNow(ship);
+    const ok = rows.filter(x => !x.err);
+    const list = ok.slice(0, 10).map((x, i) =>
+      '<button class="bl" data-rgo="' + i + '" ' + (why || !(x.net > 0) ? 'disabled' : '') + '><span>' + x.name +
+      (x.home ? ' · своя планета' : x.star === col.star ? ' · своя система' : ' · ' + x.kpc.toFixed(2).replace('.', ',') + ' кпк') +
+      (x.gas ? ' · газовый гигант' : '') +
+      '<i>гекс ' + x.q + ', ' + x.r + ' · ' + x.n + ' съёмов · рейс ' + fmtSec(x.sec) + ' (полёт ' + fmtSec(x.tOut + x.tBack) + ')' +
+      (x.selfFuel ? '' : ' · водород на съёмы везёт с собой') + '</i></span><b>+' + n0(x.perHour) + '/ч</b></button>').join('');
+    const bad = rows.filter(x => x.err).length;
+    return head + '<div class="rg-h">Что возить</div>' + tabs +
+      (why ? '<div class="note bad">' + why + '</div>' : '') +
+      '<div class="actions"><button data-act="routeauto" class="primary" ' + (why || !ok.some(x => x.net > 0) ? 'disabled' : '') +
+      '>Лучшая цель, выбирать самой</button></div>' +
+      '<div class="sect"><div class="rg-h">Сканер · чистая выгода в час (' + T[rTarget].unit + ')</div>' +
+      (list || '<div class="note">Рентабельных планет не найдено.</div>') +
+      (bad ? '<div class="note">Недоступно ' + bad + ' планет (жизнеобеспечение или топливо).</div>' : '') + '</div>' +
+      '<div class="note">Корабль берёт ВСЕ ресурсы гекса. Выгода — привезённое за вычетом водорода на съёмы (' + Ship.HARVEST_H2 +
+      ' за раз), делённое на время рейса с полётом туда и обратно. Энергия считается по единой энергоёмкости: тритий выгоднее водорода во столько раз, во сколько он энергоёмче, — сканер сравнивает их сам. ' +
+      'Что не влезло на склад — уходит в отходы.</div>';
   }
 
   // ---------- раздел «Производство»: компоненты на склад или уникальный ресурс ----------
@@ -277,7 +362,8 @@ const PlanetUI = (() => {
   function fleetView(active) {
     const rows = World.fleet().map(s => {
       const st = World.galaxy().stars[s.star];
-      const where = s.landed && s.planet != null ? 'у планеты' : s.planet != null ? 'на орбите' : 'в системе';
+      const where = s.route ? 'авторейс: ' + Routes.status(s, Date.now())
+        : s.landed && s.planet != null ? 'у планеты' : s.planet != null ? 'на орбите' : 'в системе';
       return '<button class="bl" data-pick="' + s.id + '" ' + (s.id === active.id ? 'disabled' : '') +
         '><span>' + shipName(s) + '<i>' + (st ? st.name : '?') + ' · ' + where + '</i></span><b>' +
         (s.id === active.id ? 'активный' : 'выбрать') + '</b></button>';
@@ -298,7 +384,7 @@ const PlanetUI = (() => {
       // ловить, и разделы не переключались.
       const b = e.target.closest('#vtabs [data-view],#colony [data-act],#colony [data-open],' +
         '#colony [data-ship],#colony [data-pick],#colony [data-order],#colony [data-take],' +
-        '#colony [data-put],#con-modal [data-act]');
+        '#colony [data-put],#colony [data-rgo],#colony [data-rtarget],#con-modal [data-act]');
       if (!b || b.disabled) return;
       const ship = World.active(), sel = ctxRef.selected();
       if (b.dataset.view) view = b.dataset.view;
@@ -309,6 +395,8 @@ const PlanetUI = (() => {
       else if (b.dataset.order) setOrder(b.dataset.order);
       else if (b.dataset.take) { Ship.load(tbl, ship, col, b.dataset.take, Infinity); World.save(); }
       else if (b.dataset.put) putOne(ship, b.dataset.put);
+      else if (b.dataset.rtarget) { rTarget = b.dataset.rtarget; rScan = null; }
+      else if (b.dataset.rgo) routeGo(ship, rScan && rScan.rows.filter(x => !x.err)[+b.dataset.rgo]);
       tick();
     });
   }
@@ -342,6 +430,7 @@ const PlanetUI = (() => {
     if (a === 'unload' && col) Ship.unload(ship, col);
     if (a === 'recharge' && col) Ship.recharge(tbl, ship, col);
     if (a === 'holdfood') Ship.rechargeFromHold(tbl, ship);
+    if (a === 'refuel') { const r = Ship.refuel(ship, col); if (!(r.got > 0)) alert('Нечем заправить: нет ' + FUEL[Ship.tankOf(ship).key].name.toLowerCase() + ' ни в трюме, ни на складе'); }
     if (a === 'found') found(ship);
     if (a === 'dobuild' && modal) {
       const here = ship.star === ctxRef.gstar.id && ship.planet === ctxRef.planet.index && ship.landed;
@@ -349,6 +438,8 @@ const PlanetUI = (() => {
       if (err) alert(err); else modal = null;
     }
     if (a === 'closemodal') modal = null;
+    if (a === 'routeauto') routeGo(ship, null);
+    if (a === 'routestop') Routes.stop(ship, Date.now());
     World.save();
   }
 
@@ -372,6 +463,24 @@ const PlanetUI = (() => {
       : 'Колония основана, высажено ' + c.pop + ' колонистов');
     col = c;
     World.putColony(ctxRef.gstar.id, ctxRef.planet.index, c);
+  }
+
+  function routeGo(ship, pick) {
+    if (!col) return;
+    const env = {
+      galaxy: () => World.galaxy(),
+      surface: (st, pl) => {
+        if (st === ctxRef.gstar.id && pl === ctxRef.planet.index) return ctxRef.surf;
+        const g = World.galaxy().stars[st], p = g && generateSystem(g).planets[pl];
+        return p ? generateSurface(p, g) : null;
+      },
+      colony: (st, pl) => World.colony(st, pl),
+      placed: s => { if (World.activeId() === s.id) World.setActive(s.id); },
+    };
+    const err = Routes.start(tbl, ship, col, rTarget, pick || null, Date.now(), env);
+    if (err) alert(err);
+    rScan = null;
+    World.save();
   }
 
   function buildShip(name) {
@@ -400,9 +509,9 @@ const PlanetUI = (() => {
       if (col.site) out.push({ q: col.site.q, r: col.site.r, text: '…', kind: 'site' });
     }
     const ship = World.active();
+    // Снятые в этом такте гексы — любым кораблём: они закрыты до конца такта.
+    for (const h of Ship.hexesTaken(ctxRef.gstar.id, ctxRef.planet.index, Date.now())) out.push({ q: h.q, r: h.r, text: '⛏', kind: 'ship' });
     if (ship.star === ctxRef.gstar.id && ship.planet === ctxRef.planet.index) {
-      const h = (ship.hv || {})[ctxRef.gstar.id + ':' + ctxRef.planet.index];
-      if (h && Colony.tickAt(Date.now()) <= h.t) out.push({ q: h.q, r: h.r, text: '⛏', kind: 'ship' });
       if (ship.mine) out.push({ q: ship.mine.q, r: ship.mine.r, text: '⏻', kind: 'site' });
     }
     return out;

@@ -87,11 +87,19 @@
   }
 
   // Корабль игрока — дизайн из конструктора: разгон, запас Δv, имя.
-  function shipFromDesign() {
-    const d = findDesign(World.design()), st = shipStats(d);
-    const fuelMax = st.dv, frac = World.fuel();
-    return { design: d.name, stats: st, accel: st.accel, fuelMax, fuel: isFinite(fuelMax) ? fuelMax * frac : Infinity };
+  function cargoNote() {
+    const sh = World.active(), t = Ship.cargoMass(sh), k = Ship.flightK(sh);
+    return t >= 1 ? ' · груз ' + Math.round(t).toLocaleString('ru') + ' т — разгон ×' + k.toFixed(2).replace('.', ',') : '';
   }
+  // С ГРУЗОМ: ускорение и запас Δv — с учётом массы трюма (flightStats, colony.js).
+  function shipFromDesign() {
+    const d = findDesign(World.design()), st = flightStats(d, World.active());
+    const fuelMax = st.dv, frac = World.fuel();
+    return { design: d.name, stats: st, accel: st.accel, fuelMax, idleDv: st.idleDv || 0, fuel: isFinite(fuelMax) ? fuelMax * frac : Infinity };
+  }
+
+  // Масса корпуса стала известна (heartbeat загрузил таблицу) — пересчитать разгон с грузом.
+  addEventListener('ouro:hull', () => { if (ship) Object.assign(ship, shipFromDesign()); renderCard(true); });
 
   // ---------- Камера ----------
   function fitCamera() {
@@ -133,7 +141,8 @@
     if (ship.state === 'landing' || ship.state === 'takeoff') { ship.pending = { target, mode }; return; }
     if (target.planet && ship.state === 'orbit' && ship.planet === target.planet) return;
     if (mode === 'eco') {
-      const plan = planEco(orbitWorld(), ecoStart(), target, simT);
+      // Экономно = 1/10 топлива быстрого полёта к той же цели (ECO_FUEL_SHARE), самой быстрой дугой.
+      const plan = planEco(orbitWorld(), ecoStart(), target, simT, { dvCap: estimateFast(target).fuel * ecoShare() });
       if (!plan) { say('Дугу к цели не найти — попробуйте быстрый режим'); return; }
       if (plan.dv > ship.fuel) { say(`Не хватит топлива: нужно ${fmtDv(plan.dv)}, есть ${fmtDv(ship.fuel)}`); return; }
       plan.target = target; plan.leg = 0; plan.phase = 'wait'; plan.nextFix = 0;
@@ -492,7 +501,13 @@
     if (['landed', 'landing', 'takeoff'].includes(ship.state)) { say('Сначала взлетите с планеты'); return; }
     if (!(ship.accel > 0)) { say('У корабля нет двигателей — лететь нечем'); return; }
     const est = warpEstimate(ship.stats, WARP_MODES[mode] ? mode : 'fast');
-    if (isFinite(ship.fuelMax) && ship.fuel < est.fuel * ship.fuelMax) { say(`Не хватит топлива: нужно ${fuelPct(est.fuel * ship.fuelMax)} бака, есть ${fuelPct(ship.fuel)}`); return; }
+    if (isFinite(ship.fuelMax) && ship.fuel < est.fuel * ship.fuelMax) {
+      // Быстро не тянет, экономно хватает — предлагаем экономный режим (решение пользователя).
+      const eco = mode !== 'eco' ? warpEstimate(ship.stats, 'eco') : null;
+      if (eco && ship.fuel >= eco.fuel * ship.fuelMax) say(`На максимальной скорости не долететь: нужно ${fuelPct(est.fuel * ship.fuelMax)} бака, есть ${fuelPct(ship.fuel)}. Летите экономно — ${fuelPct(eco.fuel * ship.fuelMax)} бака`);
+      else say(`Не хватит топлива: нужно ${fuelPct(est.fuel * ship.fuelMax)} бака, есть ${fuelPct(ship.fuel)}`);
+      return;
+    }
     let dx = to.x - from.x, dy = to.y - from.y; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
     ship.eco = null;
     if (ship.state === 'orbit') World.setShip(null);
@@ -538,6 +553,9 @@
 
   function updateShip(dt) {
     const s = ship;
+    // Пассивные системы едят энергию каждую секунду в космосе; на тяге это уже в расходе двигателя
+    // (burnPerCycle), в дрейфе — здесь. На поверхности корабль на земле — не тратит (заправка).
+    if (!s.thrust && s.idleDv > 0 && !['landed', 'landing', 'takeoff', 'jumping'].includes(s.state)) useFuel(s.idleDv * dt);
     s.thrust = false;
     if (s.hidden > 0) s.hidden -= dt;
     if (s.burnT > 0) { s.burnT -= dt; s.thrust = true; }
@@ -640,8 +658,12 @@
         s.thrust = s.state === 'takeoff' || (s.state === 'landing' && s.anim > 0.6);
         if (s.anim >= 1 && s.state === 'landing') {
           s.state = 'landed'; renderCard();
-          // Как в v2: после посадки — экран поверхности планеты. На поверхности — заправка (допущение).
-          s.fuel = s.fuelMax; World.setFuel(1);
+          // Как в v2: после посадки — экран поверхности планеты. ЗАПРАВКА НЕ БЕСПЛАТНАЯ (решение
+          // пользователя): бак доливается своим топливом из трюма, у колонии — с её склада (Ship.refuel).
+          World.setFuel(isFinite(s.fuelMax) && s.fuelMax > 0 ? s.fuel / s.fuelMax : 1);
+          const me = World.active(), col = World.colony(sys.gstar.id, s.planet.index);
+          Ship.refuel(me, col); World.save();
+          s.fuel = isFinite(s.fuelMax) ? s.fuelMax * World.fuel() : Infinity;
           World.setShip(s.planet.index, true);
           setTimeout(() => { location.href = World.planetUrl(sys.gstar.id, s.planet.index); }, 350);
         }
@@ -1248,7 +1270,7 @@
   // Прикидка обоих режимов к планете — для карточки (раз при выборе; ~десятки мс).
   function estimates(p) {
     const f = estimateFast({ planet: p });
-    const e = planEco(orbitWorld(), ecoStart(), { planet: p }, simT);
+    const e = planEco(orbitWorld(), ecoStart(), { planet: p }, simT, { dvCap: f.fuel * ecoShare() });
     return { fast: f, eco: e };
   }
 
@@ -1290,6 +1312,8 @@
     const enRoute = (here && ship.state === 'flying') || ecoTo;
     show('b-fly', !here || enRoute);
     show('b-eco', !here && !enRoute);
+    show('c-pay', !here && !enRoute);
+    mountEcoPay($('c-pay'), () => renderCard(true));
     $('b-fly').disabled = enRoute;
     $('b-fly').textContent = enRoute ? 'В пути…' : 'Быстро';
     // Прикидка: время и топливо в обоих режимах.
@@ -1301,7 +1325,10 @@
         `<div><b>Быстро</b> — ${fmtT(E.fast.t)}, топливо ${fuelPct(E.fast.fuel)}</div>` +
         (e ? `<div><b>Экономно</b> — ${e.wait > 0.5 ? 'старт через ' + fmtT(e.wait) + ', ' : ''}в пути ${fmtT(e.tof)}, топливо ${fuelPct(e.dv)}` +
           (e.flyby ? `, гравманёвр у ${e.flyby.name}` : '') + '</div>' : '<div><b>Экономно</b> — дуги нет</div>') +
-        `<div class="note">${ship.design} · ${isFinite(ship.fuelMax) ? 'в баке ' + fuelPct(ship.fuel) + ' (' + fmtDv(ship.fuel) + ' Δv)' : 'двигатели кормит реактор — топливо не тратится'}</div>`;
+        '';
+      updateEcoPay($('c-pay'), { eco: e ? e.dv / ship.fuelMax : NaN, fast: E.fast.fuel / ship.fuelMax, have: isFinite(ship.fuelMax) ? ship.fuel / ship.fuelMax : Infinity });
+      est.innerHTML +=
+        `<div class="note">${ship.design} · ${isFinite(ship.fuelMax) ? 'в баке ' + fuelPct(ship.fuel) + ' (' + fmtDv(ship.fuel) + ' Δv)' : 'двигатели кормит реактор — топливо не тратится'}${cargoNote()}</div>`;
     }
     show('b-land', here && ship.state === 'orbit' && T.landable);
     // У газового гиганта садиться некуда: корабль уходит на НИЗКУЮ ОРБИТУ и черпает газ с

@@ -58,9 +58,9 @@ const DEFAULT_PARAMS = [
   { key: 'rad',       name: 'Радиозащита',               unit: '',        role: 'rad' },
   { key: 'thrust',    name: 'Тяга',                      unit: '',        role: 'thrust' },
   { key: 'turn',      name: 'Угол поворота',             unit: '°/с',     role: 'turn' },
-  { key: 'enPassive', name: 'Пассивное потребление',     unit: 'за цикл', role: 'enPassive' },
-  { key: 'enActive',  name: 'Активное потребление',      unit: 'за цикл', role: 'enActive' },
-  { key: 'enGen',     name: 'Выработка энергии',         unit: 'за цикл', role: 'enGen' },
+  { key: 'enPassive', name: 'Пассивное потребление',     unit: 'в секунду', role: 'enPassive' },
+  { key: 'enActive',  name: 'Активное потребление',      unit: 'в секунду', role: 'enActive' },
+  { key: 'enGen',     name: 'Выработка энергии',         unit: 'в секунду', role: 'enGen' },
   { key: 'durRegen',  name: 'Восстановление прочности',  unit: 'за цикл', role: 'repair' },
   { key: 'capSolid',  name: 'Грузовая ёмкость твёрдое',  unit: 'ед.',     role: 'cap' },
   { key: 'capGas',    name: 'Грузовая ёмкость газовая',  unit: 'ед.',     role: 'cap' },
@@ -128,12 +128,13 @@ const PART = Object.fromEntries(PARTS.map(p => [p.key, p]));
 
 // ---------- Энергоёмкость топлива ----------
 // Энергетическое сырьё — это и есть топливо: водород (1 ур.), тритий (2 ур.), антиматерия (3 ур.).
-// Сжигая ОДНУ единицу за цикл, газохранилище выдаёт столько энергии, сколько задано здесь;
+// Сжигая ОДНУ единицу в секунду, газохранилище выдаёт столько энергии, сколько задано здесь;
 // дальше эта энергия тратится оборудованием корабля наравне с выработкой реакторов.
-// По умолчанию — числа, которые уже работают в игре (FUEL.yield в ships.js: 10 / 100 / 1000).
+// По умолчанию — FUEL.yield из ships.js (100 / 300 / 800). Таблица пользователя — ЕДИНСТВЕННЫЙ
+// источник энергоёмкости: applyFuelEnergy разносит её в FUEL, по которому считают все остальные.
 const FUEL_RES = MAT_TYPE.energy.res;                       // ключи RESOURCES по уровням
 const FUEL_ENERGY_DEFAULT = FUEL_KEYS.map(k => FUEL[k].yield);
-// Сколько энергии за цикл даёт одно газохранилище на топливе уровня tier.
+// Сколько энергии в секунду даёт одно газохранилище на топливе уровня tier.
 const fuelEnergy = (tbl, tier) => +(tbl.fuel || [])[tier - 1] || 0;
 
 // ЗАКРЕПЛЁННЫЕ МЕСТА: масса, прочность, термостойкость, радиозащита есть у ВСЕГО оборудования
@@ -165,7 +166,18 @@ function blankParts() {
 }
 // saved — то, что уже прочитано из файла data/parts.json или из зеркала в браузере
 // (js/store.js). Без аргумента читает зеркало сам — так удобнее в node-проверках.
+// ЭНЕРГОЁМКОСТЬ УНИВЕРСАЛЬНА (требование пользователя): числа из таблицы переносятся в FUEL, и
+// по ним считают ВСЕ — полёт корабля (shipStats), генератор и здания колонии (COL.H2_PER_UNIT),
+// майнинг-ферма. Пустую клетку таблицы не переносим — остаётся прежнее число.
+function applyFuelEnergy(tbl) {
+  FUEL_KEYS.forEach((k, i) => { const v = +(tbl && tbl.fuel || [])[i]; if (v > 0) FUEL[k].yield = v; });
+}
 function loadParts(saved) {
+  const tbl = loadPartsRaw(saved);
+  applyFuelEnergy(tbl);
+  return tbl;
+}
+function loadPartsRaw(saved) {
   let s = saved === undefined ? null : saved;
   if (saved === undefined)
     try { s = JSON.parse(localStorage.getItem(PARTS_KEY)); } catch (_) { /* испорчено — шаблон */ }
@@ -414,7 +426,7 @@ function shipTotals(tbl, design, tier = 2, gun = 'gun_autocannon', fuelTier = ti
   const mass = byRole('mass'), thrust = byRole('thrust'), turn = byRole('turn');
   const enGen = byRole('enGen'), enActive = byRole('enActive'), enPassive = byRole('enPassive');
   // Два источника энергии: выработка оборудования (реакторы, панели — без топлива) и сжигание
-  // топлива в газохранилищах. Газохранилище жжёт не больше ОДНОЙ единицы за цикл (v2), поэтому
+  // топлива в газохранилищах. Газохранилище жжёт не больше ОДНОЙ единицы в секунду, поэтому
   // энергия от топлива = число газохранилищ × энергоёмкость единицы выбранного топлива.
   const tanks = count.gas_storage || 0;
   const burn = tanks * fuelEnergy(tbl, fuelTier);

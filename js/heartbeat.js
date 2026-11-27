@@ -22,7 +22,17 @@
   function beat() {
     if (!tbl) return;
     const now = Date.now();
+    // Масса корпуса — для ручного полёта с грузом (Ship.flightK): у экранов системы и галактики
+    // таблицы нет при открытии, они берут её отсюда.
+    let hullChanged = false;
+    for (const s of World.fleet()) { const was = s.hullT; Ship.rememberHull(tbl, s); if (s.hullT !== was) hullChanged = true; }
+    if (hullChanged) dispatchEvent(new Event('ouro:hull'));
+    // Авторейсы всего флота (js/routes.js): события по порядку времени, колонии доводятся до
+    // минуты прилёта — раньше, чем ниже их догонят до «сейчас».
+    if (typeof Routes !== 'undefined') { Routes.tickWorld(tbl, now); Routes.guard(); }
     const ship = World.active();
+    // Корабль в рейсе живёт по своим фазам — его ведёт Routes, здесь не трогаем.
+    if (ship.route) { World.save(); for (const { star, planet, col } of World.colonyList()) { const s = surfaceOf(star, planet); if (s) Colony.advance(col, s, now); } World.save(); return; }
     // Корабль: добыча идёт только там, где он сел; здесь поверхности нет — значит только пища.
     const r = Ship.advance(tbl, ship, null, now);
     if (r.full) Notify.shipAlert(ship, 'full', 'Трюм забит: ' + (ship.design || 'корабль') + ' #' + ship.id + ' больше не берёт добычу', '');

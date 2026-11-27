@@ -133,7 +133,10 @@ function geomRange(a, b, n) { const out = []; for (let i = 0; i < n; i++) out.pu
 // Прокладка экономного курса.
 // w = {mu, excl, planets, pos(p, t), vel(p, t)}; start = {planet} | {x, y, vx, vy, moving};
 // target = {planet} | {x, y}; t — сейчас. Возвращает план или null.
-function planEco(w, start, target, t) {
+// opts.dvCap — потолок Δv (1/10 быстрого полёта, ECO_FUEL_SHARE): из дуг, что в него укладываются,
+// берётся САМАЯ БЫСТРАЯ (решение пользователя: экономно — 1 к 10 к быстро, «чтоб совсем медленно
+// не летали»). Ни одна не укладывается — прежнее правило: Δv + timeWeight × время.
+function planEco(w, start, target, t, opts = {}) {
   const t0 = performance.now();
   const sp = start.planet, tp = target.planet;
   const waits = start.moving ? [0] : ECO.waits;
@@ -143,8 +146,12 @@ function planEco(w, start, target, t) {
   const endAt = tt => tp ? { r: w.pos(tp, tt), v: w.vel(tp, tt) } : { r: { x: target.x, y: target.y }, v: { x: 0, y: 0 } };
   const depDv = (v1, s) => sp ? oberthDv(Math.hypot(v1.x - s.v.x, v1.y - s.v.y), sp) : Math.hypot(v1.x - s.v.x, v1.y - s.v.y);
   const arrDv = (v2, e) => tp ? oberthDv(Math.hypot(v2.x - e.v.x, v2.y - e.v.y), tp) : Math.hypot(v2.x, v2.y);
-  let best = null, tries = 0;
-  const consider = c => { c.cost = c.dv + ECO.timeWeight * (c.wait + c.tof); if (!best || c.cost < best.cost) best = c; };
+  let best = null, tries = 0, quick = null;
+  const cap = opts.dvCap > 0 ? opts.dvCap : null;
+  const consider = c => {
+    c.cost = c.dv + ECO.timeWeight * (c.wait + c.tof); if (!best || c.cost < best.cost) best = c;
+    if (cap && c.dv <= cap && (!quick || c.wait + c.tof < quick.wait + quick.tof)) quick = c;
+  };
 
   // Напрямую.
   const direct = (wait, tof) => {
@@ -193,6 +200,7 @@ function planEco(w, start, target, t) {
     }
   }
   if (!best) return null;
+  if (quick) best = quick;
   best.direct = directBest;
   best.ms = performance.now() - t0;
   best.tries = tries;

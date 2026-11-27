@@ -209,7 +209,13 @@
       const back = mins * 60 * 1000;
       const sh = World.active(); if (sh.at) sh.at -= back;
       const dt = Math.floor(back / COL.TICK_MS);
-      for (const k in sh.hv || {}) sh.hv[k].t -= dt; // иначе лимит съёма остаётся в будущем
+      { const L = World.hexLog(); if (L.t >= 0) L.t -= dt; }   // журнал снятых гексов — тоже назад
+      for (const k in sh.hv || {}) sh.hv[k].t -= dt; // иначе лимит корабля остаётся в будущем
+      for (const s of World.fleet()) if (s.route) {   // авторейс: его метки времени тоже назад
+        if (s !== sh && s.at) s.at -= back;
+        for (const k of ['until', 'next', 'arr', 't0']) if (s.route[k]) s.route[k] -= back;
+        if (s !== sh) for (const k in s.hv || {}) s.hv[k].t -= dt;
+      }
       const col = PlanetUI.colony(); if (col) col.t -= Math.floor(back / COL.TICK_MS);
       World.save(); PlanetUI.tick();
       return { ship: sh, colony: PlanetUI.colony() };

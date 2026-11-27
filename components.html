@@ -161,7 +161,7 @@
     <div class="scroll"><table class="inp" id="t-inf"></table></div>
 
     <h3>Энергоёмкость топлива</h3>
-    <p>Энергетическое сырьё — это и есть топливо. Газохранилище сжигает <b>одну единицу за цикл</b>
+    <p>Энергетическое сырьё — это и есть топливо. Газохранилище сжигает <b>одну единицу в секунду</b>
       и выдаёт столько энергии, сколько задано здесь; дальше эта энергия тратится оборудованием
       наравне с выработкой реакторов.</p>
     <div class="scroll"><table class="inp" id="t-fuel"></table></div>
@@ -513,7 +513,7 @@
         row('Грузовая ёмкость', fv(st.capacity)) +
         row('Запас энергии', fv(st.energyStore)) +
         row('Запаса хватит: разгон · бой', (isFinite(st.cyclesThrust) ? fv(st.cyclesThrust) : '∞') +
-          ' · ' + (isFinite(st.cyclesCombat) ? fv(st.cyclesCombat) : '∞') + ' цикл.') +
+          ' · ' + (isFinite(st.cyclesCombat) ? fv(st.cyclesCombat) : '∞') + ' с') +
         row('Запас жизнеобеспечения', fv(st.lifeSupport)) +
         row('Энергия: оборудование', fv(st.energyGen)) +
         row('Энергия: топливо', `${fv(st.energyBurn)} (${st.tanks} ${plural(st.tanks, 'газохранилище', 'газохранилища', 'газохранилищ')})`) +

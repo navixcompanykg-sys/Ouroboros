@@ -362,3 +362,14 @@ table.tt input[type=number]:focus { outline: none; border-color: var(--accent); 
 .doc-wrap input[type=number] { width: 80px; font: inherit; color: var(--text);
   background: rgba(10, 16, 28, .9); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
 .doc-head .s.warn, #where.warn { color: #ffbfae; }
+
+/* Ползунок «Цена скорости» под кнопками полёта (js/ships.js mountEcoPay). */
+.paybar { margin-top: 8px; font-size: 12px; }
+.paybar[hidden] { display: none; }
+.paybar label { display: flex; align-items: center; gap: 8px; }
+.paybar label span { opacity: .75; white-space: nowrap; }
+.paybar input { flex: 1; accent-color: var(--accent); }
+.paybar b { min-width: 3.2em; text-align: right; }
+.paybar i { display: block; opacity: .6; font-style: normal; margin-top: 2px; }
+.paycost { display: flex; gap: 6px; opacity: .8; margin: -2px 0 6px; }
+.paycost span { flex: 1 1 0; text-align: center; }

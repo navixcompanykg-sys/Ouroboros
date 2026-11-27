@@ -132,7 +132,12 @@ const World = (() => {
     });
   }
 
+  // Журнал снятых гексов текущего такта (js/colony.js, Ship.harvest): только снятые, сбрасывается
+  // каждые 10 минут.
+  const hexLog = () => (state.hexLog = state.hexLog || { t: -1, taken: {} });
+
   return {
+    hexLog,
     seed, galaxy, setCurrent, setShip, design, setDesign, fuel, setFuel, setArrival, takeArrival, travel, setTravel,
     ship: () => state.ship || null,
     currentStarId,

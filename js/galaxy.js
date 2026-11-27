@@ -19,7 +19,9 @@
   // Масштаб настоящий: разгон до c — ~50 тыс. а. е., это доли процента пути до соседней звезды, поэтому
   // до скачка корабль на карте почти не сдвигается — видно по панели скорости и линии маршрута.
   let travel = World.travel(), travelSave = 0, fuelBurn = 0;
-  const myShip = shipStats(findDesign(World.design()));
+  // С ГРУЗОМ (flightStats, colony.js): гружёный корабль разгоняется до c и тормозит дольше.
+  let myShip = flightStats(findDesign(World.design()), World.active());
+  addEventListener('ouro:hull', () => { myShip = flightStats(findDesign(World.design()), World.active()); });
   const travelPos = () => { const f = gal.stars[travel.from], k = travel.along / UNITS_PER_KPC; return { x: f.x + travel.dx * k, y: f.y + travel.dy * k }; };
   function stepTravel(dt) {
     const T = travel, a = myShip.accel * (T.p || 1), c = SHIP_LIGHT;
@@ -534,7 +536,7 @@
       $('c-type').textContent = 'Зона абсолютного хаоса';
       $('c-facts').innerHTML = `<div><span>Радиус</span>${fmt(GALAXY.chaosR)} кпк</div><div><span>Доступ</span>закрыт</div>`;
       $('c-desc').innerHTML = '<div class="bhwarn">Сверхплотное скопление звёзд, чёрных дыр и раскалённого газа. Гравитация и излучение рвут любой корабль — залететь сюда нельзя.</div>';
-      $('b-jump').hidden = true; $('b-warp-eco').hidden = true; $('c-dest-wrap').hidden = true;
+      $('b-jump').hidden = true; $('b-warp-eco').hidden = true; $('c-dest-wrap').hidden = true; $('c-pay').hidden = true;
       $('c-list').hidden = true;
       return;
     }
@@ -554,7 +556,7 @@
         `<div><span>От центра</span>${fmt(s.r)} кпк</div>` +
         `<div><span>От корабля</span>${here ? 'здесь' : fmt(distKpc(s, cur)) + ' кпк'}</div>` +
         (here ? '' : (() => {
-          const st = shipStats(findDesign(World.design()));
+          const st = flightStats(findDesign(World.design()), World.active());
           if (!(st.accel > 0)) return '<div><span>Перелёт</span>нет двигателей</div>';
           const m = x => x < 120 ? Math.round(x) + ' с' : (x / 60).toFixed(1).replace('.', ',') + ' мин';
           const f = x => !isFinite(st.dv) || x === 0 ? 'не тратится (реактор)' : (x * 100 < 1 ? (x * 100).toFixed(2) : (x * 100).toFixed(1)).replace('.', ',') + '%';
@@ -562,8 +564,17 @@
           // топлива не тратится ни там, ни там. Такому кораблю показываем ОДНУ строку (warpEstimate.free).
           const e1 = warpEstimate(st, 'fast');
           if (e1.free) return `<div class="wide"><span>Перелёт</span>разгон ${m(e1.accel)} · скачок · торможение ${m(e1.brake)} · топливо не тратится: двигатели кормит реактор, поэтому полная тяга и в экономном режиме</div>`;
-          return ['fast', 'eco'].map(k => { const e = warpEstimate(st, k);
-            return `<div class="wide"><span>${WARP_MODES[k].name}</span>разгон ${m(e.accel)} · скачок · торможение ${m(e.brake)} · топливо ${f(e.fuel)}</div>`; }).join('');
+          // Не хватает бака на быстрый скачок — так и задумано (пользователь: «маленький шаттл без
+          // доп. обвеса не тянет такой перелёт на максимальной скорости — хорошо, так и должно быть»):
+          // строка говорит об этом прямо и предлагает «Экономно».
+          const have = World.fuel();
+          const rows = ['fast', 'eco'].map(k => { const e = warpEstimate(st, k), short = isFinite(st.dv) && e.fuel > have + 1e-9;
+            return `<div class="wide"><span>${WARP_MODES[k].name}</span>разгон ${m(e.accel)} · скачок · торможение ${m(e.brake)} · топливо ${f(e.fuel)}${short ? ' — <b>не хватит</b>' : ''}</div>`; }).join('');
+          const fastShort = isFinite(st.dv) && warpEstimate(st, 'fast').fuel > have + 1e-9;
+          const ecoShort = isFinite(st.dv) && warpEstimate(st, 'eco').fuel > have + 1e-9;
+          return rows + (fastShort && !ecoShort
+            ? `<div class="wide"><span>Совет</span>На максимальной скорости корабль этот перелёт не тянет: в баке ${f(have)}. Летите экономно (ползунок «Цена скорости» — сколько топлива готовы отдать за скорость). Быстро смогут корабли с бо́льшим запасом топлива или сильнее реактором.</div>`
+            : fastShort && ecoShort ? `<div class="wide"><span>Совет</span>Топлива не хватит даже экономно: в баке ${f(have)}. Заправьтесь при посадке.</div>` : '');
         })());
       $('c-desc').innerHTML = `Планет: ${sys.planets.length} — ` +
         Object.entries(counts).map(([k, n]) => `${PLANET_TYPES[k].name.toLowerCase()} ${n}`).join(', ') +
@@ -571,10 +582,23 @@
       // Кнопка «Экономно» скрыта, когда экономить нечего (реактор кормит двигатели): полёт был бы
       // точно таким же, как по «Быстро» (warpEstimate ставит полную тягу). Тогда и у главной кнопки
       // имя без выбора — просто «Лететь».
-      const freeThrust = (st => st && st.accel > 0 && warpEstimate(st, 'fast').free)(shipStats(findDesign(World.design())));
+      const freeThrust = (st => st && st.accel > 0 && warpEstimate(st, 'fast').free)(flightStats(findDesign(World.design()), World.active()));
       $('b-jump').hidden = false;
       $('b-jump').textContent = here ? 'Открыть систему' : freeThrust ? 'Лететь' : 'Быстро';
       $('b-warp-eco').hidden = here || !!travel || freeThrust;
+      // Быстро не тянет — «Быстро» неактивна, главной становится «Экономно».
+      const stW = flightStats(findDesign(World.design()), World.active());
+      const shortFast = !here && !freeThrust && stW.accel > 0 && isFinite(stW.dv) && warpEstimate(stW, 'fast').fuel > World.fuel() + 1e-9;
+      const shortEco = !here && !freeThrust && stW.accel > 0 && isFinite(stW.dv) && warpEstimate(stW, 'eco').fuel > World.fuel() + 1e-9;
+      $('b-jump').disabled = shortFast;
+      $('b-jump').title = shortFast ? 'Не хватит топлива на перелёт на максимальной скорости — летите экономно' : '';
+      $('b-warp-eco').disabled = shortEco;
+      $('b-warp-eco').classList.toggle('primary', shortFast && !shortEco);
+      mountEcoPay($('c-pay'), () => renderCard());
+      $('c-pay').hidden = $('b-warp-eco').hidden;
+      if (!$('c-pay').hidden) updateEcoPay($('c-pay'), { eco: isFinite(stW.dv) ? warpEstimate(stW, 'eco').fuel : 0,
+        fast: isFinite(stW.dv) ? warpEstimate(stW, 'fast').fuel : 0, have: isFinite(stW.dv) ? World.fuel() : Infinity });
+      $('b-jump').classList.toggle('primary', !shortFast);
       // Цель внутри системы назначения: планета из списка — после скачка автопилот сразу ведёт к ней;
       // «к звезде» — корабль тормозит к звезде, планету игрок укажет на месте.
       $('c-dest-wrap').hidden = here || !!travel;
@@ -661,6 +685,7 @@
 
   // __dbg().run(с) — прокрутить межзвёздный перелёт (проверка без ожидания).
   window.__dbg = () => ({ gal, cam, selected, selSector, travel, screenOf: id => starPos(gal.stars[id]),
+    select: id => { selected = gal.stars[id]; selSector = null; renderCard(); },
     run: sec => { for (let x = 0; x < sec && travel; x += 0.05) stepTravel(0.05); return travel && { phase: travel.phase, v: travel.v / SHIP_LIGHT }; } });
 
   history.replaceState(null, '', World.galaxyUrl());

@@ -25,7 +25,7 @@ const SHIP_CLASSES = [
 ];
 const shipClass = n => SHIP_CLASSES.find(c => c.decks >= Math.max(1, n)) || SHIP_CLASSES[SHIP_CLASSES.length - 1];
 
-// Модули (ТЗ_Корабль.md §4): прочность 1 — хрупкий, 2 — крепкий; энергия за 60-секундный цикл
+// Модули (ТЗ_Корабль.md §4): прочность 1 — хрупкий, 2 — крепкий; энергия В СЕКУНДУ работы
 // (gen — выработка, active — при действии, passive — постоянно); mass — т, по умолчанию (допущение).
 const SHIP_MODULES = [
   { key: 'life_support', name: 'Жизнеобеспечение',      dur: 1, gen: 0,  active: 2,   passive: 2, mass: 20 },
@@ -56,16 +56,29 @@ const isEngine = k => k === 'engine' || k === 'engine_ion' || k === 'solar_sail'
 // Три топлива — три класса скорости (пользователь): водород — медленные, тритий — средние,
 // антиматерия — быстрые. Отношение тяги 1 : 10 : 100 — по ТЗ v2 §2.7.4 (разгон до 200 000 у.е.:
 // водородный 10 ч, ядерный 1 ч, на металлическом водороде 6 мин). rel — тяга двигателя на этом
-// топливе в долях «тритиевой»; yield — энергии за единицу топлива (газохранилище жжёт ≤ 1 ед. за
-// цикл 60 с, v2); tank — единиц на газохранилище (водород и тритий — v2 водород/гелий-3, у антиматерии
+// топливе в долях «тритиевой»; yield — энергии за единицу топлива (газохранилище жжёт ≤ 1 ед. в
+// секунду); tank — единиц на газохранилище (водород и тритий — v2 водород/гелий-3, у антиматерии
 // ×10 плотнее — допущение). Топливо — настройка дизайна (d.fuel); нет — водород, у ионных — тритий.
+// yield — ЭНЕРГОЁМКОСТЬ единицы топлива. Она ОДНА на всю игру (требование пользователя:
+// «энергоёмкость должна быть универсальной»): по ней летит корабль, жгут генератор и здания
+// колонии, майнит крипту майнинг-ферма. Источник — таблица пользователя (data/parts.json, поле
+// fuel, страница components.html); loadParts переписывает эти числа, как только таблица
+// загрузилась (applyFuelEnergy в components.js). Здесь — только значение до загрузки, равное
+// таблице пользователя. Раньше тут жили старые 10 / 100 / 1000, и корабль с майнинг-фермой
+// считали по ним, а здания и конструктор — по таблице 100 / 300 / 800.
 const FUEL = {
-  hydrogen:   { name: 'Водород',     tier: 'медленные', rel: 0.1, yield: 10,   tank: 475 },
-  tritium:    { name: 'Тритий',      tier: 'средние',   rel: 1,   yield: 100,  tank: 50 },
-  antimatter: { name: 'Антиматерия', tier: 'быстрые',   rel: 10,  yield: 1000, tank: 5 },
+  hydrogen:   { name: 'Водород',     tier: 'медленные', rel: 0.1, yield: 100, tank: 475 },
+  tritium:    { name: 'Тритий',      tier: 'средние',   rel: 1,   yield: 300, tank: 50 },
+  antimatter: { name: 'Антиматерия', tier: 'быстрые',   rel: 10,  yield: 800, tank: 5 },
 };
 const FUEL_KEYS = Object.keys(FUEL);
-const ENERGY_CYCLE = 60;
+// ЭНЕРГИЯ И ТОПЛИВО СЧИТАЮТСЯ ЗА КАЖДУЮ СЕКУНДУ РАБОТЫ ДВИГАТЕЛЯ (решение пользователя 2026-11-27:
+// «считать энергопотребление и сжигание топлива за каждую секунду разгона; только инерционный
+// полёт не жжёт энергии, торможение тоже жжёт»). Раньше это был 60-секундный цикл v2, и полёт
+// выходил в 60 раз дешевле: межзвёздный скачок шаттла стоил меньше одного трития. Разгон и
+// торможение жгут (system.js — ∫тяга dt, galaxy.js — по времени тяги с долей AP_BRAKE на
+// торможении), инерция и скачок — нет.
+const ENERGY_CYCLE = 1;
 // Двигатели: ионный — вдвое больше тяги на модуль при ×20 энергии (v2: ионный тянет сильнее,
 // но прожорлив — допущение по величине); парус топлива не жжёт и тянет как 1% тритиевого двигателя.
 const ENGINE_REL = { engine: 1, engine_ion: 2, solar_sail: 0.01 };
@@ -165,18 +178,26 @@ function shipStats(d, fuelKey = designFuel(d)) {
     if (k === 'weapon_mount' || k === 'ecm') combat += m.active;
   }
   const reactor = n('reactor') * SHIP_MODULE.reactor.gen;
-  const supply = reactor + n('gas_storage') * F.yield;          // энергии за цикл при сжигании во всех хранилищах
-  const ratio = demand > 0 ? Math.min(1, supply / demand) : 1;  // нехватка энергии кратно снижает тягу
+  const supply = reactor + n('gas_storage') * F.yield;          // энергии в секунду при сжигании во всех хранилищах
+  // ПАССИВНЫЕ СИСТЕМЫ (жизнеобеспечение, радар, ЭВМ…) едят энергию КАЖДУЮ СЕКУНДУ, пока корабль
+  // в космосе, — и на разгоне, и по инерции (решение пользователя: «поддержание систем, пассивно
+  // потребляющих энергию, нужно учитывать»). Энергия идёт им ПЕРВЫМ, двигателям — остаток:
+  // не хватает — тяга падает долей.
+  const ratio = demand > 0 ? Math.max(0, Math.min(1, (supply - passive) / demand)) : 1;
   const accel = mass > 0 ? thrust * ratio / mass : 0;
   // Топливо: реактор покрывает спрос первым, газохранилища — остаток.
-  const burnPerCycle = Math.max(0, Math.min(demand, supply) - reactor) / F.yield; // ед. топлива за цикл
+  const burnPerCycle = Math.max(0, Math.min(demand + passive, supply) - reactor) / F.yield; // ед. топлива в секунду тяги
+  // По инерции двигатели молчат, но пассивные системы работают: чего не покрыл реактор — из бака.
+  const burnIdle = Math.max(0, Math.min(passive, supply) - reactor) / F.yield;            // ед. топлива в секунду дрейфа
   const fuelUnits = n('gas_storage') * F.tank;
   const burnTime = burnPerCycle > 0 ? fuelUnits / burnPerCycle * ENERGY_CYCLE : Infinity; // с полной тяги
   const dv = accel > 0 ? burnTime * accel : 0;
   return {
     cls, decks: d.decks.length, slots: d.decks.length * cls.perDeck, modules: mods.length, count,
     mass, durability: dur, energyGen: gen, energyPassive: passive, energyDemand: demand, energyCombat: combat,
-    reactor, supply, ratio, thrust, accel, fuelKey, fuelName: F.name, fuelUnits, burnPerCycle, burnTime, dv,
+    reactor, supply, ratio, thrust, accel, fuelKey, fuelName: F.name, fuelUnits, burnPerCycle, burnIdle, burnTime, dv,
+    // сколько Δv «стоит» секунда дрейфа: единица топлива = accel / burnPerCycle Δv
+    idleDv: burnPerCycle > 0 ? burnIdle * accel / burnPerCycle : 0,
     weapons: n('weapon_mount'), engines: n('engine') + n('engine_ion') + n('solar_sail'),
     battery: n('battery') * 10000, cargo: n('cargo'),
   };
@@ -200,9 +221,78 @@ function fuelTable() {
 // корабля: двигателям нужно вдвое меньше энергии, бо́льшую долю покрывает реактор — бесплатно).
 // fuelK — во сколько раз меньше топлива на единицу Δv, чем на полной мощности (0 — всё кормит реактор).
 const WARP_MODES = { fast: { name: 'Быстро', p: 1 }, eco: { name: 'Экономно', p: 0.5 } };
+// «ЭКОНОМНО» = ДЕСЯТАЯ ЧАСТЬ ТОПЛИВА «БЫСТРО» (решение пользователя: «сделай экономно как 1 к 10
+// к быстро, чтоб совсем медленно не летали»). Одно правило на оба полёта: в системе — самая
+// быстрая дуга, укладывающаяся в 1/10 топлива быстрого полёта (orbit.js planEco, dvCap), между
+// звёздами — мощность двигателей, при которой скачок стоит 1/10 топлива (warpEcoP).
+// Раньше экономный режим был жёстко «половина мощности»: шаттлу это давало 46 % бака против 100 %,
+// а в системе — 1/18 топлива ценой полёта в разы дольше.
+const ECO_FUEL_SHARE = 0.1;
+// ЦЕНА СКОРОСТИ — ползунок 1…10 под кнопками «Быстро»/«Экономно» (решение пользователя: «игрок может
+// задать своё значение от 1 до 10, насколько он готов заплатить за скорость полёта»). Значение N —
+// сколько десятых топлива быстрого полёта готов потратить «Экономно»: 1 — десятая часть (по
+// умолчанию), 10 — как «Быстро». Одно значение на всю игру, хранится в localStorage.
+const ECO_PAY_KEY = 'ouro.v3.ecoPay';
+function ecoPay() {
+  try { const v = Math.round(+localStorage.getItem(ECO_PAY_KEY)); return v >= 1 && v <= 10 ? v : 1; } catch (_) { return 1; }
+}
+function setEcoPay(v) {
+  try { localStorage.setItem(ECO_PAY_KEY, String(Math.max(1, Math.min(10, Math.round(v))))); } catch (_) { /* приватный режим */ }
+}
+const ecoShare = () => ecoPay() * ECO_FUEL_SHARE;
+// Ползунок в карточку полёта (экраны системы и галактики): onChange — перерисовать оценки.
+// ВСЁ В ПРОЦЕНТАХ ОСТАТКА БАКА (решение пользователя: «ползунок показывает, сколько процентов бака
+// из остатка расходует выбранный режим полёта; под кнопками „Экономно“ и „Быстро“ тоже»). Строка
+// под кнопками — по одной ячейке под каждой (порядок как у кнопок: экономно, быстро); у ползунка —
+// сколько остатка уйдёт на «Экономно» при выбранной цене. Числа ставит экран (updateEcoPay).
+function mountEcoPay(el, onChange) {
+  if (!el || el.dataset.ready) return;
+  el.dataset.ready = '1';
+  el.className = 'paybar';
+  el.innerHTML = '<div class="paycost"><span data-k="eco"></span><span data-k="fast"></span></div>' +
+    '<label><span>Цена скорости</span><input type="range" min="1" max="10" step="1"><b></b></label><i></i>';
+  const inp = el.querySelector('input');
+  inp.value = ecoPay();
+  inp.addEventListener('input', () => { setEcoPay(+inp.value); if (onChange) onChange(); });
+}
+// cost = {eco, fast, have} — доли ПОЛНОГО бака (eco/fast — на перелёт, have — сколько в баке);
+// Infinity/не число — двигатели кормит реактор. Пишет проценты от ОСТАТКА.
+function updateEcoPay(el, cost) {
+  if (!el || !el.dataset.ready) return;
+  const pct = x => {
+    if (!isFinite(x) || !(cost.have > 0) || !isFinite(cost.have)) return x === 0 || !isFinite(cost.have) ? 'топливо не тратится' : '—';
+    const p = x / cost.have * 100;
+    return (p < 1 ? p.toFixed(2) : p < 10 ? p.toFixed(1) : Math.round(p)).toString().replace('.', ',') + '% остатка' + (p > 100 ? ' — не хватит' : '');
+  };
+  el.querySelector('[data-k="eco"]').textContent = pct(cost.eco);
+  el.querySelector('[data-k="fast"]').textContent = pct(cost.fast);
+  const v = ecoPay();
+  el.querySelector('input').value = v;
+  el.querySelector('b').textContent = v + ' / 10';
+  el.querySelector('i').textContent = '«Экономно»: ' + pct(cost.eco) + ' · ' +
+    (v === 1 ? 'десятая часть топлива «Быстро», дольше всего' : v === 10 ? 'как «Быстро»' : v + '/10 топлива «Быстро»');
+}
+// Мощность экономного скачка: самая высокая (то есть самая быстрая), при которой топлива уходит не
+// больше ECO_FUEL_SHARE от полной мощности. Топливо скачка ∝ fuelK(p) — время тяги растёт как 1/p,
+// тяга падает как p, и это сокращается. Если 1/10 недостижима (нет реактора — каждая секунда
+// тяги стоит одинаково), берётся самый экономный режим из возможных; не медленнее 1/10 мощности.
+function warpEcoP(st) {
+  const P_MIN = 0.1;
+  const share = ecoShare();
+  if (warpFuelK(st, P_MIN) > share) {
+    let bp = 1, bk = warpFuelK(st, 1);
+    for (let p = 0.9; p >= P_MIN - 1e-9; p -= 0.05) { const k = warpFuelK(st, p); if (k < bk - 1e-9) { bk = k; bp = p; } }
+    return bp;
+  }
+  let lo = P_MIN, hi = 1;
+  for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (warpFuelK(st, m) <= share) lo = m; else hi = m; }
+  return lo;
+}
 function warpFuelK(st, p) {
-  const full = Math.max(0, Math.min(st.energyDemand, st.supply) - st.reactor);
-  const part = Math.max(0, Math.min(st.energyDemand * p, st.supply) - st.reactor);
+  // пассивные системы работают при любой мощности двигателей
+  const pas = st.energyPassive || 0;
+  const full = Math.max(0, Math.min(st.energyDemand + pas, st.supply) - st.reactor);
+  const part = Math.max(0, Math.min(st.energyDemand * p + pas, st.supply) - st.reactor);
   return full > 0 ? part / p / full : 0;
 }
 // Прикидка межзвёздного перелёта: время разгона до c, торможения и доля бака. Топливо идёт по ВРЕМЕНИ
@@ -214,7 +304,7 @@ function warpEstimate(st, mode) {
   // реактор и так покрывает весь спрос, половинная тяга только удваивает время полёта. Поэтому
   // такой корабль летит на ПОЛНОЙ тяге в любом режиме, а интерфейс это пишет прямо.
   const free = warpFuelK(st, 1) === 0;
-  const p = free ? 1 : WARP_MODES[mode].p, a = st.accel * p, fk = warpFuelK(st, p);
+  const p = free ? 1 : mode === 'eco' ? warpEcoP(st) : WARP_MODES[mode].p, a = st.accel * p, fk = warpFuelK(st, p);
   const ta = timeToSpeed(a, SHIP_LIGHT), tb = timeToSpeed(AP_BRAKE * a, SHIP_LIGHT);
   return { accel: ta, brake: tb, fuelK: fk, p, free,
     fuel: isFinite(st.dv) && st.dv > 0 ? st.accel * p * fk * (ta + AP_BRAKE * tb) / st.dv : 0 };
