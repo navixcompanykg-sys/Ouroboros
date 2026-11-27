@@ -113,6 +113,12 @@ const COL = {
   get MFARM_EN() { return this.MFARM_CRYPTO / this.TOKEN_PER_EN; },  // энергии за такт × уровень
   get MFARM_H2() { return this.MFARM_EN / FUEL.hydrogen.yield; },     // ...то же в водородах
 
+  // ДОЛЯ ДОХОДА, КОТОРУЮ КОЛОНИЯ КОПИТ, А НЕ ТРАТИТ НА ЖАЛОВАНЬЕ (ТЗ §8.30). ДОПУЩЕНИЕ по решению
+  // пользователя 2026-11-28: «плавно копить ресурсы для торговли или медленного накопления на
+  // критические здания первой важности, чтоб выйти на положительный доход». 0 — всё уходит в рост
+  // и колония живёт в нуль, 1 — не растёт вовсе. Накопленное и есть фонд на корабли и торговлю.
+  SAVE_SHARE: 1 / 3,
+
   UNIQ_RAW: 10,          // планетарная единица: по 10 ед. сырья 1, 2 и 3 уровня разных типов (§8.5)
   PROD_TICKS: 144,       // производство уровня L выдаёт одну планетарную единицу раз в 144 / L тактов
   PROD_COMP: 10,         // ДОПУЩЕНИЕ: или столько компонентов за такт (× уровень), если задан такой заказ
@@ -277,8 +283,24 @@ const COL_BUILDING = Object.fromEntries(COL_BUILDINGS.map(b => [b.key, b]));
 // Кого укомплектовывают первым, если населения или крипты не хватает на всех (правило v2).
 // Производство — раньше майнинг-фермы: без него нет планетарных единиц, а значит ни куполов, ни
 // ферм; когда жителей стало меньше мест, оно оставалось без рабочего, и колония не могла расти.
-const COL_PRIO = { gen: 0, mine_s: 1, mine_c: 1, mine_e: 1, mine_b: 1, farm: 2, prod: 2, mfarm: 3, eco: 4, port: 5, station: 5, dome: 99,
-  barracks: 5, battery: 5, science: 4, elevator: 5, destroyer: 6, observatory: 5, terraform: 4, robots: 4 };
+// ЖИЗНЕННЫЙ МИНИМУМ (COL_VITAL) ИДЁТ ПЕРВЫМ И РАБОТАЕТ ВСЕГДА — энергия, пища и доход.
+// Раньше порядок был другим (шахты 1, ферма 2, майнинг-ферма 3), и колония кончала с собой:
+// крипта доходила до нуля → жалованья не хватало → без рабочего оставалась СНАЧАЛА майнинг-ферма
+// (единственный доход), потом ферма пищи → такт без пищи → мгновенное вымирание всей колонии
+// (popRates: нет пищи — K = 0). Прогон 60 суток так терял все 20 колоний, см. docs/Журнал.md.
+// Теперь порядок: генератор → энергия и пища и доход → остальные шахты и производство → рост.
+// ШАХТЫ ВСЕХ ГРУПП — ОДНОЙ ВАЖНОСТИ (2), а кого из них укомплектуют раньше, решает НУЖДА
+// (crewPlan): энергетические стояли выше прочих, и колония на безжизненной планете держала вторую
+// энергетическую шахту при пустом складе силикатов — содержание и искусственная пища кончались,
+// и она вымирала от голода на 10-е сутки (прогон Кисуриль c). Водород жизнеобеспечения при этом
+// не страдает: нужные для него энергетические шахты входят в жизненный минимум (COL_VITAL).
+const COL_PRIO = { gen: 0, farm: 1, mfarm: 1, mine_e: 2, mine_s: 2, mine_c: 2, mine_b: 2, prod: 2, eco: 3, port: 4, station: 4, dome: 99,
+  barracks: 4, battery: 4, science: 3, elevator: 4, destroyer: 5, observatory: 4, terraform: 3, robots: 3 };
+// Места жизненного минимума укомплектованы, даже когда крипты нет совсем: эти люди кормят себя
+// сами — пищей и кровом колонии, жалованье нужно для РОСТА (ДОПУЩЕНИЕ по решению пользователя
+// «чтоб колония не самоубивалась и жила на каком-то минимуме»). Без этого правила пустая касса
+// означала смерть, а не остановку роста.
+const COL_VITAL = new Set(['gen', 'mine_e', 'farm', 'mfarm']);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ПРИГОДНОСТЬ ПЛАНЕТЫ ДЛЯ РАСЫ (ТЗ §8.21). Множитель каждого фактора относительно нормы расы
@@ -313,9 +335,33 @@ const Colony = (() => {
   const tickAt = ms => Math.floor(ms / COL.TICK_MS);
 
   // star/planet колония помнит сама: по ним космодром знает, где появится собранный корабль.
+  // ОБЩИЙ КОШЕЛЁК ИГРОКА (решение пользователя 2026-11-28: «баланс крипты общий на игрока по всем
+  // планетам»). Колонии не держат своих кошельков: col.crypto — это окно в ОДИН общий баланс,
+  // поэтому весь прежний код (панель, прогон, step) читает и пишет его как раньше, а крипта,
+  // намытая одной колонией, платит рабочим на другой. Отсюда же исчезает нужда «субсидировать»
+  // субколонию: у неё и у метрополии один и тот же счёт.
+  let PURSE = null;                       // null — кошелёк ещё не заведён
+  const purse = () => (World && World.crypto != null ? World.crypto : (PURSE || 0));
+  const setPurse = v => { PURSE = v; if (World && typeof World === 'object') World.crypto = v; };
+  // Колония получает «окно» в общий кошелёк. ПЕРЕНОС СТАРЫХ СОХРАНЕНИЙ: пока кошелька нет, его
+  // заводит баланс первой же колонии — иначе у игрока, поднявшего сохранённый мир, крипта
+  // обнулилась бы (проверено в браузере: панель показывала 0 вместо 20 000).
+  function wallet(col) {
+    if (!col) return col;
+    const d = Object.getOwnPropertyDescriptor(col, 'crypto');
+    if (d && d.get === purse) return col;                       // уже окно
+    const own = d && typeof col.crypto === 'number' ? col.crypto : null;
+    if (PURSE == null && !(World && World.crypto != null) && own) setPurse(own);   // 0 кошелька не заводит
+    Object.defineProperty(col, 'crypto', { get: purse, set: setPurse, enumerable: true, configurable: true });
+    return col;
+  }
+  const resetPurse = v => { setPurse(v || 0); };
+  // Заведён ли кошелёк: по этому стартовый капитал даётся ОДИН раз, первой колонии игрока.
+  const purseFunded = () => (World && World.crypto != null) || PURSE != null;
+
   function blank(now, star, planet) {
-    return { t: tickAt(now), star, planet, stock: {}, food: 0, crypto: 0, pop: 0, uniq: 0,
-      buildings: [], site: null, yard: null, powered: true, log: [] };
+    return wallet({ t: tickAt(now), star, planet, stock: {}, food: 0, crypto: 0, pop: 0, uniq: 0,
+      buildings: [], site: null, yard: null, powered: true, log: [] });
   }
 
   // ---------- склад ----------
@@ -461,28 +507,42 @@ const Colony = (() => {
   // Первая версия выбрасывала «распространённое» (по редкости в галактике) — и колония гибла:
   // гора редкой биомассы не давала положить водород, 570 тысяч водорода ушли в отходы, шахты
   // встали без энергии (прогон tools/colony.js).
+  // ОСВОБОДИТЬ МЕСТО ПОД need ОБЪЁМА, выбрасывая самые большие горы. Брони не трогаются: энергия
+  // зданий (h2Reserve) и сырьё на их содержание (upReserve). keep — что выбрасывать нельзя вовсе,
+  // floor — объём, ниже которого гору не срезаем (так пища защищает свою биомассу).
+  // БРОНЬ ПИЩИ: сколько съедобного сырья нельзя выбрасывать — сутки выработки на нынешних
+  // едоков (ДОПУЩЕНИЕ: сутки). Иначе склад выбрасывал микробиоту как «самую большую гору», и
+  // фермы оставались без того, из чего делают пищу.
+  const foodReserve = (col, key) =>
+    (col.pop || 0) * COL.FOOD_PER_POP * COL.DAY_TICKS / (COL.FOOD_YIELD[key] || 1) * volOf(key);
+
+  function makeRoom(col, need, keep, floor) {
+    const heap = j => (col.stock[j] || 0) * volOf(j);
+    const junk = Object.keys(col.stock).filter(j => j !== keep && heap(j) > 1e-9).sort((a, b) => heap(b) - heap(a));
+    for (const j of junk) {
+      if (need <= 1e-9) break;
+      const over = (heap(j) - (floor ? floor(j) : 0)) / volOf(j);
+      if (over <= 1e-9) continue;
+      let can = col.stock[j];
+      const g = COL_KEY_GROUP[j];
+      if (g === 'e') {                           // бронь энергии — в «водородах»
+        const eHave = COL_GROUPS.e.reduce((a, k) => a + (col.stock[k] || 0) * (COL.H2_PER_UNIT[k] || 1), 0);
+        can = Math.min(can, Math.max(0, eHave - h2Reserve(col) - upReserve(col, g)) / (COL.H2_PER_UNIT[j] || 1));
+      } else can = Math.min(can, Math.max(0, inGroup(col, g) - upReserve(col, g)));
+      const take = Math.min(can, over, need / volOf(j));
+      if (take <= 0) continue;
+      col.stock[j] -= take; waste(col, j, take); need -= take * volOf(j);
+    }
+    return need;
+  }
+
   function store(col, key, qty) {
     let q = Math.min(qty, roomLeft(col) / volOf(key));   // место считается ОБЪЁМОМ
     if (q < qty - 1e-9 && RESOURCES.some(r => r.key === key)) {
-      let need = (qty - q) * volOf(key);
-      const heap = j => (col.stock[j] || 0) * volOf(j);
-      const junk = Object.keys(col.stock).filter(j => j !== key && heap(j) > 1e-9).sort((a, b) => heap(b) - heap(a));
-      for (const j of junk) {
-        if (need <= 1e-9) break;
-        // Выбрасываем только то, чего на складе БОЛЬШЕ, чем станет привезённого: склад
-        // выравнивается, а не меняет одну гору на другую.
-        const over = (heap(j) - (heap(key) + (qty - q) * volOf(key))) / volOf(j);
-        if (over <= 1e-9) continue;
-        let can = col.stock[j];
-        const g = COL_KEY_GROUP[j];
-        if (g === 'e') {                           // бронь энергии — в «водородах»
-          const eHave = COL_GROUPS.e.reduce((a, k) => a + (col.stock[k] || 0) * (COL.H2_PER_UNIT[k] || 1), 0);
-          can = Math.min(can, Math.max(0, eHave - h2Reserve(col) - upReserve(col, g)) / (COL.H2_PER_UNIT[j] || 1));
-        } else can = Math.min(can, Math.max(0, inGroup(col, g) - upReserve(col, g)));
-        const take = Math.min(can, over, need / volOf(j));
-        if (take <= 0) continue;
-        col.stock[j] -= take; waste(col, j, take); need -= take * volOf(j);
-      }
+      // Выбрасываем только то, чего на складе БОЛЬШЕ, чем станет привезённого: склад
+      // выравнивается, а не меняет одну гору на другую.
+      const bar = (col.stock[key] || 0) * volOf(key) + (qty - q) * volOf(key);
+      makeRoom(col, (qty - q) * volOf(key), key, () => bar);
       q = Math.min(qty, roomLeft(col) / volOf(key));
     }
     if (q > 0) add(col.stock, key, q);
@@ -530,6 +590,116 @@ const Colony = (() => {
   const h2Of = b => (COL_BUILDING[b.kind].h2 || 0) * (COL_BUILDING[b.kind].group ? (COL.MINE_H2[b.lvl] || 1) : b.lvl);
   const h2Reserve = col => live(col).reduce((a, b) => a + h2Of(b), 0) * RESERVE_TICKS;
 
+  // ПРИТОК И РАСХОД ВОДОРОДА за такт (в «водородах») — по этому колония и решает, есть ли чем
+  // кормить ещё одну майнинг-ферму: ферме нужно MFARM_H2, и ставить её без этого запаса бессмысленно
+  // (она намоет меньше номинала и будет только брать содержание). ТЗ §8.30.
+  function h2Flow(col, surf) {
+    const L = live(col);
+    const hexAt = (q, r) => surf && surf.hexes.find(h => h.q === q && h.r === r);
+    const into = L.reduce((a, b) => {
+      if (COL_BUILDING[b.kind].group !== 'e') return a;
+      const h = hexAt(b.q, b.r); if (!h) return a;
+      const out = mineOutput(h, b.kind, b.lvl);
+      return a + Object.keys(out).reduce((v, k) => v + out[k] * (COL.H2_PER_UNIT[k] || 1), 0);
+    }, 0);
+    const spent = L.reduce((a, b) => a + h2Of(b)
+      + (COL_BUILDING[b.kind].upkeep === 'e' ? (COL_BUILDING[b.kind].up || 0) * b.lvl / COL.UPKEEP_EVERY : 0), 0);
+    const mf = L.reduce((a, b) => a + (b.kind === 'mfarm' ? b.lvl : 0), 0);
+    return { in: into, out: spent, free: into - spent - mf * COL.MFARM_H2 };   // free — сверх уже стоящих ферм
+  }
+
+  // ---------- КОЛОНИЯ ЖИВЁТ ПО СРЕДСТВАМ (ТЗ §8.30) ----------
+  // Решение пользователя 2026-11-28: «нужно грамотно определять границу роста, чтоб не упираться
+  // в смертельный предел и плавно копить ресурсы… чтоб колония не самоубивалась и жила на каком-то
+  // минимуме, который сдвигается вперёд»; «решения нужно подбирать исходя из этого по ситуации».
+  //
+  // Поэтому границу колония выводит САМА, из своей обстановки, а не из номинала зданий:
+  //   жизненный минимум (COL_VITAL) — работает всегда, жалованья не просит;
+  //   рост (всё сверх минимума) — только на то, что колония РЕАЛЬНО зарабатывает (col.income —
+  //     намыто за такт в среднем за сутки) плюс ПЛАВНОЕ проедание кассы: излишек тратится за
+  //     сутки, а не разом (отсюда «плавно копить»).
+  // Что это даёт: расход сам упирается в доход, касса убывает всё медленнее и не доходит до нуля,
+  // а лишние места просто стоят без рабочих — колония замирает на минимуме и копит, вместо того
+  // чтобы умереть. Раньше граница считалась по НОМИНАЛУ майнинг-ферм (nMf × MFARM_CRYPTO / WAGE),
+  // фермы же недокормлены водородом и мывают ~83 % номинала: дефицит 20–30 крипты за такт годами
+  // съедал стартовые 20 000, и на 19–31 сутках колония вымирала (docs/Журнал.md).
+  // ЗА КАКОЙ СРОК КОЛОНИЯ ТРАТИТ КАССУ НА РОСТ (ДОПУЩЕНИЕ, два случая — «по ситуации»):
+  //   пока базового набора нет — за сутки: касса на это и дана, без базового набора дохода не будет;
+  //   когда набор собран — ЗА МЕСЯЦ: зрелая колония вкладывает накопленное медленно. Это и есть
+  //     «медленное накопление на критические здания»: пара новых мест → больше добычи водорода →
+  //     ещё майнинг-ферма → доход вырос → минимум сдвинулся вперёд. Быстрый срок здесь ставить
+  //     нельзя: при кассе 70 000 он разрешает 80 мест, колония застраивает планету, съедает
+  //     силикаты на стройку и теряет купола за долги (проверено прогоном).
+  const BANK_FAST = 1, BANK_SLOW = 30;      // суток
+  const bankSpend = col => COL.DAY_TICKS * (AUTO_PLAN.every(k => col.buildings.some(b => b.kind === k && !b.dead)) ? BANK_SLOW : BANK_FAST);
+  // Возвращает: order — ПОРЯДОК УКОМПЛЕКТОВАНИЯ (минимум впереди), vital — размер минимума,
+  // grow — оплачиваемых мест сейчас, manned — всего укомплектовано, wage — расход за такт,
+  // limit — СКОЛЬКО МЕСТ КОЛОНИЯ В СОСТОЯНИИ СОДЕРЖАТЬ (не зажато числом уже построенных мест:
+  // это граница роста для автостройки, а manned для неё не годится — он равен числу имеющихся
+  // мест и сам себя запирает, колония с куполом и фермой не построила бы ни шахты).
+  //
+  // МИНИМУМ ОГРАНИЧЕН И НЕ РАСТЁТ С КОЛОНИЕЙ: генератор, фермы пищи, майнинг-фермы (они сами себя
+  // оплачивают — 60 крипты против 6 жалованья) и СТОЛЬКО энергетических шахт, сколько нужно на
+  // водород жизнеобеспечения (купола, фермы, генератор) — обычно одна-две. Первая версия считала
+  // минимумом ВСЕ энергетические шахты, и колония получала даровую рабочую силу, растущую с числом
+  // шахт: граница роста разъезжалась, колония ставила 81 здание, съедала силикаты на стройку и
+  // теряла купола за долги (прогон 2026-11-28).
+  function crewPlan(col, need, surf) {
+    const core = need.filter(b => b.kind === 'gen' || b.kind === 'farm' || b.kind === 'mfarm');
+    // НУЖДА ЖИЗНЕОБЕСПЕЧЕНИЯ за такт по группам сырья: содержание куполов, ферм и генератора плюс
+    // сырьё, из которого ферма делает пищу (на безжизненной планете — силикаты). Минимум обязан
+    // включать ШАХТЫ, которые эту нужду закрывают, иначе он неполон: колония на безжизненной
+    // планете держала генератор, ферму и энергетическую шахту, но не структурную — силикаты на
+    // содержание и пищу кончались, и она вымирала от голода на 10-е сутки (прогон Кисуриль c).
+    const lifeNeed = {};
+    const addNeed = (g, q) => { if (g && q > 0) lifeNeed[g] = (lifeNeed[g] || 0) + q; };
+    for (const b of live(col)) {
+      if (b.kind !== 'dome' && b.kind !== 'farm' && b.kind !== 'gen') continue;
+      const B = COL_BUILDING[b.kind];
+      addNeed(B.upkeep, (B.up || 0) * b.lvl / COL.UPKEEP_EVERY);
+      addNeed('e', h2Of(b));
+    }
+    const bioHave = (col.stock.microbiota || 0) * COL.FOOD_YIELD.microbiota + (col.stock.flora || 0) * COL.FOOD_YIELD.flora;
+    const eat = (col.pop || 0) * COL.FOOD_PER_POP;
+    if (bioHave < eat * COL.DAY_TICKS) addNeed('s', eat / COL.FOOD_YIELD.silicates);   // пища из силикатов
+    else addNeed('b', eat / COL.FOOD_YIELD.microbiota);
+    // Добыча шахты за такт в единицах своей группы (для энергетической — в «водородах», за вычетом
+    // её собственного расхода: она питается своей же добычей).
+    const rate = b => {
+      const h = surf && surf.hexes.find(x => x.q === b.q && x.r === b.r); if (!h) return 0;
+      const o = mineOutput(h, b.kind, b.lvl), g = COL_BUILDING[b.kind].group;
+      const sum = Object.keys(o).reduce((v, k) => v + o[k] * (g === 'e' ? (COL.H2_PER_UNIT[k] || 1) : 1), 0);
+      return g === 'e' ? sum - h2Of(b) : sum;
+    };
+    const keep = [];
+    for (const g in lifeNeed) {
+      const mines = need.filter(b => COL_BUILDING[b.kind].group === g).sort((a, b) => rate(b) - rate(a));
+      let got = 0;
+      for (const b of mines) { if (got >= lifeNeed[g]) break; got += Math.max(0, rate(b)); keep.push(b); }
+    }
+    const vitalSet = new Set([...core, ...keep]);
+    // Порядок: минимум, затем остальные по важности (COL_PRIO), а шахты одной важности — ПО НУЖДЕ:
+    // раньше идёт та, чьей группы на складе не хватает на содержание зданий и пищу. Это и есть
+    // «решения по ситуации»: колония сама ставит людей туда, где у неё дыра, а не по вечному списку.
+    const shortOf = g => !COL_GROUPS[g] ? 0 : upReserve(col, g)
+      + (g === 's' ? (col.pop || 0) * COL.FOOD_PER_POP * COL.DAY_TICKS / COL.FOOD_YIELD.silicates : 0)
+      - inGroup(col, g);
+    const rest = need.filter(b => !vitalSet.has(b)).sort((a, b) =>
+      (COL_PRIO[a.kind] - COL_PRIO[b.kind])
+      || (shortOf(COL_BUILDING[b.kind].group || 'z') - shortOf(COL_BUILDING[a.kind].group || 'z')));
+    const order = [...vitalSet, ...rest];
+    const vital = Math.min(vitalSet.size, col.pop);
+    // Бюджет роста за такт: заработанное МИНУС доля на накопление + плавное вложение кассы.
+    // Доля (SAVE_SHARE) и есть «плавно копить»: без неё колония тратит доход ровно в нуль и
+    // не накапливает ничего ни на корабли, ни на торговлю.
+    const budget = (col.income || 0) * (1 - COL.SAVE_SHARE) + col.crypto / bankSpend(col);
+    const afford = Math.max(0, Math.floor(budget / COL.WAGE));
+    const grow = Math.min(afford, Math.floor(col.crypto / COL.WAGE),   // на что хватает средств и кассы
+      Math.max(0, col.pop - vital), Math.max(0, order.length - vital)); // и кем укомплектовать
+    return { order, vital, grow, manned: vital + grow, wage: grow * COL.WAGE,
+      limit: vital + Math.min(afford, Math.max(0, col.pop - vital)) };
+  }
+
   // ---------- такт колонии ----------
   function step(col, surf) {
     tfAdvance(col, surf, 1);
@@ -540,8 +710,8 @@ const Colony = (() => {
     // рабочие: сколько мест укомплектовано (население и крипта, §8.8)
     const need = L.filter(b => COL_BUILDING[b.kind].work)
       .sort((a, b) => COL_PRIO[a.kind] - COL_PRIO[b.kind]);
-    const paid = Math.min(col.pop, Math.floor(col.crypto / COL.WAGE), need.length);
-    const manned = new Set(need.slice(0, paid));
+    const crew = crewPlan(col, need, surf);
+    const paid = crew.manned, manned = new Set(crew.order.slice(0, paid));
 
     // 0. ЭНЕРГИЯ — в начале такта и ПО КАЖДОМУ ЗДАНИЮ ОТДЕЛЬНО, в порядке важности (COL_PRIO:
     // генератор, шахты, фермы...). Кому водорода не досталось — тот этот такт не работает
@@ -685,13 +855,29 @@ const Colony = (() => {
       const units = Math.min(col.stock[k] || 0, room / Y[k]);
       if (units > 0) { col.stock[k] -= units; bio += units * Y[k]; }
     }
-    // Силикаты на искусственную пищу — только сверх запаса на содержание зданий группы (upReserve).
-    const sSpare = () => Math.max(0, Math.min(col.stock.silicates || 0, inGroup(col, 's') - upReserve(col, 's')));
-    let art = Math.min(Math.max(0, want - bio), artCap, sSpare() * Y.silicates);
+    // ЕДА ИДЁТ ВПЕРЁД БРОНИ СОДЕРЖАНИЯ (ТЗ §8.30). На пропитание НЫНЕШНИХ едоков силикаты берутся
+    // из всего запаса: лучше потерять купол за долги, чем всю колонию — один такт без пищи стирает
+    // её целиком (§8.21), а разобранное здание можно построить снова. Сверх пропитания (запас
+    // FOOD_KEEP) — только из излишка над бронью, как раньше. Без этого правила колония на
+    // безжизненной планете вымирала при полном складе: бронь на содержание купола забирала
+    // силикаты, из которых ферма делает искусственную пищу (прогон Кисуриль c, 10,4 суток).
+    const sAll = () => col.stock.silicates || 0;
+    const sSpare = () => Math.max(0, Math.min(sAll(), inGroup(col, 's') - upReserve(col, 's')));
+    const sForFood = () => Math.min(sAll(),
+      Math.max(sSpare(), Math.max(0, eaters * COL.FOOD_PER_POP - bio) / Y.silicates));
+    let art = Math.min(Math.max(0, want - bio), artCap, sForFood() * Y.silicates);
     if (art > 0) col.stock.silicates -= art / Y.silicates;
     // Мощность ферм за такт (для избытка пищи в popRates): что фермы могли бы сделать из того, что есть.
     const cap = Math.min(bioCap, (col.stock.microbiota || 0) * Y.microbiota + (col.stock.flora || 0) * Y.flora + bio)
-      + Math.min(artCap, sSpare() * Y.silicates + art);
+      + Math.min(artCap, sForFood() * Y.silicates + art);
+    col.foodCap = cap / COL.FOOD_PER_POP;   // скольких человек фермы реально кормят — граница роста населения
+    // ПИЩЕ МЕСТО НА СКЛАДЕ ОСВОБОЖДАЮТ, А НЕ ОТКАЗЫВАЮТ (ТЗ §8.30). Раньше было просто
+    // min(bio + art, roomLeft): склад, забитый добычей, останавливал выработку пищи — колония
+    // голодала посреди полной кладовой (сытость 0,54 и 3,5 смерти в сутки в прогоне), а один такт
+    // с нулём пищи вообще стирает колонию. Добыча в этом случае выбрасывает лишнее (store) —
+    // пища тем более вправе: гора битумов не стоит жизни людей.
+    if (bio + art > roomLeft(col)) makeRoom(col, (bio + art - roomLeft(col)) * volOf('food'), null,
+      j => j === 'microbiota' || j === 'flora' ? foodReserve(col, j) : 0);
     const made = Math.min(bio + art, roomLeft(col));
     col.food += made; // место, которое освободили биомасса и сырьё, уже учтено
     const eaten = Math.min(col.food, eaters * COL.FOOD_PER_POP * eatK);   // растущие едят до ×growEat
@@ -726,7 +912,11 @@ const Colony = (() => {
     const enHave = COL_GROUPS.e.reduce((a, k) => a + (col.stock[k] || 0) * FUEL[k].yield, 0);
     const enSpare = Math.max(0, enHave - h2Reserve(col) * FUEL.hydrogen.yield);
     const minted = mfLvl ? burn(col, Math.min(COL.MFARM_EN * mfLvl, enSpare)) * COL.TOKEN_PER_EN : 0;
-    col.crypto = Math.max(0, col.crypto + minted - paid * COL.WAGE);
+    // ФАКТИЧЕСКИЙ ДОХОД — скользящее среднее намыва за сутки. Из него колония и выводит границу
+    // роста (crewPlan, autoStep): номинал ферм врёт, потому что их кормит только излишек водорода.
+    col.income = col.income == null ? minted : col.income + (minted - col.income) / COL.DAY_TICKS;
+    // Жалованье платят только за места СВЕРХ жизненного минимума (COL_VITAL) — см. crewPlan.
+    col.crypto = Math.max(0, col.crypto + minted - crew.wage);
 
     // 6. производство: заказ игрока — компоненты на склад или уникальный ресурс планеты
     const pr = L.find(b => b.kind === 'prod' && manned.has(b) && !b.off);
@@ -1001,7 +1191,10 @@ const Colony = (() => {
     if (col.uniq < 1) return { kind: 'uniq' };
     const L = live(col), jobs = L.filter(b => COL_BUILDING[b.kind].work).length;
     const nMf = L.filter(b => b.kind === 'mfarm').length;
-    const moreMf = nMf > 0 && jobs >= nMf * COL.MFARM_CRYPTO / COL.WAGE && col.pop > jobs;   // нужна ещё ферма
+    // Ещё майнинг-ферма — только если её ЕСТЬ ЧЕМ КОРМИТЬ (водорода сверх нужд уже стоящих ферм)
+    // и рабочий на неё найдётся. Раньше условие было по номиналу (jobs ≥ nMf × 10) и колония
+    // ставила фермы, которым не хватало водорода (ТЗ §8.30).
+    const moreMf = nMf > 0 && col.pop > jobs && h2Flow(col, surf).free >= COL.MFARM_H2;   // нужна ещё ферма
     // Очистные нужны (токсичность ≥ 30 и есть биомасса или фермы), а их нет — компоненты под них.
     const wantEco = surf && !col.buildings.some(b => b.kind === 'eco' && !b.dead) && ecology(col, surf).tox >= 30
       && L.some(b => b.kind === 'mine_b' || b.kind === 'farm');
@@ -1078,7 +1271,11 @@ const Colony = (() => {
 
   function autoStep(col, surf, ship) {
     if (!col.auto) return null;
-    col.order = autoOrder(col, surf);
+    // СУБКОЛОНИЯ-СНАБЖЕНЕЦ (ТЗ §8.31) растёт не вширь, а под нужду базы: ставит шахты тех групп,
+    // которых базе не хватает, и на этом останавливается. Куполов сверх первого, космодрома и
+    // производства ей не нужно — «задача которых не рост, а снабжение» (слова пользователя).
+    const supply = col.role === 'supply';
+    col.order = supply ? { kind: 'uniq' } : autoOrder(col, surf);
     if (col.site) return null;
     const L = live(col);
     const jobs = L.filter(b => COL_BUILDING[b.kind].work).length;
@@ -1093,11 +1290,67 @@ const Colony = (() => {
       + (COL_BUILDING[b.kind].upkeep === 'e' ? (COL_BUILDING[b.kind].up || 0) * b.lvl / COL.UPKEEP_EVERY : 0), 0);
     const skip = col.autoSkip = col.autoSkip || {};
     const have = k => col.buildings.some(b => b.kind === k && !b.dead);
-    // Рабочих мест не больше, чем жителей, И не больше, чем окупают майнинг-фермы: ферма 1 уровня
-    // платит MFARM_CRYPTO / WAGE = 10 рабочим. Раньше автостройка набирала 14–15 мест на одну ферму,
-    // крипта уходила в минус, и колония гибла на 8-е сутки.
-    const nMf = L.filter(b => b.kind === 'mfarm').reduce((a, b) => a + b.lvl, 0);
-    const payable = nMf > 0 ? Math.floor(nMf * COL.MFARM_CRYPTO / COL.WAGE) : Math.floor(COL.MFARM_CRYPTO / COL.WAGE);
+    // ГРАНИЦА РОСТА — ПО СВОИМ СРЕДСТВАМ, А НЕ ПО НОМИНАЛУ ФЕРМ (ТЗ §8.30, тот же crewPlan, что
+    // платит жалованье в step). Раньше здесь стояло nMf × MFARM_CRYPTO / WAGE — номинал: четыре
+    // фермы «обещали» 40 мест, а недокормленные водородом мывали на 33, и колония набирала мест
+    // в вечный убыток, пока не проедала кассу до смерти (docs/Журнал.md, прогон 60 суток).
+    // БАЗОВЫЙ НАБОР (AUTO_PLAN) из этой границы ИСКЛЮЧЁН: без него у колонии вообще нет дохода,
+    // поэтому на него касса и дана — это вложение, а не вечное обязательство.
+    const need = L.filter(b => COL_BUILDING[b.kind].work).sort((a, b) => COL_PRIO[a.kind] - COL_PRIO[b.kind]);
+    const crew = crewPlan(col, need, surf);
+    // 2. базовый набор. У снабженца он КОРОЧЕ: энергия, пища и шахты под нужду базы — ни
+    //    производства, ни куполов под рост, ни майнинг-фермы ради крипты (ТЗ §8.31).
+    const PLAN_NOW = supply ? subPlanKinds(col) : AUTO_PLAN;
+
+    // У снабженца «базовый набор» — его собственный короткий план (PLAN_NOW), иначе проверка
+    // «по средствам» для него никогда не включалась бы и он спускал бы весь привоз на шахты.
+    const basics = PLAN_NOW.every(k => col.buildings.some(b => b.kind === k && !b.dead));
+    // ПО СРЕДСТВАМ ЛИ ПОСТРОЙКА (ТЗ §8.30) — две проверки, обе ситуативные:
+    //   1) на стройку хватает ТАК, чтобы осталась бронь содержания (upReserve — два часа платы по
+    //      всем зданиям группы) плюс содержание самой новостройки. Шахта стоит 10 000 силикатов, а
+    //      купол просит 500 в час: колония, строящая на последнее, через час не платит и теряет
+    //      купола за долги — население гибнет при полном складе;
+    //   2) ДОБЫЧА ПОКРЫВАЕТ СОДЕРЖАНИЕ с новостройкой. Это и есть граница роста по сырью: пока
+    //      шахты не вытягивают лишний купол, купол не ставим — иначе колония копит долги зданиями.
+    const minedPer = {};                       // добыча за такт по группам — по укомплектованным шахтам
+    for (const b of crew.order.slice(0, crew.manned)) {
+      const g = COL_BUILDING[b.kind].group; if (!g) continue;
+      const h = hexAt(b.q, b.r); if (!h) continue;
+      const out = mineOutput(h, b.kind, b.lvl);
+      for (const k in out) minedPer[g] = (minedPer[g] || 0) + out[k];
+    }
+    const upkeepOf = g => L.reduce((a, b) => a + (COL_BUILDING[b.kind].upkeep === g ? (COL_BUILDING[b.kind].up || 0) * b.lvl : 0), 0);
+    // ШАХТА ДОЛЖНА ОТДАВАТЬ БОЛЬШЕ, ЧЕМ САМА СЪЕДАЕТ — проверка действует ВСЕГДА, в том числе на
+    // старте. Иначе колония на бедной планете спускала все 10 000 стартовых силикатов на
+    // энергетическую шахту с гекса, дающего вдесятеро меньше её собственного расхода, и через
+    // четыре часа теряла генератор, купол и ферму за долги (прогон Вартаас b).
+    const minePays = (kind, hex) => {
+      const B = COL_BUILDING[kind];
+      if (!B.group || !hex) return true;
+      const out = mineOutput(hex, kind, 1);
+      const per = Object.keys(out).reduce((a, k) => a + out[k] * (B.group === 'e' ? (COL.H2_PER_UNIT[k] || 1) : 1), 0);
+      if (per <= 0) return false;
+      return B.group !== 'e' || per > (B.h2 || 0);   // энергетическая — строго больше своего расхода
+    };
+    const affordCost = kind => {
+      const B = COL_BUILDING[kind], C = B.cost || {};
+      const own = g => (B.upkeep === g ? (B.up || 0) : 0);
+      return ['s', 'c', 'b', 'e'].every(g =>
+        (C[g] || 0) <= 0 || inGroup(col, g) - C[g] >= upReserve(col, g) + own(g) * RESERVE_TICKS);
+    };
+    // Проверка (2) — ПРОКОРМИМ ЛИ ПОТОМ — только когда базовый набор собран: без него у колонии
+    // ещё нет добычи, и этот запрет не дал бы ей начать вовсе.
+    const affordKeep = kind => {
+      const B = COL_BUILDING[kind];
+      const own = g => (B.upkeep === g ? (B.up || 0) : 0);
+      return ['s', 'c', 'b', 'e'].every(g =>   // содержание в час против добычи за час (запас 1,3 — ДОПУЩЕНИЕ)
+        own(g) <= 0 || (minedPer[g] || 0) * COL.UPKEEP_EVERY >= (upkeepOf(g) + own(g)) * 1.3);
+    };
+    const afford = kind => affordCost(kind) && affordKeep(kind);
+    // ГРАНИЦА ПО РАБОЧИМ МЕСТАМ — ТА ЖЕ, ЧТО ПЛАТИТ ЖАЛОВАНЬЕ (crew.limit): минимум плюс то, что
+    // тянет фактический доход и медленное вложение кассы. Один и тот же расчёт в обоих местах —
+    // иначе автостройка снова наберёт мест, которые колонии не по карману.
+    const payable = crew.limit;
     const workersFree = jobs < Math.min(col.pop, payable);
     // Кандидаты по порядку важности; строится ПЕРВЫЙ, на который хватает ресурсов. Раньше первый же
     // кандидат без планетарной единицы (ферма, купол) занимал очередь, и до шахт дело не доходило.
@@ -1109,26 +1362,44 @@ const Colony = (() => {
     const starving = h2In < h2Out * 1.3;
     if (!skip.mine_e && (starving || (h2In < h2Out * 1.3 + mfNeed && workersFree)))
       add('mine_e', starving ? 'не хватает энергии' : 'энергия на майнинг-ферму');
-    // 2. базовый набор
-    for (const k of AUTO_PLAN) {
+    for (const k of PLAN_NOW) {
       if (have(k) || skip[k]) continue;
       if (!add(k)) { skip[k] = true; note(col, 'Автостройка: на планете нет места или ресурса для «' + COL_BUILDING[k].name + '»'); }
     }
     // 3. пища: фермы кормят меньше, чем едят жители (с запасом)
     // Ферма из биомассы кормит 60, без биомассы (искусственная пища) — 10: на безжизненной планете
     // ферм нужно вшестеро больше.
+    // МОЩНОСТЬ ФЕРМ БЕРЁМ ИЗМЕРЕННУЮ (col.foodCap из step) — сколько человек они кормят ИЗ ТОГО,
+    // ЧТО ЕСТЬ. Номинал (60 на ферму из биомассы, 10 на искусственной пище) врал в ту же сторону,
+    // что и номинал майнинг-фермы: одна ферма «обещала» 60 человек и блокировала постройку второй,
+    // а кормила 21 — колония годами жила при сытости 0,54 и 3,5 смертях в сутки (ТЗ §8.30).
     const edible = (col.stock.microbiota || 0) + (col.stock.flora || 0);   // битумы несъедобны
-    const farmCap = L.filter(b => b.kind === 'farm').reduce((a, b) => a + (edible * COL.FOOD_YIELD.microbiota > col.pop * COL.FOOD_PER_POP * COL.FOOD_KEEP ? COL.FARM_CAP : COL.FARM_ART_CAP) * b.lvl, 0);
+    const farmNom = L.filter(b => b.kind === 'farm').reduce((a, b) => a + (edible * COL.FOOD_YIELD.microbiota > col.pop * COL.FOOD_PER_POP * COL.FOOD_KEEP ? COL.FARM_CAP : COL.FARM_ART_CAP) * b.lvl, 0);
+    const farmCap = col.foodCap == null ? farmNom : Math.min(farmNom, col.foodCap);
     if (have('farm') && farmCap < col.pop * 1.5) add('farm', 'не хватает пищи');   // мощность — в людях
-    // 3б. ещё майнинг-ферма: жителей больше, чем окупают фермы, — новая ферма даст ещё 10 мест
-    if (have('mfarm') && jobs >= payable && col.pop > jobs) add('mfarm', 'жителей больше, чем окупает крипта');
+    // 3б. ещё майнинг-ферма: есть лишний водород, которым её кормить, и свободный житель.
+    // Доход колонии упирается в ДОБЫЧУ ВОДОРОДА, а не в число ферм, — поэтому условие по водороду,
+    // а не «жителей больше, чем окупает крипта» (ТЗ §8.30).
+    if (!supply && have('mfarm') && col.pop > jobs && h2Flow(col, surf).free >= COL.MFARM_H2)
+      add('mfarm', 'есть лишний водород на ещё одну ферму');
     // 3в. токсичность: если от неё уже страдает биомасса — очистные сооружения
-    { const e = ecology(col, surf); if (e.tox >= 30 && (have('mine_b') || have('farm'))) add('eco', 'токсичность ' + e.tox); }
+    if (!supply) { const e = ecology(col, surf); if (e.tox >= 30 && (have('mine_b') || have('farm'))) add('eco', 'токсичность ' + e.tox); }
     // 4. население: купол полон, никто не голодает → новый купол. Только когда майнинг-ферма уже
     //    стоит: купол тоже просит планетарную единицу, и раньше он съедал её у фермы.
     // Купол — когда занято 80 % мест: рождениям нужно свободное жильё (popRates: × свободная доля).
+    // ГРАНИЦА РОСТА НАСЕЛЕНИЯ — ПО ФАКТИЧЕСКОЙ МОЩНОСТИ ФЕРМ (ТЗ §8.30). Раньше условием был
+    // ОСТАТОК пищи на складе (col.food ≥ pop): остаток бывает и при фермах, которые не кормят
+    // нынешних жителей, — колония ставила купол, население росло выше ёмкости K и постоянно
+    // умирало от голода (в прогоне сытость 0,53–0,68 и 3 смерти в сутки при живой колонии).
+    // col.foodCap — скольких человек фермы кормят ИЗ ТОГО, ЧТО ЕСТЬ (считает step).
     const K = col.popRates ? col.popRates.K : domeCap(col);
-    if (have('dome') && have('mfarm') && col.pop >= 0.8 * K && col.food >= col.pop * COL.FOOD_PER_POP) add('dome', 'жильё на исходе — растим население');
+    // Считаем не нынешних едоков, а тех, кого впустит НОВЫЙ купол: иначе население тут же
+    // дорождается до его мест и начинает голодать (в прогоне доходило до 66 человек на фермы,
+    // кормящие 70, при сытости 0,3 и смертях 6 в сутки).
+    const FOOD_MARGIN = 1.2;   // ДОПУЩЕНИЕ: растём, пока фермы кормят на 20 % больше едоков
+    const willHouse = domeCap(col) + COL.DOME_CAP;
+    const fed = col.foodCap == null || col.foodCap >= willHouse * COL.FOOD_PER_POP * FOOD_MARGIN;
+    if (!supply && have('dome') && have('mfarm') && col.pop >= 0.8 * K && fed) add('dome', 'жильё на исходе — растим население');
     // 5. раз в сутки — шахты там, где просело
     if (col.t % COL.DAY_TICKS === 0) {
       if (!uniqPick(col)) {
@@ -1158,7 +1429,7 @@ const Colony = (() => {
     //       следующая — только когда прошлая достроена.
     const prodB = L.find(b => b.kind === 'prod');
     const MISSION_DAYS = 3;   // ДОПУЩЕНИЕ: за сколько суток добычи должна набираться недостача
-    if (have('mfarm') && !have('port')) {
+    if (!supply && have('mfarm') && !have('port')) {
       const P = COL_BUILDING.port;
       const ready = Object.keys(P.comp || {}).every(m => ((col.comp || {})[m + (P.compTier || 1)] || 0) >= P.comp[m]);
       if (ready) { const h = autoHex(col, surf, 'port'); if (h) cands.unshift({ kind: 'port', hex: h, why: 'миссия: космодром' }); }
@@ -1189,6 +1460,13 @@ const Colony = (() => {
       // Рабочих мест не больше, чем жителей, — кроме энергии (на ней всё стоит) и купола (рабочий
       // не нужен): лишняя шахта по приоритету отнимает рабочего у майнинг-фермы.
       if (COL_BUILDING[plan.kind].work && !(plan.kind === 'mine_e' && starving) && plan.kind !== 'mfarm' && !workersFree) continue;
+      // СТРОИМ ТОЛЬКО ИЗ ИЗЛИШКА СВЕРХ БРОНИ СОДЕРЖАНИЯ (ТЗ §8.30). Шахта стоит 10 000 силикатов,
+      // а купол просит 500 в час: колония, строящая на последнее, через час не платит содержание и
+      // теряет купола за долги — население гибнет при полном складе. Исключение — энергия, когда
+      // её не хватает (без неё всё равно всё встанет), и базовый набор (без него нет дохода).
+      // Шахта, которая не отдаёт больше, чем сама съедает, — пустая растрата запаса (всегда).
+      if (!minePays(plan.kind, plan.hex)) continue;
+      if (basics && !afford(plan.kind) && !(plan.kind === 'mine_e' && starving)) continue;
       if (build(col, plan.kind, plan.hex, false, ship || null)) continue;   // не хватает ресурсов — следующий
       if (plan.why) note(col, 'Автостройка: ' + COL_BUILDING[plan.kind].name + ' — ' + plan.why);
       if (plan.kind !== 'eco' && hexBusy(col, plan.hex) > 1) note(col, 'Автостройка: гекс ' + plan.hex.q + ', ' + plan.hex.r + ' уже занят — токсичность растёт');
@@ -1318,15 +1596,270 @@ const Colony = (() => {
     return null;
   }
 
+  // ---------- СУБКОЛОНИИ-СНАБЖЕНЦЫ (ТЗ §8.31) ----------
+  // Слова пользователя: «...построить другие колонии, задача которых не рост, а снабжение главной
+  // колонии для добычи ресурсов, что ей не хватает, и подвозу их кораблём»; «кораблю придётся
+  // с базовой планеты взять жителей и ресурсы для новой колонии и прикинуть, рентабельно ли это
+  // и не нарушит ли работы текущей колонии, забрав работающее население и ресурсы важные; так же
+  // нужно прикинуть маршрут туда-обратно и успеет ли текущее число кораблей забирать ресурсы».
+  //
+  // Поэтому основание субколонии — РАСЧЁТ, а не желание. subPlan проверяет по порядку:
+  //   1. есть ли вообще излишек — колония упёрлась в свой потолок роста и уже сорит добычей;
+  //   2. кого и что увезти, не подорвав базу: жители — только НЕЗАНЯТЫЕ (сверх укомплектованных
+  //      мест, минимум не трогаем), сырьё — только сверх брони содержания и пищи, крипта — сверх
+  //      своего стартового капитала;
+  //   3. рентабельно ли: на планете должно быть то, чего базе НЕ ХВАТАЕТ, и в заметном количестве;
+  //   4. успеет ли флот вывозить: оборот «туда-обратно» против скорости накопления субколонии.
+  // Возвращает план или null; причина отказа — в col.subWhy (её видно в панели).
+  const SUB = {
+    MIN_SPARE: 0.85,      // ДОПУЩЕНИЕ: склад забит настолько — излишек девать некуда
+    PAX: 10,              // ДОПУЩЕНИЕ: столько жителей увозят на новую колонию (как при высадке игрока)
+    MAX_SUBS: 3,          // ДОПУЩЕНИЕ: больше снабженцев одна база не обслужит кораблём
+  };
+  // Сколько сырья группы g колония может отдать, не тронув бронь содержания и пищи.
+  function spareOf(col, g) {
+    const keep = upReserve(col, g)
+      + (g === 'e' ? h2Reserve(col) : 0)
+      + (g === 'b' ? (col.pop || 0) * COL.FOOD_PER_POP * COL.DAY_TICKS / COL.FOOD_YIELD.microbiota : 0)
+      + (g === 's' ? (col.pop || 0) * COL.FOOD_PER_POP * COL.DAY_TICKS / COL.FOOD_YIELD.silicates : 0);
+    return Math.max(0, inGroup(col, g) - keep);
+  }
+  // Чего базе не хватает: группы с нулевым или слабым притоком — по нуждам (needs) и по складу.
+  function lacking(col) {
+    const def = needs(col).def, out = {};
+    for (const g in def) if (def[g] > 0) out[g] = def[g];
+    return out;
+  }
+  // opts: { hold — трюм корабля в объёме, ships — сколько кораблей у базы,
+  //         roundOf(planet) — оборот туда-обратно в тактах (считает Routes.supRound) }
+  function subPlan(col, surf, env, opts) {
+    opts = opts || {};
+    col.subWhy = null;
+    const say = w => { col.subWhy = w; return null; };
+    if (col.role === 'supply') return say('это сама субколония');
+    if (!env || !env.galaxy || !env.surface) return say('нет обзора системы');
+    const subs = (col.subs || []).length;
+    if (subs >= SUB.MAX_SUBS) return say('снабженцев уже ' + subs);
+    // 1. ИЗЛИШЕК. Потолок роста (мест столько, сколько по средствам) и склад под завязку.
+    const need = live(col).filter(b => COL_BUILDING[b.kind].work).sort((a, b) => COL_PRIO[a.kind] - COL_PRIO[b.kind]);
+    const crew = crewPlan(col, need, surf);
+    if (used(col) < capacity(col) * SUB.MIN_SPARE) return say('склад ещё не забит — излишка нет');
+    if (col.crypto < COL.CRYPTO_START * 2) return say('крипты мало: нужно ' + (COL.CRYPTO_START * 2));
+    // 2. КОГО И ЧТО УВЕЗТИ, НЕ ПОДОРВАВ БАЗУ.
+    const free = Math.max(0, col.pop - crew.manned);           // незанятые жители
+    if (free < SUB.PAX) return say('нет свободных жителей: ' + free + ' из нужных ' + SUB.PAX);
+    // ЧТО ВЕЗТИ. Новой колонии нужны ДВЕ шахты — энергетическая (купол и ферма едят водород) и
+    // структурная (ею она платит содержание купола и генератора) — ПЛЮС содержание на первые
+    // часы, и силикатами, и ЭНЕРГОНОСИТЕЛЯМИ: ферма платит содержание водородом (700 в час), и
+    // без него её разбирают за долги через три часа, а без фермы колония вымирает от голода
+    // в тот же такт (прогон 2026-11-28 — так погибли первые три снабженца).
+    // Везём столько, сколько влезает в ТРЮМ: это физический предел экспедиции.
+    const kit = { dome: 1, gen: 1, farm: 1 };     // что экспедиция ставит на месте
+    let perHourS = 0, perHourE = 0;
+    for (const k in kit) {
+      const B = COL_BUILDING[k];
+      if (B.upkeep === 's') perHourS += B.up || 0; else if (B.upkeep === 'e') perHourE += B.up || 0;
+      perHourE += (B.h2 || 0) * COL.UPKEEP_EVERY;
+    }
+    perHourE += (COL_BUILDING.mine_e.h2 || 0) * COL.UPKEEP_EVERY;   // своя энергошахта тоже ест
+    perHourS += SUB.PAX * COL.FOOD_PER_POP * COL.UPKEEP_EVERY / COL.FOOD_YIELD.silicates;  // пища
+    const mineS = (COL_BUILDING.mine_s.cost.s || 0) + (COL_BUILDING.mine_e.cost.s || 0);
+    const wantS = mineS + perHourS * SUB_HOURS, wantE = perHourE * SUB_HOURS;
+    const hold = opts.hold || (wantS + wantE);
+    // Сперва шахты и содержание силикатами, остаток трюма — под энергоносители.
+    const takeS = Math.min(wantS, spareOf(col, 's'), hold / volOf('silicates'));
+    if (takeS < mineS) return say(takeS < wantS * 0.5
+      ? 'силикатов сверх брони не хватает: нужно ' + Math.round(mineS)
+      : 'трюм мал: не увезти две шахты');
+    const roomE = Math.max(0, hold - takeS * volOf('silicates'));
+    const takeE = Math.min(wantE, spareOf(col, 'e'), roomE / volOf('hydrogen'));
+    if (takeE < perHourE) return say('водорода сверх брони не хватает: нужно ' + Math.round(wantE));
+    const take = { silicates: takeS, hydrogen: takeE };
+    // 3. КУДА. Планета своей системы, где больше всего того, чего базе не хватает.
+    const gal = env.galaxy(), star = gal.stars[col.star];
+    const sys = generateSystem(star);
+    const lack = lacking(col);
+    let best = null;
+    for (const p of sys.planets) {
+      if (p.index === col.planet || !PLANET_TYPES[p.type].landable || PLANET_TYPES[p.type].lowOrbit) continue;
+      if ((col.subs || []).some(x => x.planet === p.index)) continue;
+      if (env.colony(col.star, p.index)) continue;             // там уже кто-то есть
+      const s2 = env.surface(col.star, p.index); if (!s2) continue;
+      // Ценность планеты для БАЗЫ: добыча того, чего ей не хватает, за такт с лучших гексов.
+      let v = 0;
+      for (const g in lack) {
+        const h = hexRank(s2, g)[0]; if (!h) continue;
+        v += COL_GROUPS[g].reduce((a, k) => a + COL.MINE_K * (h.res[k] || 0), 0);
+      }
+      if (v <= 0) continue;
+      if (!best || v > best.v) best = { planet: p.index, name: p.name, v, surf: s2 };
+    }
+    if (!best) return say('в системе нет планеты с нужным сырьём');
+    // 4. УСПЕЕТ ЛИ ФЛОТ. Оборот туда-обратно против того, как быстро субколония накопит трюм.
+    // Трюм заполняется за cap / v тактов; за это время корабль должен успеть слетать и вернуться.
+    // Не успевает — субколонию не основываем (слова пользователя: «успеет ли текущее число
+    // кораблей забирать ресурсы с этих субколоний»).
+    const ships = Math.max(1, opts.ships || 1);
+    const round = opts.roundOf ? opts.roundOf(best.planet) : 0;
+    if (!isFinite(round)) return say('маршрут до ' + best.name + ' не проложен');
+    if (hold > 0 && best.v > 0) {
+      const fill = hold / best.v;                              // тактов на полный трюм
+      if (round > fill * ships) return say('корабли не успеют вывозить: оборот ' + Math.round(round)
+        + ' тактов против ' + Math.round(fill * ships) + ' на накопление');
+    }
+    return { star: col.star, planet: best.planet, name: best.name, pax: SUB.PAX, take,
+      crypto: COL.CRYPTO_START, rate: best.v, round, want: Object.keys(lack),
+      floraBase: Math.round((sys.planets[best.planet].composition.find(x => x.key === 'flora') || {}).value || 0) };
+  }
+  // Основать субколонию: списывает с базы то, что насчитал subPlan, и ставит новую колонию.
+  // Возвращает новую колонию (её кладёт в мир вызывающий — он знает, где хранить).
+  function foundSub(col, plan, surf2, now) {
+    const sub = blank(now, plan.star, plan.planet);
+    sub.role = 'supply';
+    sub.parent = { star: col.star, planet: col.planet };
+    sub.want = plan.want;
+    sub.auto = true;
+    sub.floraBase = plan.floraBase || 0;
+    sub.pop = plan.pax; col.pop -= plan.pax;
+    wallet(sub);                      // кошелёк общий — крипту не переносим
+    // Экспедиция везёт сборный базовый набор — купол, генератор и ферму. Без купола жить негде
+    // (ёмкость K = 0), без фермы нечего есть: такт без пищи стирает колонию (§8.21). Сырьё при
+    // этом НЕ дарится — его списали с базы (plan.take), здесь только переносим.
+    const taken = new Set();
+    const spots = surf2.hexes.slice().sort((a, b) =>
+      (Math.abs(a.q) + Math.abs(a.r) + Math.abs(a.q + a.r)) - (Math.abs(b.q) + Math.abs(b.r) + Math.abs(b.q + b.r)));
+    for (const kind of START_KIT) {
+      const h = spots.find(x => !taken.has(x.q + ',' + x.r)); if (!h) break;
+      taken.add(h.q + ',' + h.r);
+      sub.buildings.push({ kind, q: h.q, r: h.r, lvl: 1, missed: 0 });
+    }
+    for (const k in plan.take) { col.stock[k] = (col.stock[k] || 0) - plan.take[k]; add(sub.stock, k, plan.take[k]); }
+    col.subs = (col.subs || []).concat([{ star: plan.star, planet: plan.planet, name: plan.name, t: col.t }]);
+    note(col, 'Основана колония-снабженец на ' + plan.name + ': увезли ' + plan.pax + ' жителей');
+    note(sub, 'Колония-снабженец: добывает для базы ' + (plan.want || []).map(g => COL_GROUP_NAME[g].toLowerCase()).join(', '));
+    return sub;
+  }
+  // ЗАПРОС СНАБЖЕНЦА И РЕШЕНИЕ МЕТРОПОЛИИ (ТЗ §8.31). Слова пользователя: «субколония делает
+  // запрос метрополии, а метрополия выделяет или не выделяет содержание от собственного остатка
+  // или своих планов. Метрополия стремится к собственному развитию и росту субколонии
+  // к автономности от метрополии и самоснабжению, и дальше замирает на этом уровне, пока
+  // метрополия не решит, что нужно развить колонию ещё, так как потребности выросли».
+  //
+  // Поэтому снабжение — это ДВА решения, а не одно: снабженец ПРОСИТ (subAsk), метрополия
+  // ВЫДЕЛЯЕТ или отказывает (subGrant), и обе стороны считают по своему остатку.
+  const SUB_HOURS = 6;   // ДОПУЩЕНИЕ: подвоз держит снабженца на столько часов вперёд
+
+  // План снабженца: энергия (купол и ферма едят водород), своя структурная шахта (ею он платит
+  // содержание) и шахты под то, что заказала метрополия. Этим же планом живёт его автостройка.
+  const subPlanKinds = sub => ['mine_e', 'mine_s']
+    .concat((sub.want || []).map(g => 'mine_' + g)).filter((k, i, a) => a.indexOf(k) === i);
+  // Автономен ли снабженец: план построен и содержание он платит своей добычей (склад не тает).
+  function subAutonomous(sub) {
+    if (!subPlanKinds(sub).every(k => sub.buildings.some(b => b.kind === k && !b.dead))) return false;
+    const per = subUpkeep(sub);
+    for (const g in per) if (inGroup(sub, g) < per[g] * SUB_HOURS) return false;
+    return true;
+  }
+  // Содержание снабженца в час по группам: плата за здания плюс их энергия.
+  function subUpkeep(sub) {
+    const per = {};
+    for (const b of live(sub)) {
+      const B = COL_BUILDING[b.kind];
+      if (B.up) per[B.upkeep] = (per[B.upkeep] || 0) + (B.up || 0) * b.lvl;
+      if (h2Of(b) > 0) per.e = (per.e || 0) + h2Of(b) * COL.UPKEEP_EVERY;
+    }
+    const bio = inGroup(sub, 'b');
+    if (bio < (sub.pop || 0) * COL.FOOD_PER_POP * COL.DAY_TICKS / COL.FOOD_YIELD.microbiota)
+      per.s = (per.s || 0) + (sub.pop || 0) * COL.FOOD_PER_POP * COL.UPKEEP_EVERY / COL.FOOD_YIELD.silicates;
+    return per;
+  }
+  // ЗАПРОС: сперва ВЫЖИТЬ (содержание на SUB_HOURS вперёд), потом ДОЙТИ ДО АВТОНОМНОСТИ (цена
+  // следующей постройки своего плана). Вышел на автономность — не просит ничего, копит.
+  function subAsk(sub, hours) {
+    const out = {};
+    if (!sub || sub.role !== 'supply') return out;
+    const per = subUpkeep(sub);
+    for (const g in per) {
+      const want = per[g] * (hours || SUB_HOURS) - inGroup(sub, g);
+      if (want > 0) out[COL_GROUPS[g][0]] = Math.ceil(want);
+    }
+    const next = subPlanKinds(sub).find(k => !sub.buildings.some(b => b.kind === k && !b.dead));
+    if (next) for (const g of ['s', 'c', 'b']) {
+      const need = (COL_BUILDING[next].cost[g] || 0) - inGroup(sub, g);
+      if (need > 0) out[COL_GROUPS[g][0]] = (out[COL_GROUPS[g][0]] || 0) + Math.ceil(need);
+    }
+    return out;
+  }
+  // РЕШЕНИЕ МЕТРОПОЛИИ: выделить из СВОЕГО остатка или отказать. Своих броней (содержание, пища,
+  // энергия зданий) не трогает и на СВОИ планы оставляет себе — развитие базы важнее снабженца.
+  function subGrant(base, sub, holdVol, hours) {
+    const ask = subAsk(sub, hours), out = {};
+    let room = holdVol == null ? Infinity : holdVol;
+    // Сперва энергоносители: без них у снабженца встаёт ферма, а это смерть за три часа.
+    const order = Object.keys(ask).sort((a, b) => (COL_KEY_GROUP[a] === 'e' ? -1 : 0) - (COL_KEY_GROUP[b] === 'e' ? -1 : 0));
+    for (const k of order) {
+      const g = COL_KEY_GROUP[k];
+      const mine = ownPlanNeed(base, g);             // что база бережёт на свою следующую постройку
+      const free = Math.max(0, spareOf(base, g) - mine);
+      const q = Math.min(ask[k], free, room / volOf(k));
+      if (q > 0) { out[k] = q; room -= q * volOf(k); }
+    }
+    return out;
+  }
+  // СКОЛЬКО КРИПТЫ МЕТРОПОЛИЯ ДАЁТ СНАБЖЕНЦУ: ровно на сутки его жалованья и не больше, и только
+  // из того, что сама не проедает. Своего дохода у снабженца нет — майнинг-ферм ему не строят, —
+  // но и давать ему стартовый капитал каждый рейс нельзя: так метрополия обнуляла свою кассу
+  // (86 436 → 6 492 за 60 суток), теряла рабочие места и не достраивала космодром (прогон 2026-11-28).
+  function subPay(base, sub, surf) {
+    if (!sub || sub.role !== 'supply') return 0;
+    const need = live(sub).filter(b => COL_BUILDING[b.kind].work)
+      .sort((a, b) => COL_PRIO[a.kind] - COL_PRIO[b.kind]);
+    const crew = crewPlan(sub, need, surf);
+    const day = crew.grow * COL.WAGE * COL.DAY_TICKS;          // сутки жалованья за рост
+    const want = Math.max(0, day - sub.crypto);
+    // Метрополия отдаёт только сверх СВОЕГО суточного жалованья — её развитие важнее.
+    const keep = COL.WAGE * COL.DAY_TICKS * 4;                 // ДОПУЩЕНИЕ: четверо суток своих выплат
+    return Math.max(0, Math.min(want, base.crypto - keep));
+  }
+
+  // Сколько сырья группы метрополия бережёт на собственные планы — цена следующей своей постройки.
+  function ownPlanNeed(col, g) {
+    const next = AUTO_PLAN.find(k => !col.buildings.some(b => b.kind === k && !b.dead));
+    return next ? (COL_BUILDING[next].cost[g] || 0) : 0;
+  }
+
+
+  // ЧТО СНАБЖЕНЕЦ ОТДАЁТ БАЗЕ: всё сверх СВОЕЙ нужды — содержания на SUB_HOURS вперёд, цены
+  // следующей постройки своего плана и обычных броней. Раньше отдавалось всё сверх броней, и
+  // корабль увозил обратно тот самый подвоз, что только что привёз: склад снабженца пилил между
+  // 2 780 и 14 830 водорода, а до своей второй шахты он так и не накопил (прогон 2026-11-28).
+  function subGive(sub) {
+    const out = {}, per = subUpkeep(sub);
+    const next = subPlanKinds(sub).find(k => !sub.buildings.some(b => b.kind === k && !b.dead));
+    for (const g of ['s', 'c', 'b', 'e']) {
+      const keepPlan = next ? (COL_BUILDING[next].cost[g] || 0) : 0;
+      let left = spareOf(sub, g) - (per[g] || 0) * SUB_HOURS - keepPlan;
+      if (left <= 0) continue;
+      // отдаём с самого ценного (3 уровень) — трюм дороже возить дешёвым
+      for (let i = COL_GROUPS[g].length - 1; i >= 0 && left > 0; i--) {
+        const k = COL_GROUPS[g][i], have = sub.stock[k] || 0;
+        const q = Math.min(have, left);
+        if (q > 0) { out[k] = q; left -= q; }
+      }
+    }
+    return out;
+  }
+
   // ---------- сводка для интерфейса ----------
   function summary(col, surf) {
     terraSurf(surf, col);
     const L = live(col);
     const need = L.filter(b => COL_BUILDING[b.kind].work).sort((a, b) => COL_PRIO[a.kind] - COL_PRIO[b.kind]);
-    const paid = Math.min(col.pop, Math.floor(col.crypto / COL.WAGE), need.length);
+    const crew = crewPlan(col, need, surf);   // тот же расчёт, что в step: минимум бесплатно, рост по средствам
+    const paid = crew.manned;
     const rate = {};
     const hexAt = (q, r) => surf.hexes.find(h => h.q === q && h.r === r);
-    need.slice(0, paid).forEach(b => {
+    crew.order.slice(0, paid).forEach(b => {
       if (!COL_BUILDING[b.kind].group) return;
       const h = hexAt(b.q, b.r); if (!h) return;
       const out = mineOutput(h, b.kind, b.lvl);
@@ -1338,13 +1871,17 @@ const Colony = (() => {
       h2: L.reduce((a, b) => a + h2Of(b), 0),
       gen: L.some(b => b.kind === 'gen'), powered: col.powered !== false, port: has(col, 'port'),
       stock: col.stock, food: col.food, crypto: col.crypto, pop: col.pop, uniq: col.uniq,
-      popCap: domeCap(col), site: col.site };
+      popCap: domeCap(col), site: col.site,
+      // граница роста (ТЗ §8.30): минимум работает всегда, рост — по фактическому доходу
+      vital: crew.vital, wage: crew.wage, income: col.income || 0, foodCap: col.foodCap };
   }
 
   return { blank, advance, step, build, canBuild, summary, live, has, inGroup, spendIn, add, startKit, ecology, birthEnv, popRates, needs, autoStep, missionRaw, canUpgrade, upgrade, upgradeSpec, compUpkeep, hexCells, terraformed, envOf, terraSurf, tfGoal, tfAdvance, tfDaysLeft, autoOrder, hexRank,
     capacity, used, roomLeft, store, setHoldUnit, setPrices, setMasses, massOf, massSum, volOf, volSum,
     compKey, compName, compCost, compTotal,
-    shipOutput, mineOutput, tickAt, note, domeCap, uniqPick, h2Reserve, waste };
+    shipOutput, mineOutput, tickAt, note, domeCap, uniqPick, h2Reserve, h2Flow, crewPlan, waste,
+    subPlan, foundSub, subGive, spareOf, subAsk, subGrant, subAutonomous, subPlanKinds, subPay,
+    wallet, resetPurse, purseFunded };
 })();
 
 // ─────────────────────────────────────────────────────────────────────────────

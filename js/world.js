@@ -123,8 +123,16 @@ const World = (() => {
   // хранится целиком: склад, здания, население, крипта, номер последнего посчитанного такта.
   const colKey = (star, planet) => star + ':' + planet;
   const colonies = () => (state.col = state.col || {});
-  const colony = (star, planet) => colonies()[colKey(star, planet)] || null;
-  function putColony(star, planet, col) { colonies()[colKey(star, planet)] = col; save(); }
+  // КОШЕЛЁК ОБЩИЙ НА ИГРОКА (ТЗ §8.31): колония, поднятая из хранилища, получает «окно» в один
+  // общий баланс (Colony.wallet), иначе у неё окажется свой собственный crypto из JSON.
+  const colony = (star, planet) => {
+    const c = colonies()[colKey(star, planet)] || null;
+    return c && typeof Colony !== 'undefined' && Colony.wallet ? Colony.wallet(c) : c;
+  };
+  function putColony(star, planet, col) {
+    colonies()[colKey(star, planet)] = typeof Colony !== 'undefined' && Colony.wallet ? Colony.wallet(col) : col;
+    save();
+  }
   function colonyList() {
     return Object.entries(colonies()).map(([k, col]) => {
       const [star, planet] = k.split(':').map(Number);

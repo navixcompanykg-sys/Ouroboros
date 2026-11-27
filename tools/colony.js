@@ -17,6 +17,10 @@
 //   node tools/colony.js --star=333 --planet=2
 //   node tools/colony.js --spread --n=60     — разброс по обитаемым планетам галактики #1
 //   node tools/colony.js --up=2              — всё содержание (сырьё и энергия) ×2: поиск порога
+//   node tools/colony.js --sub               — ИГРОК вкладывает излишки в колонии-снабженцы
+//                                              (ТЗ §8.31): основывает их и гоняет корабль за
+//                                              накопленным. --brief — одна строка итога для
+//                                              сравнения, --trace=N — такт за тактом с такта N.
 //   node tools/colony.js --route=crypto      — корабль не копает на месте, а ходит авторейсами
 //                                              (js/routes.js) за целью: need (путевой лист), crypto, e, s, c, b, value
 const fs = require('fs');
@@ -59,6 +63,9 @@ function loadGame() {
 const G = loadGame();
 const { COL, COL_GROUPS, COL_BUILDING, COL_BUILDINGS, Colony, Ship, Routes } = G;
 const ROUTE_ARG = (process.argv.find(x => x.startsWith('--route=')) || '').split('=')[1] || null;
+// --sub — ИГРОК вкладывает излишки в колонии-снабженцы (ТЗ §8.31) и гоняет за накопленным корабль.
+const SUB_ON = process.argv.includes('--sub');
+const TRACE = +((process.argv.find(x => x.startsWith('--trace=')) || '').split('=')[1] || 0);
 const tbl = G.__tbl;
 const GROUP_NAME = G.COL_GROUP_NAME;
 const GROUPS = COL_GROUPS;
@@ -129,19 +136,33 @@ function simulate(world, ticks, opts = {}) {
 
   // Колония и стартовый набор — ровно как в игре (js/planet-ui.js: startKit до выгрузки трюма).
   Ship.resetHexLog();                            // журнал снятых гексов — свой у каждого прогона
-  const col = Colony.blank(nowAt(0), gstar.id, p.index);
-  col.floraBase = Math.round((p.composition.find(x => x.key === 'flora') || {}).value || 0);
-  col.pop = G.START_LOAD.pax;
-  col.crypto = COL.CRYPTO_START;
-  if (opts.startKit !== false) Colony.startKit(col, surf);
+  // ПРОДОЛЖЕНИЕ ИЗ СНИМКА (--load): колония и корабль берутся как были, часы продолжаются с col.t.
+  // Виртуальные часы здесь — чистая функция такта (nowAt = t × TICK_MS), поэтому снимок годится
+  // как есть: ship.at и col.t остаются согласованными.
+  // Кошелёк игрока общий на все его колонии (ТЗ §8.31), но у КАЖДОГО прогона он свой — иначе
+  // 20 колоний посева считались бы одним игроком и делили одну кассу.
+  Colony.resetPurse(0);
+  const resume = opts.state || null;
+  const col = resume ? Colony.wallet(resume.col) : Colony.blank(nowAt(0), gstar.id, p.index);
+  if (resume && resume.purse != null) Colony.resetPurse(resume.purse);
+  if (!resume) {
+    col.floraBase = Math.round((p.composition.find(x => x.key === 'flora') || {}).value || 0);
+    col.pop = G.START_LOAD.pax;
+    col.crypto = COL.CRYPTO_START;      // стартовый капитал игрока — в общий кошелёк
+    if (opts.startKit !== false) Colony.startKit(col, surf);
+  }
   col.auto = true;                               // прогон — это колония на автостройке
 
   // Корабль игрока — стартовый шаттл с его настоящей загрузкой (js/colony.js START_LOAD).
-  const ship = { id: 1, design: G.START_DESIGN, star: gstar.id, planet: p.index, landed: true, at: nowAt(0) };
-  Ship.ensureStart(ship);
-  ship.pax = 0;   // колонисты высажены (как в игре, planet-ui found) — иначе экипаж 11 и жизнеобеспечения на 13 тактов
+  const ship = resume ? resume.ship
+    : { id: 1, design: G.START_DESIGN, star: gstar.id, planet: p.index, landed: true, at: nowAt(0) };
+  if (!resume) {
+    Ship.ensureStart(ship);
+    ship.pax = 0;   // колонисты высажены (как в игре, planet-ui found) — иначе экипаж 11 и жизнеобеспечения на 13 тактов
+  }
   const shipSt = Ship.stats(tbl, ship);
-  Ship.unload(ship, col);                       // сырьё на склад, пища в запас колонии
+  if (!resume) Ship.unload(ship, col);          // сырьё на склад, пища в запас колонии
+  const T1 = resume ? col.t : 0;                 // с какого такта продолжаем
 
   const rank = {}, used = {};
   for (const g in GROUPS) { rank[g] = hexRank(surf, g); used[g] = new Set(); }
@@ -157,14 +178,20 @@ function simulate(world, ticks, opts = {}) {
   const events = [], hist = [];
   // Окружение авторейсов: галактика и поверхности из seed, колония — эта (других у прогона нет).
   const gal = G.generateGalaxy(1), surfs = {};
+  // СУБКОЛОНИИ (ТЗ §8.31): в прогоне живут все колонии системы, а не одна. Ключ — «звезда:планета».
+  const subs = {};                                   // колонии-снабженцы, которые основал корабль
+  const colAt = (s2, i2) => (s2 === gstar.id && i2 === p.index) ? col : subs[s2 + ':' + i2] || null;
+  const surfOf = (s2, i2) => surfs[s2 + ':' + i2] || (surfs[s2 + ':' + i2] = (pl => pl ? G.generateSurface(pl, gal.stars[s2]) : null)(G.generateSystem(gal.stars[s2]).planets[i2]));
   const routeEnv = {
     galaxy: () => gal,
-    surface: (s, i) => surfs[s + ':' + i] || (surfs[s + ':' + i] = (pl => pl ? G.generateSurface(pl, gal.stars[s]) : null)(G.generateSystem(gal.stars[s]).planets[i])),
-    colony: (s, i) => (s === gstar.id && i === p.index ? col : null),
-    advanceColony() {},   // колонию двигает сам прогон, такт за тактом
+    surface: surfOf,
+    colony: colAt,
+    putColony: (s2, i2, c) => { subs[s2 + ':' + i2] = c; },
+    advanceColony() {},   // колонии двигает сам прогон, такт за тактом
     placed() {},
   };
   let routeErr = null, routeTrips = 0;
+  const supErrSeen = {};
   let auto = null, autoRun = 0, firstUniq = false, shipAt = null;
   const groupStock = g => Colony.inGroup(col, g);
   const planDone = () => PLAN.every(k => col.buildings.some(b => b.kind === k));
@@ -173,7 +200,7 @@ function simulate(world, ticks, opts = {}) {
   const PORT = COL_BUILDING.port;
   const mark = (k, ok) => { if (ok && miles[k] == null) miles[k] = col.t; };
 
-  for (let t = 1; t <= ticks; t++) {
+  for (let t = T1 + 1; t <= T1 + ticks; t++) {
     const now = nowAt(t);
     const live = Colony.live(col);
 
@@ -195,6 +222,14 @@ function simulate(world, ticks, opts = {}) {
 
     // ── КОРАБЛЬ В АВТОРЕЙСАХ (--route=цель): настоящий js/routes.js — сканер, полёт, съём,
     // выгрузка. Своего у инструмента тут нет ничего, кроме решения «отправить в рейс».
+    if (SUB_ON && ship.route && ship.route.sup) Routes.tick(tbl, [ship], now, routeEnv);
+    if (TRACE && t >= TRACE && t <= TRACE + 24) {
+      const k0 = Object.keys(subs)[0];
+      console.log('  такт ' + t + ' рейс=' + (ship.route ? ship.route.sup + '/' + ship.route.phase : '—')
+        + ' трюм=' + JSON.stringify(ship.cargo || {}).slice(0, 90)
+        + ' | склад суб=' + (k0 ? JSON.stringify(subs[k0].stock).slice(0, 90) : 'нет')
+        + ' | дал=' + (ship.route && ship.route.gave ? JSON.stringify(ship.route.gave).slice(0, 60) : '—'));
+    }
     if (ROUTE_ARG) {
       // ИГРОК: стоящий корабль снова отправляет в рейс раз в час, а не каждый такт.
       // ИГРОК: шаттл уходит в рейсы СРАЗУ (замечание пользователя: «шаттл может ходить в рейс сразу,
@@ -211,6 +246,38 @@ function simulate(world, ticks, opts = {}) {
       }
       Routes.tick(tbl, [ship], now, routeEnv);
       shipAt = ship.route ? 'route' : null;
+    }
+    // ── ИГРОК: СНАБЖЕНИЕ (--sub, ТЗ §8.31). Раз в час, если корабль дома и свободен:
+    //    сперва забрать накопленное у снабженцев, потом — не пора ли основать нового.
+    //    Сам расчёт «стоит ли» живёт в игре (Colony.subPlan), здесь только решение послать корабль.
+    if (SUB_ON && !ship.route && ship.landed && ship.star === gstar.id && ship.planet === p.index
+      && t % COL.UPKEEP_EVERY === 1) {
+      let sent = false;
+      // ИГРОК: сперва тот снабженец, которому нужен ПОДВОЗ (без него он погибнет), потом тот,
+      // у кого набралось на полтрюма вывоза — иначе корабль гоняет впустую.
+      const order = Object.keys(subs).sort((x, y) =>
+        Colony.volSum(Colony.subAsk(subs[y])) - Colony.volSum(Colony.subAsk(subs[x])));
+      for (const key of order) {
+        const i2 = +key.split(':')[1];
+        const needVol = Colony.volSum(Colony.subAsk(subs[key]));
+        const giveVol = Colony.volSum(Colony.subGive(subs[key]));
+        if (needVol < 1 && giveVol < shipSt.capacity * 0.5) continue;
+        const err = Routes.startSupply(tbl, ship, col, { pickup: true, planet: i2, name: subs[key].name || ('планета ' + i2) }, now, routeEnv);
+        if (!err) { sent = true; if (events.length < 400) events.push([t, 'рейс снабжения на планету ' + i2 + ': подвоз ' + Math.round(needVol) + ', вывоз ' + Math.round(giveVol)]); break; }
+        if (err && !supErrSeen[err]) { supErrSeen[err] = 1; events.push([t, 'рейс снабжения не вышел: ' + err]); }
+      }
+      if (!sent) {
+        const plan = Colony.subPlan(col, surf, routeEnv, {
+          hold: shipSt.capacity, ships: 1,
+          roundOf: idx => Routes.supRound(tbl, ship, routeEnv, gstar.id, p.index, idx),
+        });
+        if (plan) {
+          const err = Routes.startSupply(tbl, ship, col, plan, now, routeEnv);
+          if (!err) events.push([t, 'экспедиция: основать снабженца на ' + plan.name
+            + ' (' + (plan.want || []).join(',') + ', оборот ' + plan.round + ' тактов)']);
+          else if (!routeErr) { routeErr = err; events.push([t, 'экспедиция не вышла: ' + err]); }
+        }
+      }
     }
     if (!ship.route) {
       // ── КОРАБЛЬ. Ship.advance — настоящий код: ест пищу, снимает добычу с гекса (100 водорода
@@ -255,6 +322,12 @@ function simulate(world, ticks, opts = {}) {
     const uniqWas = col.uniq, deadWas = col.buildings.filter(b => b.dead).length;
     const foodWas = col.food, cryptoWas = col.crypto;
     Colony.step(col, surf);
+    // Такт субколоний — тем же настоящим кодом (ТЗ §8.31).
+    for (const key in subs) {
+      const [s2, i2] = key.split(':').map(Number);
+      Colony.autoStep(subs[key], surfOf(s2, i2), null);
+      Colony.step(subs[key], surfOf(s2, i2));
+    }
     {
       const L2 = Colony.live(col);
       mark('base', planDone());
@@ -267,13 +340,16 @@ function simulate(world, ticks, opts = {}) {
     const demolished = col.buildings.filter(b => b.dead).length - deadWas;
     if (demolished > 0) events.push([t, 'РАЗОБРАНО за долги: ' + demolished + ' шт.']);
 
-    // ── АВТОНОМНОСТЬ (критерий инструмента, в игре его нет): всё построено, рабочие
-    // укомплектованы, энергия есть, долгов нет, пища не убывает, крипта не проедается,
+    // ── АВТОНОМНОСТЬ (критерий инструмента, в игре его нет): всё построено, ЖИЗНЕННЫЙ МИНИМУМ
+    // укомплектован, энергия есть, долгов нет, пища не убывает, крипта не проедается,
     // сырьё 3 уровня под планетарную единицу есть и склад не тает.
+    // РАНЬШЕ ТРЕБОВАЛОСЬ «все места укомплектованы» (workers === jobs) — с правилом «колония живёт
+    // по средствам» (ТЗ §8.30) это недостижимо и не нужно: колония НАМЕРЕННО держит часть мест
+    // пустыми, пока доход их не окупает, и копит разницу. Проверяем то, что важно: минимум работает.
     const sum = Colony.summary(col, surf);
     const back = hist[hist.length - AUTO_HOLD];
     const drain = back && (groupStock('s') < back.s - 1 || groupStock('c') < back.c - 1 || groupStock('e') < back.e - 1);
-    const ok = planDone() && !col.site && !demolished && sum.workers === sum.jobs && sum.jobs > 0
+    const ok = planDone() && !col.site && !demolished && sum.workers >= sum.vital && sum.jobs > 0
       && col.powered !== false && Colony.live(col).every(b => b.missed === 0)
       && col.food >= foodWas - 1e-6 && col.crypto >= cryptoWas - 1e-6
       && !!Colony.uniqPick(col) && !drain;
@@ -288,7 +364,7 @@ function simulate(world, ticks, opts = {}) {
       alive: Colony.live(col).length, powered: col.powered !== false, shipAt,
       hold: Math.round(Ship.cargoUsed(ship)), cap: Math.round(sum.cap), usedCap: Math.round(sum.used) });
   }
-  return { col, ship, shipSt, events, hist, auto, routeTrips, miles };
+  return { col, ship, shipSt, events, hist, auto, routeTrips, miles, subs, surfOf };
 }
 
 const fmtT = t => { const m = t * 10, d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60); return String(d).padStart(2) + 'д ' + String(h).padStart(2) + 'ч'; };
@@ -322,6 +398,79 @@ function survived(r) {
     : dCrypto < -1 && last.crypto < -dCrypto * 7 ? 'крипта кончится за неделю' : null;
   return { ok: !why, why, last };
 }
+// ───────────────────────── СНИМОК КОЛОНИЙ (--save / --load) ─────────────────────────
+// Решение пользователя 2026-11-28: «сохрани успешные колонии, чтоб развивать их дальше, не
+// прогоняя заново опять старые циклы, чтоб на них тестировать дальнейшее развитие»; «после
+// 60 дней»; «нам нужны колонии, что смогли построить космодром за это время».
+//
+// УСПЕШНАЯ = ДОШЛА ДО КОСМОДРОМА. Снимок — это состояние колонии и её корабля как есть, плюс
+// звезда и планета: поверхность и система в снимок не идут, они пересоздаются из seed (мир
+// детерминирован). Виртуальные часы прогона — чистая функция такта, поэтому продолжение просто
+// идёт с col.t дальше.
+//   node tools/colony.js --survive --ticks=8640 --save     — прогнать 60 суток и сохранить дошедших
+//   node tools/colony.js --load --ticks=1440               — продолжить сохранённых ещё на 10 суток
+//   node tools/colony.js --load --ticks=1440 --save        — ...и перезаписать снимок новой точкой
+const SNAP = (() => {
+  const a = (argv.find(x => x.startsWith('--save=')) || argv.find(x => x.startsWith('--load=')) || '').split('=')[1];
+  return path.join(ROOT, a || 'tools/.colonies-port.json');
+})();
+const SNAP_ON = argv.includes('--save') || argv.some(x => x.startsWith('--save='));
+const snapshot = { made: new Date().toISOString().slice(0, 16), seed: arg('seed', 20261127), ticks: 0, colonies: [] };
+function snapAdd(w, r, alive) {
+  if (!SNAP_ON) return;
+  if (!Colony.has(r.col, 'port')) return;        // успешная — та, что построила космодром
+  const col = Object.assign({}, r.col, { log: (r.col.log || []).slice(0, 30) });   // журнал не тащим целиком
+  snapshot.ticks = Math.max(snapshot.ticks, r.col.t);
+  snapshot.colonies.push({ star: w.st.id, planet: w.p.index, name: w.p.name, alive, t: r.col.t, col, ship: r.ship });
+}
+function snapWrite() {
+  if (!SNAP_ON) return;
+  fs.writeFileSync(SNAP, JSON.stringify(snapshot, null, 1));
+  console.log('\nСНИМОК: ' + snapshot.colonies.length + ' колоний с космодромом на такте '
+    + snapshot.ticks + ' (' + (snapshot.ticks / COL.DAY_TICKS).toFixed(1) + ' сут) → ' + path.relative(ROOT, SNAP)
+    + (snapshot.colonies.length ? '\n  продолжить: node tools/colony.js --load --ticks=1440' : ''));
+}
+
+// ───────────────────────── ПРОДОЛЖЕНИЕ ИЗ СНИМКА ─────────────────────────
+if (argv.includes('--load') || argv.some(x => x.startsWith('--load='))) {
+  if (!fs.existsSync(SNAP)) {
+    console.log('Снимка нет: ' + path.relative(ROOT, SNAP)
+      + '\nСперва сделайте его: node tools/colony.js --survive --ticks=8640 --save');
+    process.exit(1);
+  }
+  const snap = JSON.parse(fs.readFileSync(SNAP, 'utf8'));
+  const gal = G.generateGalaxy(snap.seed === undefined ? 1 : 1);
+  console.log('ПРОДОЛЖЕНИЕ ИЗ СНИМКА ' + path.relative(ROOT, SNAP) + ' (' + snap.made + '): '
+    + snap.colonies.length + ' колоний с космодромом, такт ' + snap.ticks
+    + ' (' + (snap.ticks / COL.DAY_TICKS).toFixed(1) + ' сут) + ' + TICKS + ' тактов ('
+    + (TICKS / COL.DAY_TICKS).toFixed(1) + ' сут)');
+  console.log('планета                 насел  раб/мест  крипта   доход  план.ед  добыча  кораблей  итог');
+  const out = { made: new Date().toISOString().slice(0, 16), seed: snap.seed, ticks: 0, colonies: [] };
+  for (const c of snap.colonies) {
+    const shipsWas = (G.__built || []).length;
+    const st = gal.stars[c.star];
+    const p = G.generateSystem(st).planets[c.planet];
+    const surf = G.generateSurface(p, st);
+    const r = simulate({ st, p, surf }, TICKS, { state: { col: c.col, ship: c.ship } });
+    const v = survived(r), sum = Colony.summary(r.col, surf);
+    const ships = (G.__built || []).length - shipsWas;   // собрано космодромом за это продолжение
+    console.log(c.name.padEnd(24) + String(r.col.pop).padStart(5)
+      + (sum.workers + '/' + sum.jobs).padStart(10) + String(Math.round(r.col.crypto)).padStart(9)
+      + String(Math.round(sum.income)).padStart(8) + String(r.col.uniq).padStart(9)
+      + String(v.last.mined).padStart(8) + String(ships).padStart(10)
+      + '  ' + (v.ok ? 'ЖИВА' : 'гибнет: ' + v.why));
+    out.ticks = Math.max(out.ticks, r.col.t);
+    out.colonies.push({ star: c.star, planet: c.planet, name: c.name, alive: v.ok, t: r.col.t,
+      col: Object.assign({}, r.col, { log: (r.col.log || []).slice(0, 30) }), ship: r.ship });
+  }
+  if (SNAP_ON) {
+    fs.writeFileSync(SNAP, JSON.stringify(out, null, 1));
+    console.log('\nСНИМОК ОБНОВЛЁН: такт ' + out.ticks + ' (' + (out.ticks / COL.DAY_TICKS).toFixed(1) + ' сут) → '
+      + path.relative(ROOT, SNAP));
+  }
+  process.exit(0);
+}
+
 if (argv.includes('--survive')) {
   const gal = G.generateGalaxy(1);
   const rnd = G.mulberry32(arg('seed', 20261127));
@@ -344,6 +493,7 @@ if (argv.includes('--survive')) {
     const v = survived(r);
     if (v.ok) ok++;
     portRows.push({ name: w.p.name, m: r.miles, ok: v.ok, col: r.col });
+    snapAdd(w, r, v.ok);
     const surf = G.generateSurface(w.p, w.st), e = Colony.ecology(r.col, surf), pr = r.col.popRates || {};
     toxAll.push({ tox: e.tox, extra: e.extra * COL.TOX_PER_EXTRA, base: e.base, ok: v.ok });
     const toxS = (e.tox + ' (' + e.base + '+' + e.extra * COL.TOX_PER_EXTRA + '−' + e.clean * COL.TOX_CLEAN + ')').padStart(22);
@@ -368,6 +518,7 @@ if (argv.includes('--survive')) {
   console.log('ДОШЛИ ДО КОСМОДРОМА: ' + portRows.filter(x => x.m.port != null).length + ' из ' + portRows.length
     + STAGES.map(st => ' · ' + st[1] + ' ' + portRows.filter(x => x.m[st[0]] != null).length).join(''));
   console.log('ВЫЖИЛО: ' + ok + ' из ' + picks.length + ' = ' + Math.round(ok / picks.length * 100) + '%');
+  snapWrite();
   process.exit(0);
 }
 
@@ -409,6 +560,26 @@ if (argv.includes('--spread')) {
 const world = pickWorld(arg('star', null), arg('planet', null));
 const r = simulate(world, TICKS, { startKit: !argv.includes('--nokit') });
 
+if (argv.includes('--brief')) {
+  const last = r.hist[r.hist.length - 1];
+  const cm = r.col.comp || {};
+  const subVol = Object.keys(r.subs || {}).reduce((x, k) => x + Colony.volSum(r.subs[k].stock), 0);
+  const subPop = Object.keys(r.subs || {}).reduce((x, k) => x + (r.subs[k].pop || 0), 0);
+  const port = Colony.has(r.col, 'port');
+  console.log([
+    'план.ед ' + r.col.uniq,
+    'компонентов ' + Math.round(Colony.volSum(cm)),
+    'космодром ' + (r.miles.port != null ? (r.miles.port / COL.DAY_TICKS).toFixed(1) + ' сут' : 'нет'),
+    'кораблей ' + (G.__built || []).length,
+    'насел ' + r.col.pop,
+    'крипта ' + Math.round(r.col.crypto),
+    'склад ' + Math.round(Colony.volSum(r.col.stock)),
+    'добыча ' + last.mined,
+    'отходы ' + Math.round(Object.values(r.col.waste || {}).reduce((x, v) => x + v, 0)),
+    'снабженцев ' + Object.keys(r.subs || {}).length + (subPop ? ' (насел ' + subPop + ', склад ' + Math.round(subVol) + ')' : ''),
+  ].join(' · '));
+  process.exit(0);
+}
 console.log('ПЛАНЕТА: ' + world.p.name + ' (' + world.st.name + ', зона ' + world.st.zone + ', ' + world.p.type
   + ', кольцо жизни: ' + (world.p.habitable ? 'да' : 'нет') + ', жизнь: ' + world.p.life
   + ', гексов ' + world.surf.hexes.length + ')');
@@ -474,6 +645,23 @@ console.log('  копит ' + Math.round(share * 100) + '% добычи'
     + Object.keys(cm).filter(k => cm[k] > 0.5).map(k => k + ' ' + Math.round(cm[k]) + ' шт. по ' + Colony.volOf(k)).join(', ') + ')');
   console.log('  майнинг-ферма 1 ур.: ' + COL.MFARM_CRYPTO + ' крипты за такт из ' + Math.round(COL.MFARM_H2) + ' водорода'
     + (ROUTE_ARG ? '; авторейсов ' + (r.routeTrips || 0) : ''));
+}
+// СНАБЖЕНЦЫ (ТЗ §8.31)
+if (Object.keys(r.subs || {}).length) {
+  console.log('\nКОЛОНИИ-СНАБЖЕНЦЫ:');
+  console.log('  планета              насел  раб/мест  зданий  добыча  на складе  готово отдать  крипта');
+  for (const key in r.subs) {
+    const c = r.subs[key], [s2, i2] = key.split(':').map(Number);
+    const sf = r.surfOf(s2, i2), sm = Colony.summary(c, sf);
+    const give = Colony.subGive(c);
+    const rate = Math.round(Object.values(sm.rate).reduce((a, v) => a + v, 0));
+    console.log('  ' + (c.name || ('планета ' + i2)).padEnd(20) + String(c.pop).padStart(5)
+      + (sm.workers + '/' + sm.jobs).padStart(10) + String(Colony.live(c).length).padStart(8)
+      + String(rate).padStart(8) + String(Math.round(Colony.volSum(c.stock))).padStart(11)
+      + String(Math.round(Colony.volSum(give))).padStart(15) + String(Math.round(c.crypto)).padStart(8));
+    console.log('      склад: ' + JSON.stringify(c.stock) + ' · пропущено: ' + JSON.stringify(c.autoSkip || {}) + ' · здания: ' + Colony.live(c).map(b=>b.kind).join(',') + ' · want: ' + JSON.stringify(c.want));
+    for (const l of (c.log || []).slice(0, 6)) console.log('      такт ' + l.t + ': ' + l.text);
+  }
 }
 if (r.col.log.length) {
   console.log('\nПОСЛЕДНИЕ ЗАПИСИ ЖУРНАЛА КОЛОНИИ (его же видит игрок на экране):');

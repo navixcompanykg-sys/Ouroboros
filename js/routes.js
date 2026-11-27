@@ -403,6 +403,106 @@ const Routes = (() => {
     r.why = 'нечего брать'; leave(ship, T);
   }
 
+  // ---------- РЕЙС СНАБЖЕНИЯ (ТЗ §8.31) ----------
+  // Две работы одним рейсом: ОСНОВАТЬ субколонию (везём жителей и сырьё) и ВЫВЕЗТИ накопленное
+  // у уже стоящих. Съёма гексов здесь нет — только погрузка у колонии и выгрузка дома, поэтому
+  // ветка своя, а время и топливо считаются теми же legSec/legFuel, что у обычного рейса.
+  // Слова пользователя: «кораблю нужно будет периодически туда залетать, чтоб забрать накопленное».
+  function supLeg(tbl, ship, fromStar, fromP, toStar, toP) {
+    const st = Ship.stats(tbl, ship), fsL = Ship.loaded(fly(ship), kOf(st.mass, Ship.cargoMass(ship)));
+    return { sec: legSec(fsL, fromStar, fromP, toStar, toP), fuel: legFuel(fsL, fromStar, fromP, toStar, toP) };
+  }
+  // Оборот «туда-обратно» в ТАКТАХ — им subPlan проверяет, успеет ли флот вывозить.
+  // Принимает НОМЕРА планет и окружение — вызывающему не нужно знать про объекты системы.
+  function supRound(tbl, ship, env, starId, fromIdx, toIdx) {
+    const sys = generateSystem(env.galaxy().stars[starId]);
+    const a = sys.planets[fromIdx], b = sys.planets[toIdx];
+    if (!a || !b) return Infinity;
+    const leg = supLeg(tbl, ship, starId, a, starId, b);
+    return isFinite(leg.sec) ? Math.ceil(2 * leg.sec / (TICK / 1000)) : Infinity;
+  }
+  // Запустить рейс снабжения. plan — от Colony.subPlan (основать) или {pickup:true, star, planet}.
+  function startSupply(tbl, ship, col, plan, now, env) {
+    let r0give = null;
+    if (!(fly(ship).accel > 0)) return 'у корабля нет двигателей';
+    if (!(ship.landed && ship.star === col.star && ship.planet === col.planet)) return 'корабль должен стоять у колонии';
+    const gs = env.galaxy().stars[col.star], sys = generateSystem(gs);
+    const hp = sys.planets[col.planet], tp = sys.planets[plan.planet];
+    if (!tp) return 'планета не найдена';
+    const out = supLeg(tbl, ship, gs.id, hp, gs.id, tp);
+    if (!isFinite(out.sec)) return 'маршрут не проложен';
+    const stL = Ship.stats(tbl, ship);
+    const need = Math.ceil(2 * out.sec / (TICK / 1000)) + ROUTE.LIFE_SPARE;
+    // СПЕРВА РАЗГРУЗИТЬСЯ: трюм занят своей добычей, и подвоз снабженцу в него не влезет.
+    Ship.unload(ship, col, true);
+    Ship.recharge(tbl, ship, col);
+    if (Ship.lifeTicks(tbl, ship, stL) < need) return 'мало пищи на дорогу туда и обратно';
+    Ship.refuel(ship, col);
+    if (out.fuel * 2 > (typeof ship.fuel === 'number' ? ship.fuel : 1) + 1e-9) return 'мало топлива на оборот';
+    // ОБМЕН (ТЗ §8.31): туда везём то, чего снабженцу не хватает на содержание, обратно —
+    // накопленное им. Основание списывает своё по прилёте (Colony.foundSub).
+    if (plan.pickup) {
+      const sub = env.colony(col.star, plan.planet);
+      if (sub) {
+        const st2 = Ship.stats(tbl, ship);
+        const give = Colony.subGrant(col, sub, Ship.cargoFree(tbl, ship, st2));
+        for (const k in give) Ship.load(tbl, ship, col, k, give[k]);
+        r0give = give;
+      }
+    }
+    ship.route = { home: { star: col.star, planet: col.planet }, target: 'supply', sup: plan.pickup ? 'pickup' : 'found',
+      stop: false, trips: 0, last: null, plan: { tOut: out.sec, tBack: out.sec, fOut: out.fuel, fBack: out.fuel },
+      dest: { star: col.star, planet: plan.planet, name: plan.name || (tp && tp.name) },
+      sub: plan, gave: r0give, phase: 'sup-out', t0: now, until: now + out.sec * 1000 };
+    ship.mine = null; ship.landed = false; ship.planet = null;
+    Colony.note(col, plan.pickup ? 'Рейс снабжения: ' + shipLabel(ship) + ' → ' + ship.route.dest.name + ' за накопленным'
+      : 'Экспедиция: ' + shipLabel(ship) + ' → ' + ship.route.dest.name + ' основывать колонию-снабженец');
+    env.placed(ship);
+    return null;
+  }
+  // Прилёт к субколонии: основать или загрузиться. Возвращает true, если рейс продолжается.
+  function supArrive(tbl, ship, T, env) {
+    const r = ship.route;
+    ship.star = r.dest.star; ship.planet = r.dest.planet; ship.landed = true;
+    burnFuel(ship, r.plan.fOut);
+    const surf = env.surface(r.dest.star, r.dest.planet);
+    const home = env.colony(r.home.star, r.home.planet);
+    if (!surf || !home) { r.phase = 'sup-back'; r.until = T + r.plan.tBack * 1000; return true; }
+    if (r.sup === 'found') {
+      const sub = Colony.foundSub(home, r.sub, surf, T);
+      env.putColony(r.dest.star, r.dest.planet, sub);
+      r.founded = true;
+    } else {
+      const sub = env.colony(r.dest.star, r.dest.planet);
+      if (sub) {
+        env.advanceColony(sub, r.dest.star, r.dest.planet, T);
+        // СПЕРВА ОТДАЁМ ПОДВОЗ: содержание и пищу, ради чего и летели (обмен).
+        if (r.gave) for (const k in r.gave) {
+          const q = Math.min(r.gave[k], (ship.cargo || {})[k] || 0);
+          if (q <= 0) continue;
+          ship.cargo[k] -= q; if (ship.cargo[k] <= 1e-9) delete ship.cargo[k];
+          Colony.store(sub, k, q);
+        }
+        // ЗАБИРАЕМ ИЗЛИШЕК субколонии — всё сверх её броней содержания, пищи и энергии.
+        const give = Colony.subGive(sub);
+        const st = Ship.stats(tbl, ship);
+        for (const k in give) {
+          const free = Ship.cargoFree(tbl, ship, st);
+          if (free <= 0) break;
+          const q = Math.min(give[k], free / Colony.volOf(k));
+          if (q <= 0) continue;
+          sub.stock[k] -= q; Colony.add(ship.cargo = ship.cargo || {}, k, q);
+        }
+        // БАЗА СОДЕРЖИТ СНАБЖЕНЦА: привозит крипту на жалованье — своего дохода у него нет
+        // (майнинг-фермы ему не строят). Это и есть «снабжение» в обе стороны.
+        const pay = Colony.subPay(home, sub, surf);
+        if (pay > 0) { home.crypto -= pay; sub.crypto += pay; }
+      }
+    }
+    r.phase = 'sup-back'; r.until = T + r.plan.tBack * 1000;
+    ship.landed = false; ship.planet = null; ship.mine = null;
+    return true;
+  }
   // ---------- одно событие рейса ----------
   const nextAt = s => !s.route ? Infinity : (s.route.phase === 'mine' || s.route.phase === 'wait' || s.route.phase === 'idle') ? s.route.next : s.route.until;
   function step(tbl, ship, T, env) {
@@ -413,6 +513,26 @@ const Routes = (() => {
       env.advanceColony(col, r.home.star, r.home.planet, T);
       Ship.advance(tbl, ship, null, T);
       replan(tbl, ship, T, env, col);
+      return;
+    }
+    if (r.sup) {                                            // рейс снабжения (ТЗ §8.31)
+      Ship.advance(tbl, ship, null, T);                     // в полёте экипаж только ест
+      if (r.phase === 'sup-out') { supArrive(tbl, ship, T, env); env.placed(ship); return; }
+      // sup-back — домой: выгрузка на склад базы
+      ship.star = r.home.star; ship.planet = r.home.planet; ship.landed = true;
+      burnFuel(ship, r.plan.fBack);
+      const col = env.colony(r.home.star, r.home.planet);
+      if (!col) { ship.route = null; env.placed(ship); return; }
+      env.advanceColony(col, r.home.star, r.home.planet, T);
+      const goods = Object.assign({}, ship.cargo || {});
+      const mass = Colony.massSum(goods);
+      Ship.unload(ship, col, true);
+      r.trips++;
+      r.last = { t: T, from: r.dest.name, goods, brought: Colony.volSum(goods) };
+      if (r.founded) Colony.note(col, 'Экспедиция вернулась с ' + r.dest.name);
+      else Colony.note(col, 'Снабжение: привезено с ' + r.dest.name + ' ' + Math.round(mass).toLocaleString('ru') + ' т');
+      ship.route = null;                                     // рейс снабжения — разовый
+      env.placed(ship);
       return;
     }
     if (r.target === 'need' && (r.phase === 'out' || r.phase === 'hop' || r.phase === 'wait')) {
@@ -613,5 +733,6 @@ const Routes = (() => {
       + '</div>';
   }
 
-  return { ROUTE, scan, best, estimate, start, stop, tick, tickWorld, status, guard, legSec, legFuel, hexYield, nextAt };
+  return { ROUTE, scan, best, estimate, start, stop, tick, tickWorld, status, guard, legSec, legFuel, hexYield, nextAt,
+    startSupply, supRound };
 })();
