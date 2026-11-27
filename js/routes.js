@@ -563,10 +563,11 @@ const Routes = (() => {
   const surfCache = {};
   function surfaceOf(star, planet) {
     const k = star + ':' + planet;
-    if (surfCache[k] !== undefined) return surfCache[k];
+    if (surfCache[k] !== undefined) return Colony.terraSurf(surfCache[k], World.colony(star, planet));
     const gs = World.galaxy().stars[star];
     const p = gs && generateSystem(gs).planets[planet];
-    return (surfCache[k] = p ? generateSurface(p, gs) : null);
+    surfCache[k] = p ? generateSurface(p, gs) : null;
+    return Colony.terraSurf(surfCache[k], World.colony(star, planet));   // посев терраформирования
   }
   const browserEnv = () => ({
     galaxy: () => World.galaxy(),

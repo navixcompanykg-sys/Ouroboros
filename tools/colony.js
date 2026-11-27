@@ -168,6 +168,10 @@ function simulate(world, ticks, opts = {}) {
   let auto = null, autoRun = 0, firstUniq = false, shipAt = null;
   const groupStock = g => Colony.inGroup(col, g);
   const planDone = () => PLAN.every(k => col.buildings.some(b => b.kind === k));
+  // ВЕХИ ПУТИ К КОСМОДРОМУ (миссия колонии, решение пользователя 2026-11-27): такт, когда достигнута.
+  const miles = {};
+  const PORT = COL_BUILDING.port;
+  const mark = (k, ok) => { if (ok && miles[k] == null) miles[k] = col.t; };
 
   for (let t = 1; t <= ticks; t++) {
     const now = nowAt(t);
@@ -251,6 +255,14 @@ function simulate(world, ticks, opts = {}) {
     const uniqWas = col.uniq, deadWas = col.buildings.filter(b => b.dead).length;
     const foodWas = col.food, cryptoWas = col.crypto;
     Colony.step(col, surf);
+    {
+      const L2 = Colony.live(col);
+      mark('base', planDone());
+      mark('mfarm', L2.some(b => b.kind === 'mfarm'));
+      mark('prod2', L2.some(b => b.kind === 'prod' && b.lvl >= 2));
+      mark('comps', Object.keys(PORT.comp).every(m => ((col.comp || {})[m + PORT.compTier] || 0) >= PORT.comp[m]));
+      mark('port', L2.some(b => b.kind === 'port'));
+    }
     if (col.uniq > uniqWas && !firstUniq) { firstUniq = true; events.push([t, 'первая планетарная единица']); }
     const demolished = col.buildings.filter(b => b.dead).length - deadWas;
     if (demolished > 0) events.push([t, 'РАЗОБРАНО за долги: ' + demolished + ' шт.']);
@@ -276,7 +288,7 @@ function simulate(world, ticks, opts = {}) {
       alive: Colony.live(col).length, powered: col.powered !== false, shipAt,
       hold: Math.round(Ship.cargoUsed(ship)), cap: Math.round(sum.cap), usedCap: Math.round(sum.used) });
   }
-  return { col, ship, shipSt, events, hist, auto, routeTrips };
+  return { col, ship, shipSt, events, hist, auto, routeTrips, miles };
 }
 
 const fmtT = t => { const m = t * 10, d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60); return String(d).padStart(2) + 'д ' + String(h).padStart(2) + 'ч'; };
@@ -285,6 +297,12 @@ const fmtT = t => { const m = t * 10, d = Math.floor(m / 1440), h = Math.floor(m
 const argv = process.argv.slice(2);
 const arg = (n, d) => { const a = argv.find(x => x.startsWith('--' + n + '=')); return a ? +a.split('=')[1] : d; };
 const TICKS = arg('ticks', 2016); // 14 реальных суток
+// --tox=old — прежнее правило экологии для сравнения: +10 за каждое здание на гексе сверх первого и без
+// предела секций (все здания по 1 секции, TOX_PER_EXTRA = 10). Механику игры не меняет — только прогон.
+if ((argv.find(x => x.startsWith('--tox=')) || '').split('=')[1] === 'old') {
+  for (const B of G.COL_BUILDINGS) B.cells = 1;
+  G.COL.TOX_PER_EXTRA = 10;
+}
 
 // ───────────────────────── ПОСЕВ: выживаемость колоний ─────────────────────────
 // Цель пользователя (2026-11-27): «не все колонии должны выживать, чтоб мотивировать игрока искать
@@ -319,18 +337,37 @@ if (argv.includes('--survive')) {
   }
   console.log('ПОСЕВ: ' + picks.length + ' колоний на периферии (зона 1), ' + TICKS + ' тактов, '
     + (ROUTE_ARG ? 'авторейсы «' + ROUTE_ARG + '»' : 'без рейсов') + ', seed ' + arg('seed', 20261127));
-  console.log('планета                 звезда   жизнь     итог      насел  раб    крипта  план.ед  добыча  рейсов  причина');
-  let ok = 0;
+  console.log('планета                 звезда   жизнь     итог      насел  раб    крипта  план.ед  добыча  рейсов  токс(база+гексы−очист)  K    причина');
+  let ok = 0; const toxAll = [], portRows = [];
   for (const w of picks) {
     const r = simulate({ st: w.st, p: w.p, surf: G.generateSurface(w.p, w.st) }, TICKS, { startKit: true });
     const v = survived(r);
     if (v.ok) ok++;
+    portRows.push({ name: w.p.name, m: r.miles, ok: v.ok, col: r.col });
+    const surf = G.generateSurface(w.p, w.st), e = Colony.ecology(r.col, surf), pr = r.col.popRates || {};
+    toxAll.push({ tox: e.tox, extra: e.extra * COL.TOX_PER_EXTRA, base: e.base, ok: v.ok });
+    const toxS = (e.tox + ' (' + e.base + '+' + e.extra * COL.TOX_PER_EXTRA + '−' + e.clean * COL.TOX_CLEAN + ')').padStart(22);
     console.log(w.p.name.padEnd(24) + w.st.type.key.padEnd(9) + String(w.p.life).padEnd(10)
       + (v.ok ? 'ЖИВА' : 'гибнет').padEnd(10) + String(v.last.pop).padStart(5) + (v.last.paid + '/' + v.last.jobs).padStart(6)
       + String(v.last.crypto).padStart(10) + String(v.last.uniq).padStart(9) + String(v.last.mined).padStart(8)
-      + String(r.routeTrips || 0).padStart(8) + '  ' + (v.why || ''));
+      + String(r.routeTrips || 0).padStart(8) + '  ' + toxS + String(Math.floor(pr.K || 0)).padStart(5) + '  ' + (v.why || ''));
   }
-  console.log('\nВЫЖИЛО: ' + ok + ' из ' + picks.length + ' = ' + Math.round(ok / picks.length * 100) + '%');
+  const avg = f => (toxAll.reduce((a, x) => a + f(x), 0) / toxAll.length).toFixed(1);
+  console.log('\nТОКСИЧНОСТЬ: средняя ' + avg(x => x.tox) + ', из неё от застройки гексов +' + avg(x => x.extra) + ' (максимум +' + Math.max(...toxAll.map(x => x.extra)) + ')');
+  // Путь к космодрому: на каком такте пройдена каждая веха; где колония застряла.
+  const STAGES = [['base', 'базовый набор'], ['mfarm', 'майнинг-ферма'], ['prod2', 'производство 2 ур.'], ['comps', 'компоненты на космодром'], ['port', 'КОСМОДРОМ']];
+  const day = t => t == null ? '—' : (t / COL.DAY_TICKS).toFixed(1);
+  console.log('\nПУТЬ К КОСМОДРОМУ (сутки)    ' + STAGES.map(x => x[1].slice(0, 12).padStart(13)).join('') + '   застряла на');
+  for (const x of portRows) {
+    const stuck = STAGES.find(st => x.m[st[0]] == null);
+    const pr = Colony.live(x.col).find(b => b.kind === 'prod');
+    const why = !stuck ? '' : stuck[0] === 'prod2' && pr ? ' (' + Colony.canUpgrade(x.col, pr) + ')'
+      : stuck[0] === 'comps' ? ' (заказ ' + JSON.stringify(x.col.order) + ')' : '';
+    console.log(x.name.padEnd(28) + STAGES.map(st => day(x.m[st[0]]).padStart(13)).join('') + '   ' + (stuck ? stuck[1] : 'дошла') + why + (x.ok ? '' : ' · гибнет'));
+  }
+  console.log('ДОШЛИ ДО КОСМОДРОМА: ' + portRows.filter(x => x.m.port != null).length + ' из ' + portRows.length
+    + STAGES.map(st => ' · ' + st[1] + ' ' + portRows.filter(x => x.m[st[0]] != null).length).join(''));
+  console.log('ВЫЖИЛО: ' + ok + ' из ' + picks.length + ' = ' + Math.round(ok / picks.length * 100) + '%');
   process.exit(0);
 }
 

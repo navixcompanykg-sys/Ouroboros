@@ -190,8 +190,16 @@ const PlanetUI = (() => {
   function ecoBlock() {
     if (!col) return '';
     const e = Colony.ecology(col, ctxRef.surf);
-    return kv('Токсичность', e.tox + ' из 100') +
-      '<div class="note">База планеты ' + e.base + (e.extra ? ' · +' + e.extra * COL.TOX_PER_EXTRA + ' за ' + e.extra + ' лишн. зданий на гексах' : '') +
+    const tf = col.tf, tdl = Colony.tfDaysLeft(col, ctxRef.surf);
+    const tfLine = !e.terra ? '' : kv('Терраформирование', tf && !tf.done ? 'идёт · до нормы ~' + Math.ceil(tdl) + ' сут' : 'завершено') +
+      '<div class="note">' + (tf && !tf.done
+        ? 'Температура ' + Math.round(tf.tempK) + ' K, давление ' + Math.round(tf.pressure) + ', токсичность ' + Math.round(tf.toxicity) + ', радиация ' + Math.round(tf.radiation) +
+          '; посев на гекс: микробиота ' + tf.bio.microbiota.toFixed(1).replace('.', ',') + ', флора ' + tf.bio.flora.toFixed(1).replace('.', ',') +
+          '. Пока идёт — содержание за ' + COL.TERRA.activeDays + ' суток цены, потом за ' + COL_BUILDING.terraform.upkeepDays + '.'
+        : 'Условия планеты — по норме расы, жизнь засеяна.') + ' Разберут за долги — планета вернётся к своим условиям.</div>';
+    return tfLine +
+      kv('Токсичность', e.tox + ' из 100') +
+      '<div class="note">База планеты ' + e.base + (e.extra ? ' · +' + e.extra * COL.TOX_PER_EXTRA + ' за ' + e.extra + ' секций гексов сверх первой' : '') +
       (e.clean ? ' · −' + e.clean * COL.TOX_CLEAN + ' очистные' : '') + '. Биомасса −' + e.tox + ' %.</div>' +
       kv('Радиация', e.radiation + ' из 100' + (e.radCut ? ' (−' + e.radCut + ' улучшенные очистные)' : '')) +
       (col.popRates ? kv('Ёмкость планеты', Math.floor(col.popRates.K) + ' жителей из ' + col.popRates.slots + ' мест (Q ×' +
@@ -200,7 +208,7 @@ const PlanetUI = (() => {
       (b => kv('Условия', '×' + b.all.toFixed(2).replace('.', ',')) +
         '<div class="note">' + b.race + ', относительно нормы расы: токсичность ×' + b.tox.toFixed(2).replace('.', ',') +
         ', радиация ×' + b.rad.toFixed(2).replace('.', ',') + ', температура ' + (e.tempK != null ? Math.round(e.tempK) + ' K ' : '') +
-        '×' + b.temp.toFixed(2).replace('.', ',') + ', давление ' + ((ctxRef.surf.env || {}).pressure ?? '—') + ' ×' + b.press.toFixed(2).replace('.', ',') +
+        '×' + b.temp.toFixed(2).replace('.', ',') + ', давление ' + (Colony.envOf(col, ctxRef.surf).pressure ?? '—') + ' ×' + b.press.toFixed(2).replace('.', ',') +
         '. Больше 1 — лучше нормы и покрывает слабые стороны; 0 — смертельно.</div>')(Colony.birthEnv(col, ctxRef.surf));
   }
 
@@ -338,11 +346,12 @@ const PlanetUI = (() => {
       kv('Энергия', n0(s.h2) + ' водорода/такт' + (s.gen ? ' · генератор жжёт и тритий' : '') +
         (s.powered ? '' : ' · НЕ ХВАТАЕТ')) +
       (s.site ? kv('Строится ' + COL_BUILDING[s.site.kind].name, hrs(s.site.left)) : '') +
+      (sel && !lowOrbit ? kv('Гекс ' + sel.q + ', ' + sel.r, 'занято ' + Colony.hexCells(col, sel) + ' из ' + HEX_CELLS + ' секций') : '') +
       ecoBlock();
     const rows = COL_BUILDINGS.filter(B => !!B.orbital === lowOrbit).map(B => {
       const err = Colony.canBuild(col, B.key, sel, lowOrbit, here ? ship : null);
       const n = Colony.live(col).filter(b => b.kind === B.key).length;
-      return '<button class="bl" data-open="' + B.key + '"><span>' + B.name + (n ? ' ×' + n : '') +
+      return '<button class="bl" data-open="' + B.key + '"><span>' + B.name + (n ? ' ×' + n : '') + ' · ' + B.cells + '/' + HEX_CELLS +
         '<i>' + (err || B.desc) + '</i></span><b>' + (err ? '—' : 'можно') + '</b></button>';
     }).join('');
     const auto = '<div class="actions"><button data-act="auto" class="' + (col.auto ? 'primary' : '') + '">' +

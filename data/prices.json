@@ -19,17 +19,19 @@
     "2": {
      "tier": 2,
      "comp": {
-      "struct": 834,
-      "compute": 500,
-      "energy": 333
+      "struct": 717,
+      "compute": 450,
+      "bio": 160,
+      "energy": 340
      }
     },
     "3": {
      "tier": 3,
      "comp": {
-      "struct": 2000,
-      "compute": 1200,
-      "energy": 800
+      "struct": 1340,
+      "compute": 1500,
+      "bio": 700,
+      "energy": 460
      }
     }
    }
@@ -52,17 +54,19 @@
     "2": {
      "tier": 2,
      "comp": {
-      "struct": 834,
-      "compute": 500,
-      "energy": 333
+      "struct": 717,
+      "compute": 450,
+      "bio": 160,
+      "energy": 340
      }
     },
     "3": {
      "tier": 3,
      "comp": {
-      "struct": 2000,
-      "compute": 1200,
-      "energy": 800
+      "struct": 1340,
+      "compute": 1500,
+      "bio": 700,
+      "energy": 460
      }
     }
    }
@@ -85,17 +89,19 @@
     "2": {
      "tier": 2,
      "comp": {
-      "struct": 834,
-      "compute": 500,
-      "energy": 333
+      "struct": 717,
+      "compute": 450,
+      "bio": 160,
+      "energy": 340
      }
     },
     "3": {
      "tier": 3,
      "comp": {
-      "struct": 2000,
-      "compute": 1200,
-      "energy": 800
+      "struct": 1340,
+      "compute": 1500,
+      "bio": 700,
+      "energy": 460
      }
     }
    }
@@ -118,17 +124,19 @@
     "2": {
      "tier": 2,
      "comp": {
-      "struct": 834,
-      "compute": 500,
-      "energy": 333
+      "struct": 717,
+      "compute": 450,
+      "bio": 160,
+      "energy": 340
      }
     },
     "3": {
      "tier": 3,
      "comp": {
-      "struct": 2000,
-      "compute": 1200,
-      "energy": 800
+      "struct": 1340,
+      "compute": 1500,
+      "bio": 700,
+      "energy": 460
      }
     }
    }
@@ -165,9 +173,10 @@
     "2": {
      "tier": 1,
      "comp": {
-      "struct": 300,
-      "compute": 200,
-      "bio": 50
+      "struct": 190,
+      "compute": 106,
+      "bio": 34,
+      "energy": 220
      },
      "raw": {
       "rareEarth": 40000,
@@ -179,9 +188,10 @@
     "3": {
      "tier": 2,
      "comp": {
-      "struct": 300,
-      "compute": 200,
-      "bio": 50
+      "struct": 238,
+      "compute": 147,
+      "bio": 54,
+      "energy": 111
      },
      "raw": {
       "bitumen": 120000,
@@ -214,10 +224,10 @@
    "up": 700,
    "h2": 0,
    "comp": {
-    "struct": 80,
-    "compute": 240,
-    "bio": 0,
-    "energy": 0
+    "struct": 47,
+    "compute": 94,
+    "bio": 20,
+    "energy": 159
    }
   },
   "dome": {
@@ -242,10 +252,10 @@
    "up": 700,
    "h2": 40,
    "comp": {
-    "struct": 400,
-    "compute": 200,
-    "bio": 0,
-    "energy": 0
+    "struct": 259,
+    "compute": 101,
+    "bio": 59,
+    "energy": 181
    },
    "compTier": 2,
    "upkeepDays": 15
@@ -258,10 +268,10 @@
    "up": 700,
    "h2": 50,
    "comp": {
-    "struct": 4000,
-    "compute": 2000,
-    "bio": 8000,
-    "energy": 1000
+    "struct": 3510,
+    "compute": 4130,
+    "bio": 5620,
+    "energy": 1740
    },
    "compTier": 3
   },
@@ -274,18 +284,20 @@
    "h2": 50,
    "compTier": 2,
    "comp": {
-    "struct": 100,
-    "compute": 60,
-    "bio": 0,
-    "energy": 0
+    "struct": 53,
+    "compute": 27,
+    "bio": 48,
+    "energy": 32
    },
    "upgrade": {
     "tier": 3,
     "maxLvl": 3,
     "radiation": 10,
     "comp": {
-     "struct": 60,
-     "compute": 20
+     "struct": 19,
+     "compute": 22,
+     "bio": 30,
+     "energy": 9
     }
    }
   },
@@ -298,10 +310,10 @@
    "h2": 0,
    "compTier": 3,
    "comp": {
-    "struct": 11200,
-    "compute": 8000,
-    "bio": 12800,
-    "energy": 8000
+    "struct": 5350,
+    "compute": 11020,
+    "bio": 14990,
+    "energy": 8640
    },
    "upkeepDays": 90
   },
@@ -314,10 +326,10 @@
    "h2": 0,
    "compTier": 2,
    "comp": {
-    "struct": 450,
-    "compute": 220,
-    "bio": 1000,
-    "energy": 0
+    "struct": 550,
+    "compute": 280,
+    "bio": 500,
+    "energy": 340
    }
   },
   "battery": {
@@ -329,10 +341,10 @@
    "h2": 0,
    "compTier": 2,
    "comp": {
-    "struct": 800,
-    "compute": 400,
-    "bio": 0,
-    "energy": 130
+    "struct": 440,
+    "compute": 220,
+    "bio": 130,
+    "energy": 540
    }
   },
   "elevator": {
@@ -344,10 +356,10 @@
    "h2": 0,
    "compTier": 3,
    "comp": {
-    "struct": 1500,
-    "compute": 500,
-    "bio": 2000,
-    "energy": 0
+    "struct": 940,
+    "compute": 1100,
+    "bio": 1500,
+    "energy": 460
    }
   },
   "destroyer": {
@@ -359,10 +371,10 @@
    "h2": 0,
    "compTier": 3,
    "comp": {
-    "struct": 20000,
-    "compute": 10000,
-    "bio": 0,
-    "energy": 20000
+    "struct": 11690,
+    "compute": 13770,
+    "bio": 8740,
+    "energy": 15800
    }
   },
   "robots": {
@@ -374,10 +386,10 @@
    "h2": 0,
    "compTier": 3,
    "comp": {
-    "struct": 8000,
-    "compute": 14000,
-    "bio": 0,
-    "energy": 3000
+    "struct": 5840,
+    "compute": 11890,
+    "bio": 4370,
+    "energy": 2900
    }
   },
   "science": {
@@ -388,10 +400,10 @@
    "up": 0,
    "h2": 0,
    "comp": {
-    "struct": 2000,
-    "compute": 4000,
-    "bio": 6000,
-    "energy": 500
+    "struct": 1670,
+    "compute": 4700,
+    "bio": 4680,
+    "energy": 1450
    },
    "compTier": 3,
    "upkeepDays": 15
@@ -404,10 +416,10 @@
    "up": 0,
    "h2": 0,
    "comp": {
-    "struct": 1500,
-    "compute": 3000,
-    "bio": 0,
-    "energy": 500
+    "struct": 670,
+    "compute": 2380,
+    "bio": 870,
+    "energy": 1080
    },
    "compTier": 3
   }
